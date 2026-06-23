@@ -1,1 +1,7 @@
+// settings.gradle
 rootProject.name = 'momogo'
+
+include 'momogo-core'
+include 'momogo-api'
+include 'momogo-realtime'
+include 'momogo-batch'

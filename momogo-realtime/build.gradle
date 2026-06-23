@@ -1,0 +1,22 @@
+plugins {
+    id 'org.springframework.boot'
+}
+
+bootJar { enabled = true }
+jar { enabled = false }
+
+dependencies {
+    implementation project(':momogo-core') // 🌟 core 모듈 참조
+
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+    implementation 'org.springframework.security:spring-security-messaging'
+
+    // Spring Integration (WebSocket 및 STOMP 메시지 브로커 파트)
+    implementation 'org.springframework.boot:spring-boot-starter-integration'
+    implementation 'org.springframework.integration:spring-integration-websocket'
+    implementation 'org.springframework.integration:spring-integration-stomp'
+
+    // 실시간 모듈 테스트 라이브스케일
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'org.springframework.integration:spring-integration-test'
+}

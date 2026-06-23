@@ -1,11 +1,59 @@
-HELP.md
-.gradle
-build/
-!gradle/wrapper/gradle-wrapper.jar
-!**/src/main/**/build/
-!**/src/test/**/build/
+# =========================================================================
+# Spring Boot & Gradle Multi-Module Project Custom Gitignore
+# =========================================================================
 
-### STS ###
+# Local Environment & Secrets (보안 및 로컬 개발용 파일)
+.env
+.env.local
+.env.*.local
+
+# Build & Dependency Directories (빌드 결과물)
+.gradle/
+build/
+**/build/
+bin/
+out/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Test Results & Logs (테스트 결과물 및 로그/메모리 덤프)
+/k6/results/
+*.log
+hs_err_pid*
+replay_pid*
+*.hprof
+
+# =========================================================================
+# IDEs & Editors (개발 도구 설정 파일)
+# =========================================================================
+
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+.idea/**/usage.statistics.xml
+.idea/**/dictionaries
+.idea/**/shelf
+.idea/**/dataSources/
+.idea/**/dataSources.ids
+.idea/**/dataSources.local.xml
+.idea/**/sqlDataSources.xml
+.idea/**/dynamic.xml
+.idea/**/uiDesigner.xml
+.idea/**/dbnavigator.xml
+.idea/**/gradle.xml
+.idea/**/libraries
+.idea/sonarlint/
+.idea/sonarIssues.xml
+.idea/httpRequests
+.idea/$CACHE_FILE$
+
+### VS Code ###
+.vscode/
+
+### STS (Spring Tool Suite) ###
 .apt_generated
 .classpath
 .factorypath
@@ -13,25 +61,37 @@ build/
 .settings
 .springBeans
 .sts4-cache
-bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
-
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
-out/
-!**/src/main/**/out/
-!**/src/test/**/out/
 
 ### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
+**/nbproject/private/
+**/nbproject/Makefile-*.mk
+**/nbproject/Package-*.bash
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
 
-### VS Code ###
-.vscode/
+# =========================================================================
+# OS & System Files (운영체제 임시 파일)
+# =========================================================================
+
+### Windows ###
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# =========================================================================
+# Java & Package Files (패키징 파일 컴파일 결과)
+# =========================================================================
+*.class
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Gradle wrapper 관련 설정은 제외되지 않도록 강제 적용
+!gradle-wrapper.jar
+!gradle-wrapper.properties

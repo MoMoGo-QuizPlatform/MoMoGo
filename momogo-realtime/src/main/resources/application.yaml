@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: momogo-realtime
+  profiles:
+    active: dev
+    group:
+      dev:
+        - dev
+      prod:
+        - prod
+
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        default_batch_fetch_size: 100
+
+server:
+  port: 8081

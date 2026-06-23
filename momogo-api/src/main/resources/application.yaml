@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: momogo-api
+  profiles:
+    active: dev # 기본 활성화 프로필
+    group:
+      dev:
+        - dev
+      prod:
+        - prod
+
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        default_batch_fetch_size: 100
+
+server:
+  port: 8080
