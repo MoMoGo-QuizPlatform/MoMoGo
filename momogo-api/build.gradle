@@ -1,0 +1,24 @@
+plugins {
+    id 'org.springframework.boot'
+}
+
+bootJar { enabled = true }
+jar { enabled = false }
+
+dependencies {
+    implementation project(':momogo-core') // 🌟 core 모듈의 엔티티와 레포지토리를 참조
+
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.16'
+
+    // Spring Integration (HTTP 및 JPA 연동 파트)
+    implementation 'org.springframework.boot:spring-boot-starter-integration'
+    implementation 'org.springframework.integration:spring-integration-http'
+    implementation 'org.springframework.integration:spring-integration-jpa'
+
+    // API 전용 테스트 라이브러리
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'org.springframework.integration:spring-integration-test'
+}
