@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: momogo-batch
+  profiles:
+    active: dev
+    group:
+      dev:
+        - dev
+      prod:
+        - prod
+
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        default_batch_fetch_size: 100
+
+  batch:
+    job:
+      enabled: false
+
+server:
+  port: 8082
