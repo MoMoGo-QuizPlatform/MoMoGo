@@ -6,9 +6,6 @@
 .env
 .env.local
 .env.*.local
-application-dev.yaml
-application-prod.yaml
-application-local.yaml
 
 # Build & Dependency Directories (빌드 결과물)
 .gradle/
