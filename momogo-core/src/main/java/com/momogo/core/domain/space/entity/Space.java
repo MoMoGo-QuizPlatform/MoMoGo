@@ -43,4 +43,10 @@ public class Space extends BaseTimeEntity {
         }
         this.spaceImageUrl = spaceImageUrl;
     }
+
+    public void updateSpacePassword(String encryptedPassword) {
+        if (encryptedPassword != null && !encryptedPassword.isBlank()) {
+            this.spacePassword = encryptedPassword;
+        }
+    }
 }

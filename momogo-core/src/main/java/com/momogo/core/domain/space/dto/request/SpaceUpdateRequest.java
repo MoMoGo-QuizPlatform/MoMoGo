@@ -3,11 +3,11 @@ package com.momogo.core.domain.space.dto.request;
 import jakarta.validation.constraints.NotBlank;
 
 /**
- *
- * @param name
- * @param description
- * @param spacePassword
- * @param spaceImageUrl
+ * 공간 수정 요청 Dto
+ * @param name 공간 이름
+ * @param description 공간 설명
+ * @param spacePassword 공간 비밀번호
+ * @param spaceImageUrl 공간 이미지
  */
 public record SpaceUpdateRequest(
     @NotBlank(message = "공간 이름은 필수입니다.")

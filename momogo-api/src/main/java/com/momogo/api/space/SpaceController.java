@@ -1,8 +1,10 @@
 package com.momogo.api.space;
 
 import com.momogo.core.domain.space.dto.request.SpaceCreateRequest;
+import com.momogo.core.domain.space.dto.request.SpaceCursorRequest;
 import com.momogo.core.domain.space.dto.request.SpaceJoinRequest;
 import com.momogo.core.domain.space.dto.request.SpaceUpdateRequest;
+import com.momogo.core.domain.space.dto.response.SpaceCursorPaginationResponse;
 import com.momogo.core.domain.space.dto.response.SpaceResponse;
 import com.momogo.core.domain.space.entity.Space;
 import com.momogo.core.domain.space.mapper.SpaceMapper;
@@ -15,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -76,28 +79,37 @@ public class SpaceController {
       // TODO: Security 연동 시 @AuthenticationPrincipal로 변경
       @RequestHeader("X-User-Id") UUID userId
   ) {
-    Space space = spaceService.getMySpace(userId);
-
-    // 소속 공간이 없는 경우 204 반환
-    if (space == null) {
-      return ResponseEntity.noContent().build();
-    }
-    SpaceResponse response = spaceMapper.toResponse(space);
-    return ResponseEntity.ok(response);
+    return spaceService.getMySpace(userId)
+        .map(space -> ResponseEntity.ok(spaceMapper.toResponse(space)))
+        .orElseGet(() -> ResponseEntity.noContent().build());
   }
 
   /**
-   * 내가 가입하지 않은 전체 공간 목록 조회
+   * 커서 페이지네이션을 활용한 공간 리스트 반환
    * @param userId 유저 아이디
-   * @return 내가 가입하지 않은 전체 공간 목록
+   * @param request 커서 요청 DTO
+   * @return 공간 리스트
    */
   @GetMapping("/unjoined")
-  public ResponseEntity<List<SpaceResponse>> getUnjoinedSpaces(
+  public ResponseEntity<SpaceCursorPaginationResponse<SpaceResponse>> getUnjoinedSpaces(
       // TODO: Security 연동 시 @AuthenticationPrincipal로 변경
-      @RequestHeader("X-User-Id") UUID userId
+      @RequestHeader("X-User-Id") UUID userId,
+      @ModelAttribute SpaceCursorRequest request
   ) {
-    List<Space> spaces = spaceService.getUnjoinedSpaces(userId);
-    List<SpaceResponse> response = spaceMapper.toResponseList(spaces);
+
+    // 서비스 호출
+    SpaceCursorPaginationResponse<Space> cursorPaginationResponse = spaceService.getUnjoinedSpacesByCursor(
+        userId, request.lastSpaceId(), request.lastCreatedAt(), request.size()
+    );
+
+    // 내부 Entity 리스트를 DTO 리스트 변환
+    List<SpaceResponse> responseList =  spaceMapper.toResponseList(cursorPaginationResponse.values());
+    SpaceCursorPaginationResponse<SpaceResponse> response = new SpaceCursorPaginationResponse<>(
+        responseList,
+        cursorPaginationResponse.hasNext(),
+        cursorPaginationResponse.nextCursor()
+    );
+
     return ResponseEntity.ok(response);
   }
 

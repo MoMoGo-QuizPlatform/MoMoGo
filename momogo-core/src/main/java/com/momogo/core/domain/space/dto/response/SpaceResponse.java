@@ -1,16 +1,15 @@
 package com.momogo.core.domain.space.dto.response;
 
-import com.momogo.core.domain.space.entity.Space;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- *
- * @param id
- * @param name
- * @param description
- * @param spaceImageUrl
- * @param createdAt
+ * 공간 정보 응답 Dto
+ * @param id 공간 id
+ * @param name 공간 이름
+ * @param description 공간 설명
+ * @param spaceImageUrl 공간 이미지
+ * @param createdAt 공간 생성일
  */
 public record SpaceResponse(
 
@@ -20,16 +19,4 @@ public record SpaceResponse(
     String spaceImageUrl,
     OffsetDateTime createdAt
 ) {
-
-  // Entity -> Record 변환 팩토리 메서드
-  public static SpaceResponse from(Space space) {
-    if (space == null) return null;
-    return new SpaceResponse(
-        space.getId(),
-        space.getName(),
-        space.getDescription(),
-        space.getSpaceImageUrl(),
-        space.getCreatedAt()
-    );
-  }
 }

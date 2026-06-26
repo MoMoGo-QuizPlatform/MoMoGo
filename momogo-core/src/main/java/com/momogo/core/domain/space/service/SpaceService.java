@@ -2,8 +2,10 @@ package com.momogo.core.domain.space.service;
 
 import com.momogo.core.domain.space.dto.request.SpaceCreateRequest;
 import com.momogo.core.domain.space.dto.request.SpaceUpdateRequest;
+import com.momogo.core.domain.space.dto.response.SpaceCursorPaginationResponse;
 import com.momogo.core.domain.space.entity.Space;
-import java.util.List;
+import java.time.OffsetDateTime;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface SpaceService {
@@ -15,10 +17,10 @@ public interface SpaceService {
   void joinSpace(UUID userId, UUID spaceId, String password);
 
   // 내가 현재 소속된 공간 정보 조회
-  Space getMySpace(UUID userId);
+  Optional<Space> getMySpace(UUID userId);
 
   // 내가 가입하지 않은 전체 공간 목록 조회
-  List<Space> getUnjoinedSpaces(UUID userId);
+  SpaceCursorPaginationResponse<Space> getUnjoinedSpacesByCursor(UUID userId, UUID lastSpaceId, OffsetDateTime lastCreatedAt, int size);
 
   // 공간 정보 수정 (ADMIN 권한 검증)
   Space updateSpace(UUID userId, UUID spaceId, SpaceUpdateRequest request);

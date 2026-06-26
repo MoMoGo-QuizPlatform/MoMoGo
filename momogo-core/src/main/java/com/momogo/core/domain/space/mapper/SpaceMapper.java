@@ -32,5 +32,6 @@ public interface SpaceMapper {
   // 3. UpdatedRequest -> Entity
   @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE) // null 값 덮어쓰기 금지(기존 값 유지) 처리
   @Mapping(target = "id", ignore = true)
+  @Mapping(target = "spacePassword", ignore = true) // 패스워드는 수동으로 처리하도록 제외
   void updateFromDto(SpaceUpdateRequest request, @MappingTarget Space space);
 }
