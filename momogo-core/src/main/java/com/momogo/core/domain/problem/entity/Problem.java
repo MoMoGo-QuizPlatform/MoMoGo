@@ -1,6 +1,7 @@
 package com.momogo.core.domain.problem.entity;
 
 import com.momogo.core.common.base.BaseTimeEntity;
+import com.momogo.core.domain.space.entity.Space;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -33,6 +34,10 @@ public class Problem extends BaseTimeEntity {
     @JoinColumn(name = "category_id", nullable = false)
     private ProblemCategory category;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "space_id", nullable = false)
+    private Space space;
+
     @Column(name = "name", nullable = false)
     private String name;
 
@@ -47,6 +52,7 @@ public class Problem extends BaseTimeEntity {
 
     public static Problem create(
         ProblemCategory category,
+        Space space,
         String name,
         String content,
         String explanation,
@@ -54,6 +60,7 @@ public class Problem extends BaseTimeEntity {
 
         return Problem.builder()
             .category(category)
+            .space(space)
             .name(name)
             .content(content)
             .explanation(explanation)
