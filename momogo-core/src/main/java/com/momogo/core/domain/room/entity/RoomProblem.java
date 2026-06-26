@@ -1,7 +1,6 @@
 package com.momogo.core.domain.room.entity;
 
-import com.momogo.core.common.base.BaseCreatedTimeEntity;
-import com.momogo.core.domain.problem.entity.Problem;
+import com.momogo.core.common.base.BaseTimeEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -15,7 +14,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class RoomProblem extends BaseCreatedTimeEntity {
+public class RoomProblem extends BaseTimeEntity {
     @Id
     @Column(name = "id", columnDefinition = "UUID")
     private UUID id;
@@ -24,10 +23,18 @@ public class RoomProblem extends BaseCreatedTimeEntity {
     @JoinColumn(name = "room_id", nullable = false)
     private Room room;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "problem_id", nullable = false)
-    private Problem problem;
-
     @Column(name = "problem_order", nullable = false)
     private Integer problemOrder;
+
+    @Column(name = "name")
+    private String name;
+
+    @Column(name = "content", columnDefinition = "TEXT")
+    private String content;
+
+    @Column(name = "explanation", columnDefinition = "TEXT")
+    private String explanation;
+
+    @Column(name = "correct_answer", columnDefinition = "TEXT")
+    private String correctAnswer;
 }

@@ -31,4 +31,7 @@ public class Problem extends BaseTimeEntity {
 
     @Column(name = "explanation", columnDefinition = "TEXT")
     private String explanation;
+
+    @Column(name = "correct_answer", columnDefinition = "TEXT")
+    private String correctAnswer;
 }

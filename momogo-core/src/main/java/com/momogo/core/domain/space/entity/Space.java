@@ -27,4 +27,20 @@ public class Space extends BaseTimeEntity {
 
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
+
+    @Column(name = "space_image_url", length = 500)
+    private String spaceImageUrl;
+
+    @Column(name = "space_password")
+    private String spacePassword;
+
+    // 더티 체크
+    public void updateSpaceInfo(String name, String description, String spacePassword, String spaceImageUrl) {
+        this.name = name;
+        this.description = description;
+        if (spacePassword != null && !spacePassword.isBlank()) {
+            this.spacePassword = spacePassword;
+        }
+        this.spaceImageUrl = spaceImageUrl;
+    }
 }
