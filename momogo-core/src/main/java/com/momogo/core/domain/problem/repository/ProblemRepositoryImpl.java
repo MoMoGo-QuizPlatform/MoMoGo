@@ -1,10 +1,9 @@
-package com.momogo.core.domain.problem.repository.impl;
+package com.momogo.core.domain.problem.repository;
 
 import static com.momogo.core.domain.problem.entity.QProblem.problem;
 import static com.momogo.core.domain.problem.entity.QProblemCategory.problemCategory;
 
 import com.momogo.core.domain.problem.entity.Problem;
-import com.momogo.core.domain.problem.repository.ProblemRepositoryCustom;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import java.time.OffsetDateTime;

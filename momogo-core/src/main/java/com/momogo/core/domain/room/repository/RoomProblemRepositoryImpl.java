@@ -1,9 +1,8 @@
-package com.momogo.core.domain.room.repository.impl;
+package com.momogo.core.domain.room.repository;
 
 import static com.momogo.core.domain.room.entity.QRoomProblem.roomProblem;
 
 import com.momogo.core.domain.room.entity.RoomProblem;
-import com.momogo.core.domain.room.repository.RoomProblemRepositoryCustom;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import java.util.List;
 import java.util.UUID;
