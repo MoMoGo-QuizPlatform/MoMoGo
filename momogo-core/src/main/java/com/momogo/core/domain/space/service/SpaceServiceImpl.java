@@ -110,7 +110,7 @@ public class SpaceServiceImpl implements SpaceService {
 
     // 다음 조회를 위한 커서 문자열 생성
     String nextCursor = null;
-    if (!content.isEmpty()) {
+    if (hasNext && !content.isEmpty()) {
       Space lastSpace = content.get(content.size() - 1);
       nextCursor = lastSpace.getId().toString() + "_" + lastSpace.getCreatedAt().toString();
     }

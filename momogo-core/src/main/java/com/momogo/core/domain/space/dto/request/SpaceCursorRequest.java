@@ -10,31 +10,28 @@ public record SpaceCursorRequest(
     Integer size
 ) {
 
-  // size 기본값 바인딩
+  // size 기본값 바인딩 및 캡핑(Capping) 적용
   public SpaceCursorRequest {
-
-    if (size == null) {
+    if (size == null || size < 1) {
       size = 10;
+    } else if (size > 100) {
+      size = 100;
     }
   }
 
-  // 커서로부터 lastSpaceId 추출 및 파싱 검증
-  public UUID lastSpaceId() {
+  // 💡 파싱된 결과를 묶어서 반환할 이너 레코드
+  public record ParsedCursor(UUID lastSpaceId, OffsetDateTime lastCreatedAt) {}
 
-    if (cursor == null || cursor.isBlank()) return null;
-    try {
-      return UUID.fromString(cursor.split("_")[0]);
-    } catch (Exception e) {
-      throw new BusinessException(GlobalErrorCode.INVALID_INPUT, "잘못된 커서 형식입니다.");
+  // 💡 단 한 번만 분해 및 검증을 수행하는 단일 헬퍼 메소드
+  public ParsedCursor parse() {
+    if (cursor == null || cursor.isBlank()) {
+      return new ParsedCursor(null, null);
     }
-  }
-
-  // 커서로부터 lastCreatedAt 추출 및 파싱 검증
-  public OffsetDateTime lastCreatedAt() {
-
-    if (cursor == null || cursor.isBlank()) return null;
     try {
-      return OffsetDateTime.parse(cursor.split("_")[1]);
+      String[] parts = cursor.split("_");
+      UUID lastSpaceId = UUID.fromString(parts[0]);
+      OffsetDateTime lastCreatedAt = OffsetDateTime.parse(parts[1]);
+      return new ParsedCursor(lastSpaceId, lastCreatedAt);
     } catch (Exception e) {
       throw new BusinessException(GlobalErrorCode.INVALID_INPUT, "잘못된 커서 형식입니다.");
     }

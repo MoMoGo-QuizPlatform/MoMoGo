@@ -2,6 +2,8 @@ package com.momogo.core.domain.space.repository;
 
 import static com.momogo.core.domain.space.entity.QSpace.space;
 
+import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.common.exception.GlobalErrorCode;
 import com.momogo.core.domain.space.entity.Space;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQueryFactory;
@@ -22,6 +24,14 @@ public class SpaceRepositoryImpl implements SpaceRepositoryCustom {
       OffsetDateTime lastCreatedAt,
       int limit
   ) {
+    if (limit < 1 || limit > 100) {
+      throw new BusinessException(
+          GlobalErrorCode.INVALID_INPUT,
+          "조회 크기(limit)는 1에서 100 사이여야 합니다."
+      );
+    }
+    long fetchLimit = Math.addExact(limit, 1L);
+
     return queryFactory
         .selectFrom(space)
         .where(
@@ -29,7 +39,7 @@ public class SpaceRepositoryImpl implements SpaceRepositoryCustom {
             cursorCondition(lastSpaceId, lastCreatedAt) // 커서 조건
         )
         .orderBy(space.createdAt.desc(), space.id.desc()) // 생성일 최신순, 동일할 시 ID 역순 정렬
-        .limit(limit + 1) // hasNext 판단용 1개 더 조회
+        .limit(fetchLimit) // 오버플로우 방어된 limit 적용
         .fetch();
   }
 

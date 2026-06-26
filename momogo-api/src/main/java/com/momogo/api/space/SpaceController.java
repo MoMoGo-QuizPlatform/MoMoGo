@@ -97,9 +97,12 @@ public class SpaceController {
       @ModelAttribute SpaceCursorRequest request
   ) {
 
-    // 서비스 호출
+    // 1. 단 한 번만 파싱 및 검증 수행
+    SpaceCursorRequest.ParsedCursor parsed = request.parse();
+
+    // 2. 서비스 호출
     SpaceCursorPaginationResponse<Space> cursorPaginationResponse = spaceService.getUnjoinedSpacesByCursor(
-        userId, request.lastSpaceId(), request.lastCreatedAt(), request.size()
+        userId, parsed.lastSpaceId(), parsed.lastCreatedAt(), request.size()
     );
 
     // 내부 Entity 리스트를 DTO 리스트 변환
