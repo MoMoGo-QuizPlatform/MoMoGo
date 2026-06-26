@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
@@ -47,4 +48,7 @@ public class User extends BaseTimeEntity {
     @Builder.Default
     @Column(name = "is_banned")
     private Boolean isBanned = false;
+
+    @Column(name = "deleted_at", columnDefinition = "TIMESTAMPTZ")
+    private OffsetDateTime deletedAt;
 }
