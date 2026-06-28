@@ -28,6 +28,7 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
 import java.util.List;
 
 @Configuration
@@ -62,33 +63,35 @@ public class SecurityConfig {
                         .ignoringRequestMatchers("/api/auth/sign-in")
                 )
                 .authorizeHttpRequests(auth -> auth
-                                .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
-                                // 문서 및 소켓 관련
-                                .requestMatchers("/", "/index.html").permitAll()
-                                .requestMatchers("/ws/**").permitAll()
-                                .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/**").permitAll()
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
+                        // 문서 및 소켓 관련
+                        .requestMatchers("/", "/index.html").permitAll()
+                        .requestMatchers("/ws/**").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/**").permitAll()
 
-                                // 로그인/아웃 관련
-                                .requestMatchers("/api/auth/sign-in", "/api/auth/sign-out").permitAll()
+                        // 로그인/아웃 관련
+                        .requestMatchers("/api/auth/sign-in", "/api/auth/sign-out").permitAll()
 
-                                // 유저 관련
-                                .requestMatchers(HttpMethod.POST, "/api/users").permitAll()
-                                .requestMatchers(HttpMethod.GET, "/api/users/{userId}").permitAll()
-                                .requestMatchers(HttpMethod.GET, "/api/users").hasRole("ADMIN")
-                                .requestMatchers(HttpMethod.PATCH, "/api/users/{userId}/password").permitAll()
-                                .requestMatchers(HttpMethod.PATCH, "/api/users/*/role").hasRole("ADMIN")
-                                .requestMatchers(HttpMethod.PATCH, "/api/users/*/locked").hasRole("ADMIN")
+                        // 유저 관련
+                        .requestMatchers(HttpMethod.GET, "/api/users/me").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/users/me").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/users").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/users/{userId}").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/users").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/users/{userId}/password").permitAll()
+                        .requestMatchers(HttpMethod.PATCH, "/api/users/*/role").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/users/*/banned").hasRole("ADMIN")
 
-                                // 인증 관련
-                                .requestMatchers(HttpMethod.GET, "/api/auth/csrf-token").permitAll()
-                                .requestMatchers(HttpMethod.POST, "/api/auth/refresh").permitAll()
-                                .requestMatchers(HttpMethod.POST, "/api/auth/reset-password").permitAll()
+                        // 인증 관련
+                        .requestMatchers(HttpMethod.GET, "/api/auth/csrf-token").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/refresh").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/reset-password").permitAll()
 
-                                // 소셜 로그인 관련
-                                .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
+                        // 소셜 로그인 관련
+                        .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
 
-                                .requestMatchers("/api/**").authenticated()
-                                .anyRequest().authenticated()
+                        .requestMatchers("/api/**").authenticated()
+                        .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
