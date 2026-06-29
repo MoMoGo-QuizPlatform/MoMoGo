@@ -12,5 +12,4 @@ public record CategoryResponse(
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt
 ) {
-
 }
