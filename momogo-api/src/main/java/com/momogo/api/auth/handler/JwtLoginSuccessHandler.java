@@ -47,11 +47,7 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
                 String refreshToken = jwtTokenProvider.generateRefreshToken(customUserDetails);
 
                 // 2. JwtRegistry에 등록 (기존 토큰 무효화 및 새 토큰 세션 저장)
-                JwtInformation jwtInformation = JwtInformation.builder()
-                        .user(userResponse)
-                        .accessToken(accessToken)
-                        .refreshToken(refreshToken)
-                        .build();
+                JwtInformation jwtInformation = new JwtInformation(userResponse, accessToken, refreshToken);
                 jwtRegistry.registerJwtInformation(jwtInformation);
 
                 // 3. 리프레시 토큰 쿠키 설정

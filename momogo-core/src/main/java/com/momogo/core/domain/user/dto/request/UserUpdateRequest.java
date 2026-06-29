@@ -5,10 +5,8 @@ import jakarta.validation.constraints.Size;
 
 public record UserUpdateRequest(
 
-        @Size(max = 50, message = "이름은 50자 이내여야 합니다.")
+        @Size(max = 100, message = "이름은 100자 이내여야 합니다.")
         String name,
-
-        String profileImageUrl,
 
         String currentPassword,
 

@@ -55,6 +55,7 @@ public class User extends BaseTimeEntity {
     )
     private UserRole role;
 
+    @Enumerated(EnumType.STRING)
     @Column(
             name = "social",
             length = 50
@@ -75,7 +76,6 @@ public class User extends BaseTimeEntity {
     @JoinColumn(name = "space_id")
     private Space space;
 
-    @Builder
     public User(String name, String email, String password, SocialType social) {
         this.name = name;
         this.email = email;

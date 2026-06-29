@@ -22,11 +22,13 @@ CREATE TABLE "TBL_USER" (
                             "email"            VARCHAR(255)  NOT NULL,
                             "profile_image_url" VARCHAR(500) NULL,
                             "role"             VARCHAR(50)   NOT NULL, -- SUPER_ADMIN, ADMIN, USER
-                            "social"           VARCHAR(50)   NULL,     -- GOOGLE, KAKAO
+                            "social"           VARCHAR(50)   NULL,     -- NONE, GOOGLE, KAKAO
                             "is_banned"        BOOLEAN       DEFAULT FALSE NULL,
                             "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
                             "updated_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
-                            "deleted_at"       TIMESTAMPTZ   NULL      -- 논리 삭제용 유예 기간 필드
+                            "deleted_at"       TIMESTAMPTZ   NULL, -- 논리 삭제용 유예 기간 필드
+                            CONSTRAINT ck_user_role   CHECK ("role" IN ('USER', 'ADMIN', 'SUPER_ADMIN')),
+                            CONSTRAINT ck_social_type CHECK ("social" IN ('NONE','KAKAO', 'GOOGLE'))
 );
 
 -- 문제 카테고리 테이블

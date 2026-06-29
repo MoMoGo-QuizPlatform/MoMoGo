@@ -65,7 +65,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         SecurityContextHolder.getContext().setAuthentication(authentication);
                     } else {
                         jwtRegistry.invalidateJwtInformationByUserId(userDetails.getUserResponse().id());
-                        log.warn("[JwtFilter] 잠긴 계정 감지: {}, 모든 JWT 세션 무효화", userDetails.getUsername());
+                        log.warn("[JwtFilter] 잠긴 계정 감지: userId= {}, 모든 JWT 세션 무효화", userDetails.getUserResponse().id());
                     }
                 } else {
                     log.debug("[JwtFilter] 레지스트리에 존재하지 않거나 비활성화된 토큰입니다.");

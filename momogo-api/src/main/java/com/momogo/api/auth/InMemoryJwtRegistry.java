@@ -5,17 +5,18 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayDeque;
 import java.util.Map;
 import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * JWT 토큰 세션을 메모리(In-Memory) 상에서 관리하는 레지스트리 구현체입니다.
  * app.jwt.registry 설정 값이 "memory" 일 때 빈으로 로드됩니다.
  * 다중 로그인 제어(기기 대수 제한)를 위해 사용자당 Queue 구조를 사용하며,
  * O(1) 수준의 조회를 보장하기 위해 토큰 인덱스 맵을 별도로 관리합니다.
+ * 사용자별 Lock을 설정하여 멀티스레드 환경에서도 원자성과 일관성을 보장합니다.
  */
 @Service
 @ConditionalOnProperty(name = "app.jwt.registry", havingValue = "memory")
@@ -33,11 +34,22 @@ public class InMemoryJwtRegistry implements JwtRegistry {
     // Refresh Token으로 세션 정보를 즉시 조회하기 위한 인덱스 맵 (조회 최적화용)
     private final Map<String, JwtInformation> refreshTokenIndex;
 
+    // 사용자별 동시성 제어를 위한 Lock 객체 관리 맵
+    private final Map<UUID, Object> userLocks;
+
     public InMemoryJwtRegistry() {
         this.origin = new ConcurrentHashMap<>();
         this.maxActiveJwtCount = 1;
         this.tokenIndex = new ConcurrentHashMap<>();
         this.refreshTokenIndex = new ConcurrentHashMap<>();
+        this.userLocks = new ConcurrentHashMap<>();
+    }
+
+    /**
+     * 사용자 식별자별 고유 Lock 객체를 획득합니다.
+     */
+    private Object lockFor(UUID userId) {
+        return userLocks.computeIfAbsent(userId, ignored -> new Object());
     }
 
     /**
@@ -52,21 +64,24 @@ public class InMemoryJwtRegistry implements JwtRegistry {
     public void registerJwtInformation(JwtInformation jwtInformation) {
         if (jwtInformation == null) return;
 
-        UUID userId = jwtInformation.getUser().id();
-        origin.putIfAbsent(userId, new ConcurrentLinkedQueue<>());
-        Queue<JwtInformation> userQueue = origin.get(userId);
+        UUID userId = jwtInformation.user().id();
 
-        // 허용된 세션 개수를 초과하는 경우, FIFO 순서대로 기존 로그인 세션 제거
-        while (userQueue.size() >= maxActiveJwtCount) {
-            JwtInformation removed = userQueue.poll();
-            if (removed != null) {
-                removeIndices(removed);
+        // 짧은 시간 발생하는 동시성 경쟁 상태를 차단
+        synchronized (lockFor(userId)) {
+            Queue<JwtInformation> userQueue = origin.computeIfAbsent(userId, ignored -> new ArrayDeque<>());
+
+            // 허용된 세션 개수를 초과하는 경우, FIFO 순서대로 기존 로그인 세션 제거
+            while (userQueue.size() >= maxActiveJwtCount) {
+                JwtInformation removed = userQueue.poll();
+                if (removed != null) {
+                    removeIndices(removed);
+                }
             }
-        }
 
-        // 새로운 토큰 세션을 큐에 추가하고 인덱스 맵에 등록
-        userQueue.offer(jwtInformation);
-        putIndices(jwtInformation);
+            // 새로운 토큰 세션을 큐에 추가하고 인덱스 맵에 등록
+            userQueue.offer(jwtInformation);
+            putIndices(jwtInformation);
+        }
     }
 
     /**
@@ -80,10 +95,12 @@ public class InMemoryJwtRegistry implements JwtRegistry {
     public void invalidateJwtInformationByUserId(UUID userId) {
         if (userId == null) return;
 
-        // 사용자의 토큰 세션 큐를 제거하고, 해당 큐에 있던 모든 토큰 인덱스를 삭제
-        Queue<JwtInformation> removedQueue = origin.remove(userId);
-        if (removedQueue != null) {
-            removedQueue.forEach(this::removeIndices);
+        synchronized (lockFor(userId)) {
+            // 사용자의 토큰 세션 큐를 제거하고, 해당 큐에 있던 모든 토큰 인덱스를 삭제
+            Queue<JwtInformation> removedQueue = origin.remove(userId);
+            if (removedQueue != null) {
+                removedQueue.forEach(this::removeIndices);
+            }
         }
     }
 
@@ -135,32 +152,34 @@ public class InMemoryJwtRegistry implements JwtRegistry {
     public void rotateJwtInformation(String refreshToken, JwtInformation newJwtInformation) {
         if (newJwtInformation == null) return;
 
-        UUID userId = newJwtInformation.getUser().id();
-        origin.putIfAbsent(userId, new ConcurrentLinkedQueue<>());
-        Queue<JwtInformation> userQueue = origin.get(userId);
+        UUID userId = newJwtInformation.user().id();
 
-        // 사용되었던 이전 리프레시 토큰 정보를 큐 및 인덱스 맵에서 완전 제거
-        if (refreshToken != null) {
-            userQueue.removeIf(info -> {
-                boolean matched = refreshToken.equals(info.getRefreshToken());
-                if (matched) {
-                    removeIndices(info);
-                }
-                return matched;
-            });
-        }
+        synchronized (lockFor(userId)) {
+            Queue<JwtInformation> userQueue = origin.computeIfAbsent(userId, ignored -> new ArrayDeque<>());
 
-        // 세션 개수 초과분 정리
-        while (userQueue.size() >= maxActiveJwtCount) {
-            JwtInformation polled = userQueue.poll();
-            if (polled != null) {
-                removeIndices(polled);
+            // 사용되었던 이전 리프레시 토큰 정보를 큐 및 인덱스 맵에서 완전 제거
+            if (refreshToken != null) {
+                userQueue.removeIf(info -> {
+                    boolean matched = refreshToken.equals(info.refreshToken());
+                    if (matched) {
+                        removeIndices(info);
+                    }
+                    return matched;
+                });
             }
-        }
 
-        // 새로운 토큰 세션 정보 등록
-        userQueue.offer(newJwtInformation);
-        putIndices(newJwtInformation);
+            // 세션 개수 초과분 정리
+            while (userQueue.size() >= maxActiveJwtCount) {
+                JwtInformation polled = userQueue.poll();
+                if (polled != null) {
+                    removeIndices(polled);
+                }
+            }
+
+            // 새로운 토큰 세션 정보 등록
+            userQueue.offer(newJwtInformation);
+            putIndices(newJwtInformation);
+        }
     }
 
     /**
@@ -180,35 +199,37 @@ public class InMemoryJwtRegistry implements JwtRegistry {
     ) {
         if (oldJwtInformation == null) return;
 
-        UUID userId = oldJwtInformation.getUser().id();
-        origin.putIfAbsent(userId, new ConcurrentLinkedQueue<>());
-        Queue<JwtInformation> userQueue = origin.get(userId);
+        UUID userId = oldJwtInformation.user().id();
 
-        // 롤백 처리를 위해 새로 발급된 신규 토큰 정보 제거
-        if (newRefreshToken != null) {
-            userQueue.removeIf(info -> {
-                boolean matched = newRefreshToken.equals(info.getRefreshToken());
-                if (matched) {
-                    removeIndices(info);
-                }
-                return matched;
-            });
-        }
+        synchronized (lockFor(userId)) {
+            Queue<JwtInformation> userQueue = origin.computeIfAbsent(userId, ignored -> new ArrayDeque<>());
 
-        // 이전 토큰 정보가 현재 큐에 없는 경우에만 복구 등록 진행
-        boolean oldTokenAlreadyExists = userQueue.stream()
-                .anyMatch(info -> oldRefreshToken != null && oldRefreshToken.equals(info.getRefreshToken()));
-
-        if (!oldTokenAlreadyExists) {
-            while (userQueue.size() >= maxActiveJwtCount) {
-                JwtInformation removed = userQueue.poll();
-                if (removed != null) {
-                    removeIndices(removed);
-                }
+            // 롤백 처리를 위해 새로 발급된 신규 토큰 정보 제거
+            if (newRefreshToken != null) {
+                userQueue.removeIf(info -> {
+                    boolean matched = newRefreshToken.equals(info.refreshToken());
+                    if (matched) {
+                        removeIndices(info);
+                    }
+                    return matched;
+                });
             }
 
-            userQueue.offer(oldJwtInformation);
-            putIndices(oldJwtInformation);
+            // 이전 토큰 정보가 현재 큐에 없는 경우에만 복구 등록 진행
+            boolean oldTokenAlreadyExists = userQueue.stream()
+                    .anyMatch(info -> oldRefreshToken != null && oldRefreshToken.equals(info.refreshToken()));
+
+            if (!oldTokenAlreadyExists) {
+                while (userQueue.size() >= maxActiveJwtCount) {
+                    JwtInformation removed = userQueue.poll();
+                    if (removed != null) {
+                        removeIndices(removed);
+                    }
+                }
+
+                userQueue.offer(oldJwtInformation);
+                putIndices(oldJwtInformation);
+            }
         }
     }
 
@@ -218,11 +239,11 @@ public class InMemoryJwtRegistry implements JwtRegistry {
      * @param info 등록할 토큰 세션 정보
      */
     private void putIndices(JwtInformation info) {
-        if (info.getAccessToken() != null) {
-            tokenIndex.put(info.getAccessToken(), info);
+        if (info.accessToken() != null) {
+            tokenIndex.put(info.accessToken(), info);
         }
-        if (info.getRefreshToken() != null) {
-            refreshTokenIndex.put(info.getRefreshToken(), info);
+        if (info.refreshToken() != null) {
+            refreshTokenIndex.put(info.refreshToken(), info);
         }
     }
 
@@ -232,11 +253,11 @@ public class InMemoryJwtRegistry implements JwtRegistry {
      * @param info 제거할 토큰 세션 정보
      */
     private void removeIndices(JwtInformation info) {
-        if (info.getAccessToken() != null) {
-            tokenIndex.remove(info.getAccessToken());
+        if (info.accessToken() != null) {
+            tokenIndex.remove(info.accessToken());
         }
-        if (info.getRefreshToken() != null) {
-            refreshTokenIndex.remove(info.getRefreshToken());
+        if (info.refreshToken() != null) {
+            refreshTokenIndex.remove(info.refreshToken());
         }
     }
 }

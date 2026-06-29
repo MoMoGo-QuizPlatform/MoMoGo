@@ -15,5 +15,26 @@ spring:
       hibernate:
         default_batch_fetch_size: 100
 
+jwt:
+  access-token:
+    secret: ${JWT_ACCESS_TOKEN_SECRET}
+    exp: ${JWT_ACCESS_TOKEN_EXP}
+  refresh-token:
+    secret: ${JWT_REFRESH_TOKEN_SECRET}
+    exp: ${JWT_REFRESH_TOKEN_EXP}
+    cookie:
+      secure: ${JWT_REFRESH_COOKIE_SECURE}
+      same-site: ${JWT_REFRESH_COOKIE_SAME_SITE}
+
+app:
+  jwt:
+    registry: memory
+  file:
+    base-url: http://localhost:8080/uploads
+    upload:
+      allowed-extensions: jpg,jpeg,png,webp
+      allowed-mime-types: image/jpeg,image/png,image/webp
+      max-mark-size: 10MB
+
 server:
   port: 8080

@@ -67,7 +67,9 @@ public class SecurityConfig {
                         // 문서 및 소켓 관련
                         .requestMatchers("/", "/index.html").permitAll()
                         .requestMatchers("/ws/**").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/**").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        .requestMatchers("/actuator/**").hasRole("ADMIN")
 
                         // 로그인/아웃 관련
                         .requestMatchers("/api/auth/sign-in", "/api/auth/sign-out").permitAll()
@@ -78,7 +80,6 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/users").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/{userId}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PATCH, "/api/users/{userId}/password").permitAll()
                         .requestMatchers(HttpMethod.PATCH, "/api/users/*/role").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/users/*/banned").hasRole("ADMIN")
 

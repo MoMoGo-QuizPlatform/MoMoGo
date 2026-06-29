@@ -24,7 +24,7 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
     @Override
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String username) {
-        log.info("[MoMoGoUserDetailsService] loadUserByUsername 호출됨, email: {}", username);
+        log.debug("[MoMoGoUserDetailsService] loadUserByUsername 호출됨, email: {}", maskEmail(username));
         return loadUserDetails(username);
     }
 
@@ -33,7 +33,7 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
      * 유저 정보를 조회합니다.
      */
     public UserDetails loadUserByUsernameForToken(String username) {
-        log.info("[MoMoGoUserDetailsService] loadUserByUsernameForToken 호출됨, email: {}", username);
+        log.debug("[MoMoGoUserDetailsService] loadUserByUsernameForToken 호출됨, email: {}", maskEmail(username));
         return loadUserDetails(username);
     }
 
@@ -43,11 +43,34 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
     private UserDetails loadUserDetails(String username) {
         User user = userRepository.findByEmail(username)
                 .orElseThrow(() -> {
-                    log.error("[MoMoGoUserDetailsService] 유저를 찾을 수 없습니다, email: {}", username);
+                    log.warn("[MoMoGoUserDetailsService] 유저를 찾을 수 없습니다, email: {}", maskEmail(username));
                     return new BusinessException(UserErrorCode.NOT_FOUND);
                 });
 
         UserResponse userResponse = userMapper.toResponse(user);
         return new MoMoGoUserDetails(userResponse, user.getPassword());
+    }
+
+    /**
+     * 이메일 주소를 마스킹 처리합니다.
+     * 예: test@example.com -> te***@example.com
+     */
+    private String maskEmail(String email) {
+        if (email == null) {
+            return "null";
+        }
+        int atIndex = email.indexOf("@");
+        if (atIndex <= 0) {
+            if (email.length() <= 3) {
+                return "*".repeat(email.length());
+            }
+            return email.substring(0, 3) + "***";
+        }
+        String local = email.substring(0, atIndex);
+        String domain = email.substring(atIndex);
+        if (local.length() <= 2) {
+            return "*".repeat(local.length()) + domain;
+        }
+        return local.substring(0, 2) + "***" + domain;
     }
 }

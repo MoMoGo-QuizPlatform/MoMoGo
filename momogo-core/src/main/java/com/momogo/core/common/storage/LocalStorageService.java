@@ -2,6 +2,8 @@ package com.momogo.core.common.storage;
 
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
+import com.momogo.core.common.util.ImageFileValidator;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -15,9 +17,16 @@ import java.util.UUID;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class LocalStorageService implements StorageService {
+
+    private final ImageFileValidator imageFileValidator;
+
     @Override
     public String upload(InputStream inputStream, String originalFileName, String contentType, String directory) {
+        // 이미지 유효성 정밀 검증 및 스트림 초기화
+        InputStream validatedStream = imageFileValidator.validateImage(inputStream, originalFileName, contentType);
+
         String extension = "";
         if (originalFileName != null && originalFileName.contains(".")) {
             extension = originalFileName.substring(originalFileName.lastIndexOf("."));
@@ -28,7 +37,7 @@ public class LocalStorageService implements StorageService {
         try {
             Files.createDirectories(uploadPath);
             Path targetPath = uploadPath.resolve(savedFileName);
-            Files.copy(inputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(validatedStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
 
             return savedFileName;
         } catch (IOException e) {

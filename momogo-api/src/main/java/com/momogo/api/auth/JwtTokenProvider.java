@@ -60,60 +60,43 @@ public class JwtTokenProvider {
     }
 
     public String generateAccessToken(MoMoGoUserDetails userDetails) throws JOSEException {
-        return createAccessToken(userDetails, accessTokenExpirationMs, accessTokenSigner, "access");
+        return createToken(userDetails, accessTokenExpirationMs, accessTokenSigner, "access");
     }
 
     public String generateRefreshToken(MoMoGoUserDetails userDetails) throws JOSEException {
-        return createRefreshToken(userDetails, refreshTokenExpirationMs, refreshTokenSigner, "refresh");
+        return createToken(userDetails, refreshTokenExpirationMs, refreshTokenSigner, "refresh");
     }
 
-    private String createAccessToken(
+    private String createToken(
             MoMoGoUserDetails userDetails,
-            long expirationMs, JWSSigner signer,
+            long expirationMs,
+            JWSSigner signer,
             String tokenType
     ) throws JOSEException {
-        return createRefreshToken(userDetails, expirationMs, signer, tokenType);
-    }
-
-    private String createRefreshToken(
-            MoMoGoUserDetails userDetails,
-            long expirationMs, JWSSigner signer,
-            String tokenType
-    ) throws JOSEException {
-
         String tokenId = UUID.randomUUID().toString();
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + expirationMs);
 
-        // 토큰의 클레임(claims)을 설정
         JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
-                // 토큰 주체(sub)
                 .subject(userDetails.getUsername())
-                // 토큰 고유 식별자(jti)
                 .jwtID(tokenId)
-                // 사용자 ID(userId)
                 .claim("userId", userDetails.getUserResponse().id())
                 .claim("userEmail", userDetails.getUserResponse().email())
                 .claim("name", userDetails.getUserResponse().name())
-                // 토큰 타입(type)
                 .claim("type", tokenType)
-                // 사용자 권한(roles)
                 .claim("roles",
                         userDetails.getAuthorities()
                                 .stream()
                                 .map(GrantedAuthority::getAuthority)
                                 .toList()
                 )
-                // 토큰 발급 시간(iat)
                 .issueTime(now)
-                // 토큰 만료 시간(exp)
                 .expirationTime(expiryDate)
                 .build();
 
         SignedJWT signedJWT = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claimsSet);
         signedJWT.sign(signer);
-        String completedJWT = signedJWT.serialize();
-        return completedJWT;
+        return signedJWT.serialize();
     }
 
     public ResponseCookie generateRefreshTokenCookie(String refreshToken) {
@@ -157,8 +140,7 @@ public class JwtTokenProvider {
 
     private boolean verifyToken(String token, JWSVerifier verifier, String expectedType) {
         try {
-
-            SignedJWT signedJWT = SignedJWT.parse(token);
+            SignedJWT signedJWT = parseToken(token);
             if (!signedJWT.verify(verifier)) {
                 return false;
             }
@@ -169,8 +151,7 @@ public class JwtTokenProvider {
             }
 
             Date exp = signedJWT.getJWTClaimsSet().getExpirationTime();
-            boolean valid = exp != null && exp.after(new Date());
-            return valid;
+            return exp != null && exp.after(new Date());
 
         } catch (Exception e) {
             return false;
@@ -179,10 +160,7 @@ public class JwtTokenProvider {
 
     public String getUserEmailFromToken(String token) {
         try {
-            SignedJWT signedJWT = SignedJWT.parse(token);
-            String subject = signedJWT.getJWTClaimsSet().getSubject();
-            return subject;
-
+            return parseToken(token).getJWTClaimsSet().getSubject();
         } catch (Exception e) {
             throw new IllegalArgumentException("Invalid JWT token", e);
         }
@@ -190,10 +168,7 @@ public class JwtTokenProvider {
 
     public String getTokenId(String token) {
         try {
-            SignedJWT signedJWT = SignedJWT.parse(token);
-            String jti = signedJWT.getJWTClaimsSet().getJWTID();
-            return jti;
-
+            return parseToken(token).getJWTClaimsSet().getJWTID();
         } catch (Exception e) {
             throw new IllegalArgumentException("Invalid JWT token", e);
         }
@@ -201,20 +176,27 @@ public class JwtTokenProvider {
 
     public Date getExpiration(String token) {
         try {
-            SignedJWT signedJWT = SignedJWT.parse(token);
-            Date exp = signedJWT.getJWTClaimsSet().getExpirationTime();
-            return exp;
-
+            return parseToken(token).getJWTClaimsSet().getExpirationTime();
         } catch (Exception e) {
             throw new IllegalArgumentException("Invalid JWT token", e);
         }
     }
 
-    public UUID getUserIdFromToken(String token) {
+    public UUID getUserIdFromTokenWithoutExpiration(String token, String expectedType) {
         try {
-            SignedJWT signedJWT = SignedJWT.parse(token);
-            Object userId = signedJWT.getJWTClaimsSet().getClaim("userId");
+            SignedJWT signedJWT = parseToken(token);
+            JWSVerifier verifier = "access".equals(expectedType) ? accessTokenVerifier : refreshTokenVerifier;
 
+            if (!signedJWT.verify(verifier)) {
+                throw new IllegalArgumentException("Invalid JWT signature");
+            }
+
+            String tokenType = (String) signedJWT.getJWTClaimsSet().getClaim("type");
+            if (!expectedType.equals(tokenType)) {
+                throw new IllegalArgumentException("Invalid token type");
+            }
+
+            Object userId = signedJWT.getJWTClaimsSet().getClaim("userId");
             if (userId == null) {
                 throw new IllegalArgumentException("userId claim not found");
             }
@@ -225,11 +207,10 @@ public class JwtTokenProvider {
         }
     }
 
-    // JwtToken Claim에서 userId, username, role을 직접 파싱하여 DB조회 없이 가져오기 위함.
     public MoMoGoUserDetails parseAccessToken(String token) {
         try {
             log.info("[TokenProvider] parseAccessToken 호출됨: 토큰 파싱 시작");
-            SignedJWT signedJWT = SignedJWT.parse(token);
+            SignedJWT signedJWT = parseToken(token);
             JWTClaimsSet claimsSet = signedJWT.getJWTClaimsSet();
 
             String username = claimsSet.getSubject();
@@ -239,11 +220,9 @@ public class JwtTokenProvider {
             UUID userId = userIdString != null ? UUID.fromString(userIdString) : null;
 
             List<String> roles = claimsSet.getStringListClaim("roles");
-            // 기본 값
             UserRole role = UserRole.USER;
 
             if (roles != null && !roles.isEmpty()) {
-                // TODO: ADMIN, USER 제외 예외처리 필
                 String roleString = roles.get(0).replace("ROLE_", "");
                 role = UserRole.valueOf(roleString);
             }
@@ -264,6 +243,14 @@ public class JwtTokenProvider {
 
         } catch (Exception e) {
             log.error("[TokenProvider] parseAccessToken 중 예외 발생: {}", e.getMessage());
+            throw new IllegalArgumentException("Invalid JWT token", e);
+        }
+    }
+
+    private SignedJWT parseToken(String token) {
+        try {
+            return SignedJWT.parse(token);
+        } catch (Exception e) {
             throw new IllegalArgumentException("Invalid JWT token", e);
         }
     }

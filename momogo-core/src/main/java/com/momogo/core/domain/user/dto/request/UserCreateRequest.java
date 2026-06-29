@@ -12,7 +12,7 @@ public record UserCreateRequest(
         String email,
 
         @NotBlank(message = "이름은 필수로 입력해야 합니다.")
-        @Size(max = 50)
+        @Size(max = 100, message = "이름은 100자 이내여야 합니다.")
         String name,
 
         @NotBlank(message = "비밀번호는 필수로 입력해야 합니다.")

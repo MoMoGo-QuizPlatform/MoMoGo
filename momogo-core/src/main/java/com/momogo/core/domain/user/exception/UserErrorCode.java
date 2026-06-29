@@ -12,7 +12,7 @@ public enum UserErrorCode implements ErrorCode {
   NOT_FOUND(1001, "USER_NOT_FOUND", HttpStatus.NOT_FOUND, "존재하지 않는 유저입니다."),
   ALREADY_EXISTS(1002, "USER_ALREADY_EXISTS", HttpStatus.CONFLICT, "이미 존재하는 유저입니다."),
   CURRENT_PASSWORD_REQUIRED(1003, "USER_CURRENT_PASSWORD_REQUIRED", HttpStatus.BAD_REQUEST, "현재 비밀번호가 입력되지 않았습니다."),
-  PASSWORD_MISMATCH(1004, "USER_PASSWORD_MISMATCH", HttpStatus.UNAUTHORIZED, "현재 비밀번호와 불일치합니다.");
+  PASSWORD_MISMATCH(1004, "USER_PASSWORD_MISMATCH", HttpStatus.BAD_REQUEST, "현재 비밀번호와 불일치합니다.");
 
   private final int numeric;
   private final String errorKey;

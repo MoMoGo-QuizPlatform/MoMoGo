@@ -1,6 +1,7 @@
 package com.momogo.api.user;
 
 import com.momogo.api.auth.details.MoMoGoUserDetails;
+import com.momogo.core.domain.user.dto.request.ProfileImageUploadRequest;
 import com.momogo.core.domain.user.dto.request.UserCreateRequest;
 import com.momogo.core.domain.user.dto.request.UserUpdateRequest;
 import com.momogo.core.domain.user.dto.response.UserResponse;
@@ -14,6 +15,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.UUID;
 
 @RestController
@@ -46,9 +48,20 @@ public class UserController {
             @AuthenticationPrincipal MoMoGoUserDetails userDetails,
             @RequestPart(value = "data", required = false) @Valid UserUpdateRequest request,
             @RequestPart(value = "file", required = false) MultipartFile profile
-    ) {
+    ) throws IOException {
         UUID currentUserId = userDetails.getUserResponse().id();
-        UserResponse userResponse = userService.updateUser(currentUserId, request, profile);
+
+        ProfileImageUploadRequest uploadRequest = null;
+        if (profile != null && !profile.isEmpty()) {
+            uploadRequest = new ProfileImageUploadRequest(
+                    profile.getInputStream(),
+                    profile.getOriginalFilename(),
+                    profile.getContentType(),
+                    profile.getSize()
+            );
+        }
+
+        UserResponse userResponse = userService.updateUser(currentUserId, request, uploadRequest);
         return ResponseEntity.ok(userResponse);
     }
 }

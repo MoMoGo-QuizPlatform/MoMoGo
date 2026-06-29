@@ -6,7 +6,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.core.AuthenticationException;
@@ -30,33 +29,15 @@ public class LoginFailureHandler implements AuthenticationFailureHandler {
             HttpServletResponse response,
             AuthenticationException exception
     ) throws IOException, ServletException {
-        log.error("로그인 실패, 원인: {}", exception.getClass().getSimpleName());
 
-        String errorMessage;
-        String errorCode;
-        int status;
+        String errorMessage = "ID/PW가 올바르지 않습니다.";
+        String errorCode = "AUTHENTICATION_FAILED";
+        int status = HttpServletResponse.SC_UNAUTHORIZED;
 
-        if (exception instanceof BadCredentialsException) {
-            errorMessage = "ID/PW가 올바르지 않습니다.";
-            errorCode = "AUTHENTICATION_FAILED";
-            status = HttpServletResponse.SC_UNAUTHORIZED;
-
-        } else if (exception instanceof LockedException) {
-            errorMessage = exception.getMessage() == null || exception.getMessage().isBlank()
-                    ? "잠긴 계정입니다. 관리자에게 문의하세요."
-                    : exception.getMessage();
-            errorCode = "ACCOUNT_LOCKED";
-            status = HttpServletResponse.SC_FORBIDDEN;
-
-        } else if (exception instanceof DisabledException) {
-            errorMessage = "비활성 계정입니다.";
-            errorCode = "AUTHENTICATION_FAILED";
-            status = HttpServletResponse.SC_FORBIDDEN;
-
+        if (exception instanceof LockedException || exception instanceof DisabledException) {
+            log.warn("로그인 실패(제한된 계정): {}", exception.getClass().getSimpleName());
         } else {
-            errorMessage = "로그인 실패 입니다.";
-            errorCode = "AUTHENTICATION_FAILED";
-            status = HttpServletResponse.SC_UNAUTHORIZED;
+            log.info("로그인 실패: {}", exception.getClass().getSimpleName());
         }
 
         Map<String, Object> errorResponse = new HashMap<>();

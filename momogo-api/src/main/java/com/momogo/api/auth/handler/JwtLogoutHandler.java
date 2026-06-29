@@ -32,13 +32,13 @@ public class JwtLogoutHandler implements LogoutHandler {
             userId = userDetails.getUserResponse().id();
         }
 
-        // 2. Access Token이 만료되어 Authentication이 없는 경우, 헤더에서 토큰을 추출해 강제로 파싱
+        // 2. Access Token이 만료되어 Authentication이 없는 경우, 헤더에서 토큰을 추출해 검증 후 파싱
         if (userId == null) {
             String authz = request.getHeader("Authorization");
             if (authz != null && authz.startsWith("Bearer ")) {
                 try {
                     String accessToken = authz.substring(7);
-                    userId = extractUserIdFromToken(accessToken);
+                    userId = tokenProvider.getUserIdFromTokenWithoutExpiration(accessToken, "access");
                 } catch (Exception ignored) {
                 }
             }
@@ -51,7 +51,7 @@ public class JwtLogoutHandler implements LogoutHandler {
                     .findFirst();
             if (rtCookie.isPresent()) {
                 try {
-                    userId = extractUserIdFromToken(rtCookie.get().getValue());
+                    userId = tokenProvider.getUserIdFromTokenWithoutExpiration(rtCookie.get().getValue(), "refresh");
                 } catch (Exception ignored) {
                 }
             }
@@ -67,16 +67,5 @@ public class JwtLogoutHandler implements LogoutHandler {
 
         // 5. 클라이언트의 리프레시 쿠키를 빈 값(MaxAge=0)으로 덮어씌워 브라우저에서 삭제 유도
         tokenProvider.expireRefreshCookie(response);
-    }
-
-    /**
-     * 토큰에서 userId를 추출합니다. 만료된 토큰이더라도 JWT 파싱을 통해 추출이 가능합니다.
-     */
-    private UUID extractUserIdFromToken(String token) {
-        try {
-            return tokenProvider.getUserIdFromToken(token);
-        } catch (Exception e) {
-            return null;
-        }
     }
 }
