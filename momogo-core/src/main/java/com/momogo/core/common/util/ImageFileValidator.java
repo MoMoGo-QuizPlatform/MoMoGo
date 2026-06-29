@@ -4,13 +4,14 @@ import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-
 import org.springframework.util.unit.DataSize;
-import java.io.BufferedInputStream;
+
+import javax.imageio.ImageIO;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Set;
-import javax.imageio.ImageIO;
 
 /**
  * 프로필 이미지 등 파일 업로드 시 업로드될 파일의 유효성과 보안성을 검증하는 컴포넌트입니다.
@@ -36,10 +37,10 @@ public class ImageFileValidator {
     /**
      * 파일 업로드 시 확장자, MIME 타입 및 실제 이미지 바이트 무결성을 일괄 검증합니다.
      *
-     * @param inputStream 파일 데이터 스트림
+     * @param inputStream      파일 데이터 스트림
      * @param originalFilename 원본 파일 이름
-     * @param contentType 파일의 Content-Type
-     * @return 검증 후 다시 처음부터 읽을 수 있도록 reset 처리된 InputStream
+     * @param contentType      파일의 Content-Type
+     * @return 검증 후 다시 처음부터 읽을 수 있도록 분리 및 복사된 InputStream
      */
     public InputStream validateImage(InputStream inputStream, String originalFilename, String contentType) {
         // 1. 파일 이름 및 확장자 검사
@@ -56,26 +57,49 @@ public class ImageFileValidator {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT, "허용되지 않는 파일 타입(MIME)입니다.");
         }
 
-        // 3. 실제 이미지 바이너리 디코딩 검증 (mark/reset 지원하도록 스트림 가공)
-        InputStream markableStream = inputStream.markSupported() ? inputStream : new BufferedInputStream(inputStream);
+        // 3. 업로드 상한 내에서 바이트를 안전하게 복사 (OOM 방지 및 스트림 복제)
+        byte[] fileBytes = readWithLimit(inputStream, maxMarkSize);
 
         try {
-            // 설정된 크기만큼 mark 지원하도록 설정
-            markableStream.mark(maxMarkSize);
-
-            // ImageIO로 실제로 읽어서 가짜 이미지 파일인지 판별
-            if (ImageIO.read(markableStream) == null) {
-                throw new BusinessException(GlobalErrorCode.INVALID_INPUT, "손상되었거나 변조된 이미지 파일입니다.");
+            // 4. 검증용 ByteArrayInputStream 생성하여 ImageIO 검증
+            try (InputStream validationStream = new ByteArrayInputStream(fileBytes)) {
+                if (ImageIO.read(validationStream) == null) {
+                    throw new BusinessException(GlobalErrorCode.INVALID_INPUT, "손상되었거나 변조된 이미지 파일입니다.");
+                }
             }
 
-            // 검증이 끝나면 반드시 스트림을 처음 위치로 원복
-            markableStream.reset();
-            return markableStream;
+            // 5. 저장용으로 사용할 새로운 ByteArrayInputStream 반환
+            return new ByteArrayInputStream(fileBytes);
 
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT, "이미지 분석 중 오류가 발생했습니다.");
+        }
+    }
+
+    /**
+     * 지정한 바이트 크기 상한(limit) 내에서만 스트림을 읽어 바이트 배열로 반환합니다.
+     * 상한을 초과할 경우 즉시 예외를 발생시켜 OOM을 예방합니다.
+     */
+    private byte[] readWithLimit(InputStream inputStream, int limit) {
+        try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            int totalBytes = 0;
+
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                totalBytes += bytesRead;
+                if (totalBytes > limit) {
+                    throw new BusinessException(GlobalErrorCode.INVALID_INPUT, "업로드 가능한 최대 파일 크기를 초과했습니다.");
+                }
+                bos.write(buffer, 0, bytesRead);
+            }
+            return bos.toByteArray();
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT, "파일을 읽는 중 오류가 발생했습니다.");
         }
     }
 }

@@ -58,6 +58,7 @@ public class User extends BaseTimeEntity {
     @Enumerated(EnumType.STRING)
     @Column(
             name = "social",
+            nullable = false,
             length = 50
     )
     private SocialType social;

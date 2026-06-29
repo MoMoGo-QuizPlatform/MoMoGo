@@ -21,6 +21,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import com.momogo.core.domain.user.dto.request.ProfileImageUploadRequest;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.UUID;
@@ -55,8 +56,13 @@ public class UserServiceImpl implements UserService {
                 .isBanned(false)
                 .build();
 
-        User savedUser = userRepository.save(user);
-        return userMapper.toResponse(savedUser);
+        try {
+            User savedUser = userRepository.saveAndFlush(user);
+            return userMapper.toResponse(savedUser);
+        } catch (DataIntegrityViolationException e) {
+            log.error("[UserService] 이메일 중복 제약 조건 위반 발생 {}", request.email(), e);
+            throw new BusinessException(UserErrorCode.ALREADY_EXISTS);
+        }
     }
 
     @Override
