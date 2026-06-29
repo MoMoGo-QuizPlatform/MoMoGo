@@ -60,8 +60,11 @@ public class UserServiceImpl implements UserService {
             User savedUser = userRepository.saveAndFlush(user);
             return userMapper.toResponse(savedUser);
         } catch (DataIntegrityViolationException e) {
-            log.error("[UserService] 이메일 중복 제약 조건 위반 발생 {}", request.email(), e);
-            throw new BusinessException(UserErrorCode.ALREADY_EXISTS);
+            if (isDuplicateEmailViolation(e)) {
+                log.warn("[UserService] 이메일 중복 제약 조건 위반 발생");
+                throw new BusinessException(UserErrorCode.ALREADY_EXISTS);
+            }
+            throw e;
         }
     }
 
@@ -139,5 +142,17 @@ public class UserServiceImpl implements UserService {
         }
 
         return userMapper.toResponse(user);
+    }
+
+    /**
+     * DB 제약 조건 예외(DataIntegrityViolationException)가 이메일 유니크 제약(UQ_USER_EMAIL_ACTIVE) 위반인지 판단합니다.
+     */
+    private boolean isDuplicateEmailViolation(DataIntegrityViolationException e) {
+        Throwable cause = e.getMostSpecificCause();
+        String message = cause.getMessage();
+        if (message == null) {
+            return false;
+        }
+        return message.toLowerCase().contains("uq_user_email_active");
     }
 }
