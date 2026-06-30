@@ -2,6 +2,7 @@ package com.momogo.core.domain.user.entity;
 
 import com.momogo.core.common.base.BaseTimeEntity;
 import com.momogo.core.domain.space.entity.Space;
+import com.momogo.core.domain.user.entity.enums.SocialType;
 import com.momogo.core.domain.user.entity.enums.UserRole;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -18,37 +19,108 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class User extends BaseTimeEntity {
+
     @Id
-    @Column(name = "id", columnDefinition = "UUID")
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(updatable = false, nullable = false)
     private UUID id;
+
+    @Column(name = "password", nullable = false)
+    private String password;
+
+    @Column(
+            name = "name",
+            nullable = false,
+            length = 100
+    )
+    private String name;
+
+    @Column(
+            name = "email",
+            nullable = false
+    )
+    private String email;
+
+    @Column(
+            name = "profile_image_url",
+            length = 500
+    )
+    private String profileImageUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Column(
+            name = "role",
+            nullable = false,
+            length = 50
+    )
+    private UserRole role;
+
+    @Enumerated(EnumType.STRING)
+    @Column(
+            name = "social",
+            nullable = false,
+            length = 50
+    )
+    private SocialType social;
+
+    @Builder.Default
+    @Column(name = "is_banned", nullable = false)
+    private Boolean isBanned = false;
+
+    @Column(
+            name = "deleted_at",
+            columnDefinition = "TIMESTAMPTZ"
+    )
+    private OffsetDateTime deletedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "space_id")
     private Space space;
 
-    @Column(name = "password", nullable = false)
-    private String password;
+    public User(String name, String email, String password, SocialType social) {
+        this.name = name;
+        this.email = email;
+        this.password = password;
+        this.role = UserRole.USER;
+        this.social = social;
+        this.isBanned = false;
+    }
 
-    @Column(name = "name", nullable = false, length = 100)
-    private String name;
+    public void updateName(String name) {
+        if (name != null && !name.isBlank()) {
+            this.name = name;
+        }
+    }
 
-    @Column(name = "email", nullable = false)
-    private String email;
+    public void updatePassword(String encodedPassword) {
+        if (encodedPassword != null && !encodedPassword.isBlank()) {
+            this.password = encodedPassword;
+        }
+    }
 
-    @Column(name = "profile_image_url", length = 500)
-    private String profileImageUrl;
+    public void updateProfileImage(String profileImageUrl) {
+        this.profileImageUrl = profileImageUrl;
+    }
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "role", nullable = false, length = 50)
-    private UserRole role;
+    public void ban() {
+        this.isBanned = true;
+    }
 
-    @Column(name = "social", length = 50)
-    private String social;
+    public void unban() {
+        this.isBanned = false;
+    }
 
-    @Builder.Default
-    @Column(name = "is_banned")
-    private Boolean isBanned = false;
+    public void delete() {
+        this.deletedAt = OffsetDateTime.now();
+    }
 
-    @Column(name = "deleted_at", columnDefinition = "TIMESTAMPTZ")
-    private OffsetDateTime deletedAt;
+    public void joinSpace(Space space, UserRole role) {
+        this.space = space;
+        this.role = role;
+    }
+
+    public void leaveSpace() {
+        this.space = null;
+        this.role = UserRole.USER;
+    }
 }
