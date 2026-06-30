@@ -49,13 +49,13 @@ public interface ProblemService {
    * @param problemId 문제 ID
    * @param request   문제 수정 DTO
    */
-  ProblemResponse updateProblem(UUID problemId, ProblemUpdateRequest request);
+  ProblemResponse updateProblem(UUID spaceId, UUID problemId, ProblemUpdateRequest request);
 
   /**
    * 문제 삭제 (ADMIN 전용)
    * @param problemId 문제 ID
    */
-  void deleteProblem(UUID problemId);
+  void deleteProblem(UUID spaceId, UUID problemId);
 
   /**
    * 문제 제출 및 채점

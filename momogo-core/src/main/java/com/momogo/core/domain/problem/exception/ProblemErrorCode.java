@@ -25,7 +25,10 @@ public enum ProblemErrorCode implements ErrorCode {
       HttpStatus.CONFLICT, "해당 카테고리에 문제가 존재하여 삭제할 수 없습니다."),
 
   SPACE_NOT_FOUND(3005, "SPACE_NOT_FOUND",
-      HttpStatus.NOT_FOUND, "해당 공간을 찾을 수 없습니다.");
+      HttpStatus.NOT_FOUND, "해당 공간을 찾을 수 없습니다."),
+
+  PROBLEM_NOT_IN_SPACE(3006, "PROBLEM_NOT_IN_SPACE",
+      HttpStatus.NOT_FOUND, "해당 공간에 속한 문제가 아닙니다.");
 
   private final int numeric;
   private final String errorKey;

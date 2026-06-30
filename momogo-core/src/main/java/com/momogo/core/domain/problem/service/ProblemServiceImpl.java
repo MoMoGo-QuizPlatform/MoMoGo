@@ -149,10 +149,14 @@ public class ProblemServiceImpl implements ProblemService {
    */
   @Override
   @Transactional
-  public ProblemResponse updateProblem(UUID problemId, ProblemUpdateRequest request) {
+  public ProblemResponse updateProblem(UUID spaceId, UUID problemId, ProblemUpdateRequest request) {
 
     Problem problem = problemRepository.findByIdWithCategory(problemId)
         .orElseThrow(() -> new BusinessException(ProblemErrorCode.PROBLEM_NOT_FOUND));
+
+    if (!problem.getSpace().getId().equals(spaceId)) {
+      throw new BusinessException(ProblemErrorCode.PROBLEM_NOT_IN_SPACE);
+    }
 
     problem.update(
         request.name(),
@@ -170,10 +174,13 @@ public class ProblemServiceImpl implements ProblemService {
    */
   @Override
   @Transactional
-  public void deleteProblem(UUID problemId) {
+  public void deleteProblem(UUID spaceId, UUID problemId) {
 
-    if (!problemRepository.existsById(problemId)) {
-      throw new BusinessException(ProblemErrorCode.PROBLEM_NOT_FOUND);
+    Problem problem = problemRepository.findById(problemId)
+        .orElseThrow(() -> new BusinessException(ProblemErrorCode.PROBLEM_NOT_FOUND));
+
+    if (!problem.getSpace().getId().equals(spaceId)) {
+      throw new BusinessException(ProblemErrorCode.PROBLEM_NOT_IN_SPACE);
     }
 
     problemRepository.deleteById(problemId);
