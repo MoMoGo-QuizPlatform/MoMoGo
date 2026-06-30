@@ -22,11 +22,13 @@ CREATE TABLE "TBL_USER" (
                             "email"            VARCHAR(255)  NOT NULL,
                             "profile_image_url" VARCHAR(500) NULL,
                             "role"             VARCHAR(50)   NOT NULL, -- SUPER_ADMIN, ADMIN, USER
-                            "social"           VARCHAR(50)   NULL,     -- GOOGLE, KAKAO
+                            "social"           VARCHAR(50)   DEFAULT 'NONE' NOT NULL, -- NONE, GOOGLE, KAKAO
                             "is_banned"        BOOLEAN       DEFAULT FALSE NULL,
                             "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
                             "updated_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
-                            "deleted_at"       TIMESTAMPTZ   NULL      -- 논리 삭제용 유예 기간 필드
+                            "deleted_at"       TIMESTAMPTZ   NULL, -- 논리 삭제용 유예 기간 필드
+                            CONSTRAINT ck_user_role   CHECK ("role" IN ('USER', 'ADMIN', 'SUPER_ADMIN')),
+                            CONSTRAINT ck_social_type CHECK ("social" IN ('NONE','KAKAO', 'GOOGLE'))
 );
 
 -- 문제 카테고리 테이블
@@ -171,3 +173,10 @@ ALTER TABLE "TBL_USER_PROBLEM" ADD CONSTRAINT "FK_TBL_PROBLEM_TO_TBL_USER_PROBLE
 
 -- 알림 시스템 수신자
 ALTER TABLE "TBL_NOTIFICATION" ADD CONSTRAINT "FK_TBL_USER_TO_TBL_NOTIFICATION" FOREIGN KEY ("receiver_id") REFERENCES "TBL_USER" ("id");
+
+-- ====================================================
+-- 4. 인덱스(INDEX) 정의 단계
+-- ====================================================
+
+-- 이메일 중복 가입 방지 부분 유니크 인덱스 (탈퇴한 회원의 이메일은 UQ 제약에서 제외하여 재가입 허용)
+CREATE UNIQUE INDEX "UQ_USER_EMAIL_ACTIVE" ON "TBL_USER" ("email") WHERE "deleted_at" IS NULL;

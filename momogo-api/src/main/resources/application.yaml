@@ -15,5 +15,29 @@ spring:
       hibernate:
         default_batch_fetch_size: 100
 
+jwt:
+  access-token:
+    secret: ${JWT_ACCESS_TOKEN_SECRET}
+    exp: ${JWT_ACCESS_TOKEN_EXP}
+  refresh-token:
+    secret: ${JWT_REFRESH_TOKEN_SECRET}
+    exp: ${JWT_REFRESH_TOKEN_EXP}
+    cookie:
+      secure: ${JWT_REFRESH_COOKIE_SECURE}
+      same-site: ${JWT_REFRESH_COOKIE_SAME_SITE}
+
+app:
+  jwt:
+    registry: memory
+  file:
+    # 클라이언트용 웹 서비스 URL 주소
+    base-url: ${APP_FILE_BASE_URL}
+    upload:
+      allowed-extensions: jpg,jpeg,png,webp
+      allowed-mime-types: image/jpeg,image/png,image/webp
+      max-mark-size: 10MB
+      # 물리 디스크 저장 경로
+      dir: ${APP_FILE_UPLOAD_DIR}
+
 server:
   port: 8080

@@ -1,0 +1,76 @@
+package com.momogo.api.auth.details;
+
+import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.domain.user.dto.response.UserResponse;
+import com.momogo.core.domain.user.entity.User;
+import com.momogo.core.domain.user.exception.UserErrorCode;
+import com.momogo.core.domain.user.mapper.UserMapper;
+import com.momogo.core.domain.user.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Slf4j
+@RequiredArgsConstructor
+@Service
+public class MoMoGoUserDetailsService implements UserDetailsService {
+
+    private final UserRepository userRepository;
+    private final UserMapper userMapper;
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserDetails loadUserByUsername(String username) {
+        log.debug("[MoMoGoUserDetailsService] loadUserByUsername 호출됨, email: {}", maskEmail(username));
+        return loadUserDetails(username);
+    }
+
+    /**
+     * JWT 토큰 검증 시 필터에서 호출하는 메서드입니다.
+     * 유저 정보를 조회합니다.
+     */
+    public UserDetails loadUserByUsernameForToken(String username) {
+        log.debug("[MoMoGoUserDetailsService] loadUserByUsernameForToken 호출됨, email: {}", maskEmail(username));
+        return loadUserDetails(username);
+    }
+
+    /**
+     * 공통 사용자 정보 조회 및 UserDetails 변환 메서드입니다.
+     */
+    private UserDetails loadUserDetails(String username) {
+        User user = userRepository.findByEmail(username)
+                .orElseThrow(() -> {
+                    log.warn("[MoMoGoUserDetailsService] 유저를 찾을 수 없습니다, email: {}", maskEmail(username));
+                    return new BusinessException(UserErrorCode.NOT_FOUND);
+                });
+
+        UserResponse userResponse = userMapper.toResponse(user);
+        return new MoMoGoUserDetails(userResponse, user.getPassword());
+    }
+
+    /**
+     * 이메일 주소를 마스킹 처리합니다.
+     * 예: test@example.com -> te***@example.com
+     */
+    private String maskEmail(String email) {
+        if (email == null) {
+            return "null";
+        }
+        int atIndex = email.indexOf("@");
+        if (atIndex <= 0) {
+            if (email.length() <= 3) {
+                return "*".repeat(email.length());
+            }
+            return email.substring(0, 3) + "***";
+        }
+        String local = email.substring(0, atIndex);
+        String domain = email.substring(atIndex);
+        if (local.length() <= 2) {
+            return "*".repeat(local.length()) + domain;
+        }
+        return local.substring(0, 2) + "***" + domain;
+    }
+}
