@@ -52,7 +52,7 @@ public class ProblemController {
   @GetMapping
   public ResponseEntity<ProblemCursorResponse> getProblems(
       @PathVariable UUID spaceId,
-      @RequestParam UUID categoryId,
+      @RequestParam(required = false) UUID categoryId,
       @RequestParam(required = false) String nameKeyword,
       @RequestParam(required = false) String contentKeyword,
       @RequestParam(required = false) OffsetDateTime cursor,

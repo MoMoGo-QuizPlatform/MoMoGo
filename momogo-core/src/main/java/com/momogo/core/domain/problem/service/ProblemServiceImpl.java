@@ -17,8 +17,6 @@ import com.momogo.core.domain.problem.repository.ProblemCountersRepository;
 import com.momogo.core.domain.problem.repository.ProblemRepository;
 import com.momogo.core.domain.space.entity.Space;
 import com.momogo.core.domain.space.repository.SpaceRepository;
-import com.momogo.core.domain.user.repository.UserProblemRepository;
-import com.momogo.core.domain.user.repository.UserRepository;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -38,10 +36,6 @@ public class ProblemServiceImpl implements ProblemService {
   private final ProblemCountersRepository countersRepository;
 
   private final SpaceRepository spaceRepository;
-
-  private final UserRepository userRepository;
-
-  private final UserProblemRepository userProblemRepository;
 
   private final ProblemMapper problemMapper;
 
