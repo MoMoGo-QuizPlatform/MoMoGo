@@ -1,11 +1,10 @@
-package com.momogo.core.domain.notification.dto;
+package com.momogo.core.domain.notification.dto.response;
 
 import com.momogo.core.domain.notification.entity.NotificationType;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-public record NotificationDto(
+public record NotificationResponse(
     UUID id,
     String title,
     String content,
