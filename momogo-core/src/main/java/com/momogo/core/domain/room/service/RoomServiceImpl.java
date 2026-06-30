@@ -69,25 +69,31 @@ public class RoomServiceImpl implements RoomService{
 
     // 4. RoomProblem 생성 및 저장
     List<RoomProblem> roomProblems = request.problems().stream()
-        .map(prob -> RoomProblem.of(savedRoom, prob))
+        .map(prob -> RoomProblem.of(
+            savedRoom,
+            prob.problemOrder(),
+            prob.name(),
+            prob.content(),
+            prob.explanation(),
+            prob.correctAnswer()))
         .toList();
     roomProblemRepository.saveAll(roomProblems);
 
     log.info("[RoomService] 평가 시험방 생성 성공 - roomId: {}", savedRoom.getId());
 
     // 알림용 Spring Event 발행
-    eventPublisher.publishEvent(new RoomCreatedEvent(savedRoom, request.userIds()));
+    eventPublisher.publishEvent(new RoomCreatedEvent(
+        savedRoom.getId(),
+        targets.space.getId(),
+        savedRoom.getName(),
+        request.userIds()
+    ));
 
     return roomMapper.toResponse(savedRoom);
   }
 
   // 시험방 생성을 위한 유효성 검증 및 도메인 엔티티 일괄 조회 헬퍼 메서드
   private ValidatedRoomTarget validateAndGetTargets(UUID userId, UUID spaceId, RoomCreateRequest request) {
-
-    // 시험 시간 검증
-    if (request.testStartAt().isAfter(request.testEndAt()) || request.testStartAt().isEqual(request.testEndAt())) {
-      throw new BusinessException(RoomErrorCode.INVALID_TEST_TIME);
-    }
 
     // 개설 유저의 공간 관리자(ADMIN) 권한 검증
     User user = userRepository.findById(userId)
@@ -107,6 +113,15 @@ public class RoomServiceImpl implements RoomService{
       log.warn("[RoomService] 응시 대상 유저 중 일부가 존재하지 않습니다. 요청: {}, 조회: {}",
           request.userIds().size(), targetUsers.size());
       throw new BusinessException(RoomErrorCode.ROOM_USER_NOT_FOUND);
+    }
+
+    // 공간 경계 검증 (모든 응시 유저가 이 공간 소속인지 확인)
+    boolean hasExternalUser = targetUsers.stream()
+        .anyMatch(u -> u.getSpace() == null || !u.getSpace().getId().equals(spaceId));
+
+    if (hasExternalUser) {
+      log.warn("[RoomService] 해당 공간 소속이 아닌 외부 유저가 응시 대상에 포함되어 있습니다. spaceId: {}", spaceId);
+      throw new BusinessException(SpaceErrorCode.NOT_SPACE_MEMBER);
     }
 
     return new ValidatedRoomTarget(space, targetUsers);

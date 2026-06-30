@@ -41,14 +41,21 @@ public class RoomProblem extends BaseTimeEntity {
     private String correctAnswer;
 
     // 정적 팩토리 생성 메소드
-    public static RoomProblem of(Room room, RoomProblemCreatedRequest request) {
+    public static RoomProblem of(
+        Room room,
+        Integer problemOrder,
+        String name,
+        String content,
+        String explanation,
+        String correctAnswer
+    ) {
         return RoomProblem.builder()
             .room(room)
-            .problemOrder(request.problemOrder())
-            .name(request.name())
-            .content(request.content())
-            .explanation(request.explanation())
-            .correctAnswer(request.correctAnswer())
+            .problemOrder(problemOrder)
+            .name(name)
+            .content(content)
+            .explanation(explanation)
+            .correctAnswer(correctAnswer)
             .build();
     }
 }

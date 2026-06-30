@@ -1,6 +1,8 @@
 package com.momogo.core.domain.room.entity;
 
 import com.momogo.core.common.base.BaseTimeEntity;
+import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.domain.room.exception.RoomErrorCode;
 import com.momogo.core.domain.space.entity.Space;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -44,6 +46,12 @@ public class Room extends BaseTimeEntity {
 
     // 정적 팩토리 생성 메소드
     public static Room of(Space space, String name, String description, OffsetDateTime testStartAt, OffsetDateTime testEndAt) {
+
+        // 엔티티 생성 불변식 검증
+        if (testStartAt == null || testEndAt == null || !testStartAt.isBefore(testEndAt)) {
+            throw new BusinessException(RoomErrorCode.INVALID_TEST_TIME);
+        }
+
         return Room.builder()
             .space(space)
             .name(name)

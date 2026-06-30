@@ -1,5 +1,6 @@
 package com.momogo.core.domain.room.dto.request;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.FutureOrPresent;
 import jakarta.validation.constraints.NotBlank;
@@ -8,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -32,8 +34,9 @@ public record RoomCreateRequest(
     @Future(message = "시험 종료 시간은 현재 시간 이후여야 합니다.")
     OffsetDateTime testEndAt,
     @NotEmpty(message = "시험 응시 대상자는 최소 1명 이상 지정해야 합니다.")
-    List<UUID> userIds,
+    Set<UUID> userIds,
     @NotEmpty(message = "시험 문제는 최소 1개 이상 등록해야 합니다.")
+    @Valid
     List<RoomProblemCreatedRequest> problems
 ) {
 
