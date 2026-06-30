@@ -18,7 +18,8 @@ import java.util.UUID;
 @Builder
 public class Room extends BaseTimeEntity {
     @Id
-    @Column(name = "id", columnDefinition = "UUID")
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "id", columnDefinition = "UUID", updatable = false, nullable = false)
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -40,4 +41,16 @@ public class Room extends BaseTimeEntity {
 
     @Column(name = "test_end_at", columnDefinition = "TIMESTAMPTZ")
     private OffsetDateTime testEndAt;
+
+    // 정적 팩토리 생성 메소드
+    public static Room of(Space space, String name, String description, OffsetDateTime testStartAt, OffsetDateTime testEndAt) {
+        return Room.builder()
+            .space(space)
+            .name(name)
+            .description(description)
+            .testStartAt(testStartAt)
+            .testEndAt(testEndAt)
+            .isEnded(false)
+            .build();
+    }
 }

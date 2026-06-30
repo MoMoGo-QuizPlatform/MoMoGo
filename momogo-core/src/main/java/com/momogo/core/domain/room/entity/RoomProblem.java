@@ -1,6 +1,7 @@
 package com.momogo.core.domain.room.entity;
 
 import com.momogo.core.common.base.BaseTimeEntity;
+import com.momogo.core.domain.room.dto.request.RoomProblemCreatedRequest;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -16,7 +17,8 @@ import java.util.UUID;
 @Builder
 public class RoomProblem extends BaseTimeEntity {
     @Id
-    @Column(name = "id", columnDefinition = "UUID")
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "id", columnDefinition = "UUID", updatable = false, nullable = false)
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -37,4 +39,16 @@ public class RoomProblem extends BaseTimeEntity {
 
     @Column(name = "correct_answer", columnDefinition = "TEXT")
     private String correctAnswer;
+
+    // 정적 팩토리 생성 메소드
+    public static RoomProblem of(Room room, RoomProblemCreatedRequest request) {
+        return RoomProblem.builder()
+            .room(room)
+            .problemOrder(request.problemOrder())
+            .name(request.name())
+            .content(request.content())
+            .explanation(request.explanation())
+            .correctAnswer(request.correctAnswer())
+            .build();
+    }
 }
