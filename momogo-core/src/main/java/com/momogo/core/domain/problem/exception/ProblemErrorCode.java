@@ -31,7 +31,10 @@ public enum ProblemErrorCode implements ErrorCode {
       HttpStatus.NOT_FOUND, "해당 공간에 속한 문제가 아닙니다."),
 
   PROBLEM_FIELD_BLANK(3007, "PROBLEM_FIELD_BLANK",
-      HttpStatus.BAD_REQUEST, "수정할 필드 값은 공백일 수 없습니다.");
+      HttpStatus.BAD_REQUEST, "수정할 필드 값은 공백일 수 없습니다."),
+
+  INVALID_CURSOR(3008, "INVALID_CURSOR",
+      HttpStatus.BAD_REQUEST, "커서 값이 올바르지 않습니다. cursor와 cursorId는 함께 존재하거나 함께 없어야 합니다.");
 
   private final int numeric;
   private final String errorKey;

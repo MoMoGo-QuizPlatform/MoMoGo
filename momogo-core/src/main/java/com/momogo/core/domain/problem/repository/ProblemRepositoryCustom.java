@@ -12,9 +12,9 @@ public interface ProblemRepositoryCustom {
    */
   List<Problem> findWithCursor(
       UUID spaceId,
-      UUID categoryId,        // null이면 조건 제외
-      String nameKeyword,     // null이면 조건 제외
-      String contentKeyword,  // null이면 조건 제외
+      UUID categoryId,
+      String nameKeyword,
+      String contentKeyword,
       OffsetDateTime cursor,
       UUID cursorId,
       int size

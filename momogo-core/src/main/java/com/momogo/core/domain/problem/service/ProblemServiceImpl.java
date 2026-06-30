@@ -41,6 +41,7 @@ public class ProblemServiceImpl implements ProblemService {
 
   /**
    * 문제 직접 생성
+   *
    * @param spaceId 공간 ID
    * @param request 문제 직접 생성 DTO
    */
@@ -75,12 +76,13 @@ public class ProblemServiceImpl implements ProblemService {
 
   /**
    * 문제 목록 조회 (커서 페이지네이션)
-   * @param spaceId         공간 ID
-   * @param categoryId      카테고리 ID
-   * @param nameKeyword     이름 검색용
-   * @param contentKeyword  문제 내용 검색용
-   * @param cursor          다음 커서 일자
-   * @param cursorId        다음 커서 ID (서브)
+   *
+   * @param spaceId        공간 ID
+   * @param categoryId     카테고리 ID
+   * @param nameKeyword    이름 검색용
+   * @param contentKeyword 문제 내용 검색용
+   * @param cursor         다음 커서 일자
+   * @param cursorId       다음 커서 ID (서브)
    */
   @Override
   public ProblemCursorResponse getProblems(
@@ -91,6 +93,10 @@ public class ProblemServiceImpl implements ProblemService {
       OffsetDateTime cursor,
       UUID cursorId,
       int size) {
+
+    if ((cursor == null) != (cursorId == null)) {
+      throw new BusinessException(ProblemErrorCode.INVALID_CURSOR);
+    }
 
     int fetchSize = size + 1;
 
@@ -113,7 +119,8 @@ public class ProblemServiceImpl implements ProblemService {
 
   /**
    * 문제 단건 조회
-   * @param problemId  문제 ID
+   *
+   * @param problemId 문제 ID
    */
   @Override
   public ProblemResponse getProblem(UUID spaceId, UUID problemId) {
@@ -130,6 +137,7 @@ public class ProblemServiceImpl implements ProblemService {
 
   /**
    * 문제 수정
+   *
    * @param problemId 문제 ID
    * @param request   문제 수정 DTO
    */
@@ -166,6 +174,7 @@ public class ProblemServiceImpl implements ProblemService {
 
   /**
    * 문제 삭제
+   *
    * @param problemId 문제 ID
    */
   @Override
@@ -184,13 +193,15 @@ public class ProblemServiceImpl implements ProblemService {
 
   /**
    * 문제 제출 (채점) - AI 채점 연동 필요, ai 모듈 채점 서비스 구현 후 연결 예정
+   *
    * @param problemId 문제 ID
    * @param userId    유저 ID
    * @param request   문제 제출 요청 DTO
    */
   @Override
   @Transactional
-  public ProblemSolveResponse solveProblem(UUID problemId, UUID userId, ProblemSolveRequest request) {
+  public ProblemSolveResponse solveProblem(UUID problemId, UUID userId,
+      ProblemSolveRequest request) {
 
     return null;
   }
