@@ -17,6 +17,7 @@ import java.util.UUID;
 @Builder
 public class Notification extends BaseTimeEntity {
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", columnDefinition = "UUID")
     private UUID id;
 
@@ -30,7 +31,17 @@ public class Notification extends BaseTimeEntity {
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
 
+    //알림 타입 추가
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type", nullable = false)
+    private NotificationType type;
+
     @Builder.Default
     @Column(name = "is_confirmed")
     private Boolean isConfirmed = false;
+
+    //읽음 처리 메서드
+    public void confirm() {
+        this.isConfirmed = true;
+    }
 }
