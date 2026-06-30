@@ -3,8 +3,8 @@ package com.momogo.core.common.storage;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
 import com.momogo.core.common.util.ImageFileValidator;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -17,10 +17,19 @@ import java.util.UUID;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class LocalStorageService implements StorageService {
 
     private final ImageFileValidator imageFileValidator;
+    private final String uploadDir;
+
+    public LocalStorageService(
+            ImageFileValidator imageFileValidator,
+            @Value("${app.file.upload.dir:./uploads}") String uploadDir
+    ) {
+        this.imageFileValidator = imageFileValidator;
+        this.uploadDir = Paths.get(uploadDir).toAbsolutePath().normalize().toString();
+        log.info("[LocalStorageService] 파일 저장 절대 경로 지정 완료: {}", this.uploadDir);
+    }
 
     @Override
     public String upload(InputStream inputStream, String originalFileName, String contentType, String directory) {
@@ -33,7 +42,7 @@ public class LocalStorageService implements StorageService {
         }
 
         String savedFileName = UUID.randomUUID() + extension;
-        Path uploadPath = Paths.get("./uploads", directory);
+        Path uploadPath = Paths.get(uploadDir, directory);
         try {
             Files.createDirectories(uploadPath);
             Path targetPath = uploadPath.resolve(savedFileName);
@@ -62,7 +71,7 @@ public class LocalStorageService implements StorageService {
         }
 
         try {
-            Path filePath = Paths.get("./uploads").resolve(relativePath);
+            Path filePath = Paths.get(uploadDir).resolve(relativePath);
 
             boolean deleted = Files.deleteIfExists(filePath);
             if (deleted) {

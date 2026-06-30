@@ -3,7 +3,8 @@ package com.momogo.api.auth;
 import com.momogo.api.auth.details.MoMoGoUserDetails;
 import com.momogo.api.auth.dto.JwtDto;
 import com.momogo.api.auth.dto.JwtInformation;
-import jakarta.servlet.http.HttpServletResponse;
+import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.common.exception.GlobalErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,14 +18,14 @@ public class AuthServiceImpl implements AuthService {
     private final JwtRegistry jwtRegistry;
 
     @Override
-    public JwtDto refresh(String refreshToken, HttpServletResponse response) {
+    public JwtDto refresh(String refreshToken) {
         if (refreshToken == null || !jwtTokenProvider.validateRefreshToken(refreshToken)) {
-            throw new IllegalArgumentException("Invalid refresh token");
+            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED, "유효하지 않은 리프레시 토큰입니다.");
         }
 
         JwtInformation current = jwtRegistry.getJwtInformationByRefreshToken(refreshToken);
         if (current == null) {
-            throw new IllegalArgumentException("Inactive refresh token");
+            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED, "만료되었거나 활성화되지 않은 토큰 세션입니다.");
         }
 
         try {
@@ -41,22 +42,15 @@ public class AuthServiceImpl implements AuthService {
 
             jwtRegistry.rotateJwtInformation(refreshToken, next);
 
-            try {
-                // 쿠키에 새 리프레시 토큰 추가
-                jwtTokenProvider.addRefreshCookie(response, newRefreshToken);
-            } catch (Exception e) {
-                // 롤백 처리
-                jwtRegistry.rollbackRotateJwtInformation(refreshToken, current, newRefreshToken);
-                throw e;
-            }
-
             return JwtDto.builder()
                     .accessToken(newAccessToken)
                     .refreshToken(newRefreshToken)
                     .build();
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("Failed to refresh token", e);
-            throw new IllegalArgumentException("Failed to refresh token", e);
+            log.error("[AuthService] 토큰 갱신 중 예외 발생", e);
+            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED, "토큰 갱신 중 시스템 에러가 발생했습니다.");
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.momogo.api.auth.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.momogo.core.domain.user.dto.response.UserResponse;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -14,6 +15,8 @@ public class JwtDto {
 
     private UserResponse user;
     private String accessToken;
+
+    @JsonIgnore
     private String refreshToken;
 
     @Builder.Default

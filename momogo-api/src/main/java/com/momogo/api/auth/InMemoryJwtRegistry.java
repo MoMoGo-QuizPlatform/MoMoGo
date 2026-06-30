@@ -13,7 +13,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * JWT 토큰 세션을 메모리(In-Memory) 상에서 관리하는 레지스트리 구현체입니다.
- * app.jwt.registry 설정 값이 "memory" 일 때 빈으로 로드됩니다.
  * 다중 로그인 제어(기기 대수 제한)를 위해 사용자당 Queue 구조를 사용하며,
  * O(1) 수준의 조회를 보장하기 위해 토큰 인덱스 맵을 별도로 관리합니다.
  * 사용자별 Lock을 설정하여 멀티스레드 환경에서도 원자성과 일관성을 보장합니다.
@@ -34,22 +33,29 @@ public class InMemoryJwtRegistry implements JwtRegistry {
     // Refresh Token으로 세션 정보를 즉시 조회하기 위한 인덱스 맵 (조회 최적화용)
     private final Map<String, JwtInformation> refreshTokenIndex;
 
-    // 사용자별 동시성 제어를 위한 Lock 객체 관리 맵
-    private final Map<UUID, Object> userLocks;
+    // 사용자별 동시성 제어를 위한 고정 크기 락 객체 배열 (Striped Lock)
+    private static final int LOCK_POOL_SIZE = 128;
+    private final Object[] locks;
 
     public InMemoryJwtRegistry() {
         this.origin = new ConcurrentHashMap<>();
         this.maxActiveJwtCount = 1;
         this.tokenIndex = new ConcurrentHashMap<>();
         this.refreshTokenIndex = new ConcurrentHashMap<>();
-        this.userLocks = new ConcurrentHashMap<>();
+        
+        this.locks = new Object[LOCK_POOL_SIZE];
+        for (int i = 0; i < LOCK_POOL_SIZE; i++) {
+            locks[i] = new Object();
+        }
     }
 
     /**
      * 사용자 식별자별 고유 Lock 객체를 획득합니다.
+     * 해시 버킷 인덱스를 활용하여 고정된 락 풀에서 객체를 반환합니다.
      */
     private Object lockFor(UUID userId) {
-        return userLocks.computeIfAbsent(userId, ignored -> new Object());
+        int index = Math.abs(userId.hashCode() % LOCK_POOL_SIZE);
+        return locks[index];
     }
 
     /**

@@ -30,11 +30,14 @@ app:
   jwt:
     registry: memory
   file:
-    base-url: http://localhost:8080/uploads
+    # 클라이언트용 웹 서비스 URL 주소
+    base-url: ${APP_FILE_BASE_URL}
     upload:
       allowed-extensions: jpg,jpeg,png,webp
       allowed-mime-types: image/jpeg,image/png,image/webp
       max-mark-size: 10MB
+      # 물리 디스크 저장 경로
+      dir: ${APP_FILE_UPLOAD_DIR}
 
 server:
   port: 8080

@@ -44,4 +44,10 @@ public class MoMoGoUserDetails implements UserDetails {
     public String getName() {
         return userResponse.name();
     }
+
+    @Override
+    public boolean isAccountNonLocked() {
+        // 계정 정지(밴) 상태인 경우 잠금(Locked) 처리
+        return !Boolean.TRUE.equals(userResponse.banned());
+    }
 }

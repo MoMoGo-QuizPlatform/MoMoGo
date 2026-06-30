@@ -1,6 +1,8 @@
 package com.momogo.api.auth;
 
 import com.momogo.api.auth.details.MoMoGoUserDetails;
+import com.momogo.api.auth.exception.AuthErrorCode;
+import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.user.dto.response.UserResponse;
 import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.nimbusds.jose.*;
@@ -42,8 +44,8 @@ public class JwtTokenProvider {
             @Value("${jwt.access-token.exp}") long accessTokenExpirationMs,
             @Value("${jwt.refresh-token.secret}") String refreshTokenSecret,
             @Value("${jwt.refresh-token.exp}") long refreshTokenExpirationMs,
-            @Value("${jwt.refresh-token.cookie.secure:false}") boolean refreshCookieSecure,
-            @Value("${jwt.refresh-token.cookie.same-site:Lax}") String refreshCookieSameSite
+            @Value("${jwt.refresh-token.cookie.secure}") boolean refreshCookieSecure,
+            @Value("${jwt.refresh-token.cookie.same-site}") String refreshCookieSameSite
     ) throws JOSEException {
         this.accessTokenExpirationMs = accessTokenExpirationMs;
         this.refreshTokenExpirationMs = refreshTokenExpirationMs;
@@ -100,24 +102,11 @@ public class JwtTokenProvider {
     }
 
     public ResponseCookie generateRefreshTokenCookie(String refreshToken) {
-        long maxAgeSeconds = refreshTokenExpirationMs / 1000;
-        return ResponseCookie.from(REFRESH_TOKEN_COOKIE_NAME, refreshToken)
-                .httpOnly(true)
-                .secure(refreshCookieSecure)
-                .path("/")
-                .maxAge(maxAgeSeconds)
-                .sameSite(refreshCookieSameSite)
-                .build();
+        return createCookie(refreshToken, refreshTokenExpirationMs / 1000);
     }
 
     public ResponseCookie generateRefreshTokenExpirationCookie() {
-        return ResponseCookie.from(REFRESH_TOKEN_COOKIE_NAME, "")
-                .httpOnly(true)
-                .secure(refreshCookieSecure)
-                .path("/")
-                .maxAge(0)
-                .sameSite(refreshCookieSameSite)
-                .build();
+        return createCookie("", 0);
     }
 
     public void addRefreshCookie(HttpServletResponse response, String refreshToken) {
@@ -162,23 +151,27 @@ public class JwtTokenProvider {
         try {
             return parseToken(token).getJWTClaimsSet().getSubject();
         } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid JWT token", e);
+            throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
         }
     }
 
     public String getTokenId(String token) {
         try {
             return parseToken(token).getJWTClaimsSet().getJWTID();
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid JWT token", e);
+            throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
         }
     }
 
     public Date getExpiration(String token) {
         try {
             return parseToken(token).getJWTClaimsSet().getExpirationTime();
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid JWT token", e);
+            throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
         }
     }
 
@@ -188,22 +181,24 @@ public class JwtTokenProvider {
             JWSVerifier verifier = "access".equals(expectedType) ? accessTokenVerifier : refreshTokenVerifier;
 
             if (!signedJWT.verify(verifier)) {
-                throw new IllegalArgumentException("Invalid JWT signature");
+                throw new BusinessException(AuthErrorCode.SIGNATURE_FAILED);
             }
 
             String tokenType = (String) signedJWT.getJWTClaimsSet().getClaim("type");
             if (!expectedType.equals(tokenType)) {
-                throw new IllegalArgumentException("Invalid token type");
+                throw new BusinessException(AuthErrorCode.INVALID_TOKEN_TYPE);
             }
 
             Object userId = signedJWT.getJWTClaimsSet().getClaim("userId");
             if (userId == null) {
-                throw new IllegalArgumentException("userId claim not found");
+                throw new BusinessException(AuthErrorCode.MISSING_TOKEN_CLAIM);
             }
 
             return UUID.fromString(userId.toString());
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid JWT token", e);
+            throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
         }
     }
 
@@ -241,9 +236,11 @@ public class JwtTokenProvider {
             log.info("[TokenProvider] parseAccessToken 완료: UserResponse 생성");
             return new MoMoGoUserDetails(userResponse, null);
 
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
             log.error("[TokenProvider] parseAccessToken 중 예외 발생: {}", e.getMessage());
-            throw new IllegalArgumentException("Invalid JWT token", e);
+            throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
         }
     }
 
@@ -251,7 +248,17 @@ public class JwtTokenProvider {
         try {
             return SignedJWT.parse(token);
         } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid JWT token", e);
+            throw new BusinessException(AuthErrorCode.MALFORMED_TOKEN);
         }
+    }
+
+    private ResponseCookie createCookie(String value, long maxAgeSeconds) {
+        return ResponseCookie.from(REFRESH_TOKEN_COOKIE_NAME, value)
+                .httpOnly(true)
+                .secure(refreshCookieSecure)
+                .path("/")
+                .maxAge(maxAgeSeconds)
+                .sameSite(refreshCookieSameSite)
+                .build();
     }
 }

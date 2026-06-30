@@ -1,10 +1,11 @@
 package com.momogo.api.auth;
 
 import com.momogo.api.auth.dto.JwtDto;
+import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.common.exception.GlobalErrorCode;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.*;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final JwtTokenProvider jwtTokenProvider;
 
     // Csrf Token 요청
     @GetMapping("/csrf-token")
@@ -34,14 +36,12 @@ public class AuthController {
             HttpServletResponse response
     ) {
         if (refreshToken == null || refreshToken.isBlank()) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED, "리프레시 토큰이 누락되었습니다.");
         }
 
-        try {
-            JwtDto jwtDto = authService.refresh(refreshToken, response);
-            return ResponseEntity.ok(jwtDto);
-        } catch(IllegalArgumentException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
+        JwtDto jwtDto = authService.refresh(refreshToken);
+        jwtTokenProvider.addRefreshCookie(response, jwtDto.getRefreshToken());
+
+        return ResponseEntity.ok(jwtDto);
     }
 }

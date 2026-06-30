@@ -131,14 +131,7 @@ public class UserServiceImpl implements UserService {
             String encodedPassword = passwordEncryptor.encrypt(request.newPassword());
             user.updatePassword(encodedPassword);
 
-            TransactionSynchronizationManager.registerSynchronization(
-                    new TransactionSynchronization() {
-                        @Override
-                        public void afterCompletion(int status) {
-                            userSessionService.invalidateUserSessions(userId);
-                        }
-                    }
-            );
+            userSessionService.invalidateUserSessions(userId);
         }
 
         return userMapper.toResponse(user);
