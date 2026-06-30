@@ -19,6 +19,11 @@ public class NotificationServiceImpl implements NotificationService {
   @Override
   @Transactional
   public void confirmNotification(UUID notificationId, UUID receiverId) {
+    //TODO: [임시로직] 인증로직 추가되면 삭제할것
+    if (receiverId == null) {
+      throw new IllegalArgumentException("수신자 ID가 필요합니다.");
+    }
+
     Notification notification = notificationRepository.findByIdAndReceiverId(notificationId, receiverId)
         .orElseThrow(() -> new NotificationNotFoundException(notificationId));
 
