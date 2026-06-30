@@ -37,8 +37,8 @@ public class Notification extends BaseTimeEntity {
     private NotificationType type;
 
     @Builder.Default
-    @Column(name = "is_confirmed")
-    private Boolean isConfirmed = false;
+    @Column(name = "is_confirmed", nullable = false)
+    private boolean isConfirmed = false;
 
     //읽음 처리 메서드
     public void confirm() {

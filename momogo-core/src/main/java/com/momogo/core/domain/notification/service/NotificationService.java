@@ -4,5 +4,5 @@ import java.util.UUID;
 
 public interface NotificationService {
 
-  void confirmNotification(UUID notificationId);
+  void confirmNotification(UUID notificationId, UUID receiverId);
 }

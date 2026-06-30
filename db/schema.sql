@@ -119,6 +119,7 @@ CREATE TABLE "TBL_NOTIFICATION" (
                                     "receiver_id"      UUID          NOT NULL,
                                     "title"            VARCHAR(255)  NOT NULL,
                                     "content"          TEXT          NOT NULL,
+                                    "type"             VARCHAR(50)   NOT NULL,
                                     "is_confirmed"     BOOLEAN       DEFAULT FALSE NULL,
                                     "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
                                     "updated_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL

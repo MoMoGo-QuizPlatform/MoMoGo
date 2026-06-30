@@ -9,7 +9,7 @@ import org.springframework.http.HttpStatus;
 @RequiredArgsConstructor
 public enum NotificationErrorCode implements ErrorCode {
 
-  NOTIFICATION_NOT_FOUND(4001, "NOT_FOUND", HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다.");
+  NOTIFICATION_NOT_FOUND(5001, "NOT_FOUND", HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다.");
 
   private final int numeric;
   private final String errorKey;
@@ -18,7 +18,7 @@ public enum NotificationErrorCode implements ErrorCode {
 
   @Override
   public String getDomain() {
-    return "NOTIFICATION";
+    return "NOTI";
   }
 
   @Override

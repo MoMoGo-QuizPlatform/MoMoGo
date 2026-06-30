@@ -16,8 +16,10 @@ public class NotificationController {
   private final NotificationService notificationService;
 
   @PatchMapping("/{notificationId}/confirm")
-  public ResponseEntity<Void> confirmNotification(@PathVariable UUID notificationId) {
-    notificationService.confirmNotification(notificationId);
+  public ResponseEntity<Void> confirmNotification(
+      @PathVariable UUID notificationId) {
+    // TODO: 인증 기능 머지 후, 실제 사용자 ID를 전달해야 함
+    notificationService.confirmNotification(notificationId, null); //null값 변경예정
     return ResponseEntity.ok().build();
   }
 }

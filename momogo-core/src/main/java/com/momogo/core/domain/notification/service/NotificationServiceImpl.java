@@ -18,8 +18,8 @@ public class NotificationServiceImpl implements NotificationService {
 
   @Override
   @Transactional
-  public void confirmNotification(UUID notificationId) {
-    Notification notification = notificationRepository.findById(notificationId)
+  public void confirmNotification(UUID notificationId, UUID receiverId) {
+    Notification notification = notificationRepository.findByIdAndReceiverId(notificationId, receiverId)
         .orElseThrow(() -> new NotificationNotFoundException(notificationId));
 
     notification.confirm();
