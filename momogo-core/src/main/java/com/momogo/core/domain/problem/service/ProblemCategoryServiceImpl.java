@@ -1,4 +1,4 @@
-package com.momogo.core.domain.problem.service.impl;
+package com.momogo.core.domain.problem.service;
 
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.problem.dto.request.CategoryCreateRequest;
@@ -7,7 +7,6 @@ import com.momogo.core.domain.problem.entity.ProblemCategory;
 import com.momogo.core.domain.problem.exception.ProblemErrorCode;
 import com.momogo.core.domain.problem.mapper.CategoryMapper;
 import com.momogo.core.domain.problem.repository.ProblemCategoryRepository;
-import com.momogo.core.domain.problem.service.ProblemCategoryService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

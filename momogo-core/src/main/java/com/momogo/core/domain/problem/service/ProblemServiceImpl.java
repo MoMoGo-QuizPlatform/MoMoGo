@@ -1,7 +1,6 @@
-package com.momogo.core.domain.problem.service.impl;
+package com.momogo.core.domain.problem.service;
 
 import com.momogo.core.common.exception.BusinessException;
-import com.momogo.core.common.exception.GlobalErrorCode;
 import com.momogo.core.domain.problem.dto.request.ProblemCreateRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemSolveRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemUpdateRequest;
@@ -16,10 +15,8 @@ import com.momogo.core.domain.problem.mapper.ProblemMapper;
 import com.momogo.core.domain.problem.repository.ProblemCategoryRepository;
 import com.momogo.core.domain.problem.repository.ProblemCountersRepository;
 import com.momogo.core.domain.problem.repository.ProblemRepository;
-import com.momogo.core.domain.problem.service.ProblemService;
 import com.momogo.core.domain.space.entity.Space;
 import com.momogo.core.domain.space.repository.SpaceRepository;
-import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.repository.UserProblemRepository;
 import com.momogo.core.domain.user.repository.UserRepository;
 import java.time.OffsetDateTime;
