@@ -99,13 +99,15 @@ public class RoomServiceImpl implements RoomService{
     User user = userRepository.findById(userId)
         .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
 
-    if (user.getRole() != UserRole.ADMIN || user.getSpace() == null || !user.getSpace().getId().equals(spaceId)) {
-      throw new BusinessException(SpaceErrorCode.NOT_SPACE_ADMIN);
-    }
 
     // 공간(Space) 존재 여부 검증 및 획득
     Space space = spaceRepository.findById(spaceId)
         .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_NOT_FOUND));
+
+
+    if (user.getRole() != UserRole.ADMIN || user.getSpace() == null || !user.getSpace().getId().equals(spaceId)) {
+      throw new BusinessException(SpaceErrorCode.NOT_SPACE_ADMIN);
+    }
 
     // 응시 대상 유저 검증 및 획득
     List<User> targetUsers = userRepository.findAllById(request.userIds());
