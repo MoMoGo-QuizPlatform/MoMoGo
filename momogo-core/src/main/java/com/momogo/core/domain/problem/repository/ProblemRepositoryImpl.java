@@ -18,58 +18,10 @@ public class ProblemRepositoryImpl implements ProblemRepositoryCustom {
 
   private final JPAQueryFactory queryFactory;
 
-  // 공간 내 전체 문제 목록
   @Override
-  public List<Problem> findAllWithCursor(
-      UUID spaceId,
-      OffsetDateTime cursor,
-      UUID cursorId,
-      int size) {
-
-    return queryFactory
-        .selectFrom(problem)
-        .join(problem.category, problemCategory).fetchJoin()
-        .where(
-            problem.space.id.eq(spaceId),
-            cursorCondition(cursor, cursorId)
-        )
-        .orderBy(
-            problem.createdAt.desc(),
-            problem.id.desc()
-        )
-        .limit(size)
-        .fetch();
-  }
-
-  // 공간 내 카테고리별 문제 목록
-  @Override
-  public List<Problem> findByCategoryWithCursor(
+  public List<Problem> findWithCursor(
       UUID spaceId,
       UUID categoryId,
-      OffsetDateTime cursor,
-      UUID cursorId,
-      int size) {
-
-    return queryFactory
-        .selectFrom(problem)
-        .join(problem.category, problemCategory).fetchJoin()
-        .where(
-            problem.space.id.eq(spaceId),
-            problem.category.id.eq(categoryId),
-            cursorCondition(cursor, cursorId)
-        )
-        .orderBy(
-            problem.createdAt.desc(),
-            problem.id.desc()
-        )
-        .limit(size)
-        .fetch();
-  }
-
-  // 공간 내 이름 + 내용 키워드 검색 목록
-  @Override
-  public List<Problem> searchByKeywordWithCursor(
-      UUID spaceId,
       String nameKeyword,
       String contentKeyword,
       OffsetDateTime cursor,
@@ -81,19 +33,17 @@ public class ProblemRepositoryImpl implements ProblemRepositoryCustom {
         .join(problem.category, problemCategory).fetchJoin()
         .where(
             problem.space.id.eq(spaceId),
-            nameKeywordCondition(nameKeyword),       // null이면 자동 제외
-            contentKeywordCondition(contentKeyword), // null이면 자동 제외
+            categoryIdCondition(categoryId),
+            nameKeywordCondition(nameKeyword),
+            contentKeywordCondition(contentKeyword),
             cursorCondition(cursor, cursorId)
         )
-        .orderBy(
-            problem.createdAt.desc(),
-            problem.id.desc()
-        )
+        .orderBy(problem.createdAt.desc(), problem.id.desc())
         .limit(size)
         .fetch();
   }
 
-  // 공통 조건 메서드
+  // 공통 조건 메서드 //
 
   // 커서 조건
   private BooleanExpression cursorCondition(OffsetDateTime cursor, UUID cursorId) {
@@ -125,5 +75,10 @@ public class ProblemRepositoryImpl implements ProblemRepositoryCustom {
     }
 
     return problem.content.containsIgnoreCase(keyword);
+  }
+
+  // 카테고리 조건
+  private BooleanExpression categoryIdCondition(UUID categoryId) {
+    return categoryId != null ? problem.category.id.eq(categoryId) : null;
   }
 }

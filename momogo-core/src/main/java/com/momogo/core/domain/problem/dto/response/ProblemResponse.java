@@ -16,7 +16,6 @@ public record ProblemResponse(
     String name,
     String content,
     String explanation,
-    String correctAnswer,
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt
 ) {}

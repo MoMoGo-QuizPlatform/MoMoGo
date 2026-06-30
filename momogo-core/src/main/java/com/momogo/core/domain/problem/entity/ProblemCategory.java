@@ -26,7 +26,7 @@ public class ProblemCategory extends BaseTimeEntity {
     @Column(name = "id", columnDefinition = "UUID")
     private UUID id;
 
-    @Column(name = "name", nullable = false, length = 100)
+    @Column(name = "name", nullable = false, length = 100, unique = true)
     private String name;
 
     public static ProblemCategory create(String name) {

@@ -94,20 +94,8 @@ public class ProblemServiceImpl implements ProblemService {
 
     int fetchSize = size + 1;
 
-    List<Problem> problemList;
-
-    if (nameKeyword != null || contentKeyword != null) {
-      problemList = problemRepository.searchByKeywordWithCursor(
-          spaceId, nameKeyword, contentKeyword, cursor, cursorId, fetchSize);
-
-    } else if (categoryId != null) {
-      problemList = problemRepository.findByCategoryWithCursor(
-          spaceId, categoryId, cursor, cursorId, fetchSize);
-
-    } else {
-      problemList = problemRepository.findAllWithCursor(
-          spaceId, cursor, cursorId, fetchSize);
-    }
+    List<Problem> problemList = problemRepository.findWithCursor(
+        spaceId, categoryId, nameKeyword, contentKeyword, cursor, cursorId, fetchSize);
 
     boolean hasNext = problemList.size() > size;
 
@@ -128,10 +116,14 @@ public class ProblemServiceImpl implements ProblemService {
    * @param problemId  문제 ID
    */
   @Override
-  public ProblemResponse getProblem(UUID problemId) {
+  public ProblemResponse getProblem(UUID spaceId, UUID problemId) {
 
     Problem problem = problemRepository.findByIdWithCategory(problemId)
         .orElseThrow(() -> new BusinessException(ProblemErrorCode.PROBLEM_NOT_FOUND));
+
+    if (!problem.getSpace().getId().equals(spaceId)) {
+      throw new BusinessException(ProblemErrorCode.PROBLEM_NOT_IN_SPACE);
+    }
 
     return problemMapper.toResponse(problem);
   }
@@ -150,6 +142,16 @@ public class ProblemServiceImpl implements ProblemService {
 
     if (!problem.getSpace().getId().equals(spaceId)) {
       throw new BusinessException(ProblemErrorCode.PROBLEM_NOT_IN_SPACE);
+    }
+
+    if (request.name() != null && request.name().isBlank()) {
+      throw new BusinessException(ProblemErrorCode.PROBLEM_FIELD_BLANK);
+    }
+    if (request.content() != null && request.content().isBlank()) {
+      throw new BusinessException(ProblemErrorCode.PROBLEM_FIELD_BLANK);
+    }
+    if (request.correctAnswer() != null && request.correctAnswer().isBlank()) {
+      throw new BusinessException(ProblemErrorCode.PROBLEM_FIELD_BLANK);
     }
 
     problem.update(

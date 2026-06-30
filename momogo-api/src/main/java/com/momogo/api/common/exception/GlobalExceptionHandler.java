@@ -4,11 +4,13 @@ import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.ErrorCode;
 import com.momogo.core.common.exception.ErrorResponse;
 import com.momogo.core.common.exception.GlobalErrorCode;
+import com.momogo.core.domain.problem.exception.ProblemErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
@@ -42,6 +44,23 @@ public class GlobalExceptionHandler {
         }
 
         return ResponseEntity.status(code.getHttpStatus()).body(response);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException e, HttpServletRequest request) {
+        String message = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+
+        if (message.contains("uq_problem_category_name")) {
+            ErrorCode code = ProblemErrorCode.CATEGORY_NAME_DUPLICATED;
+            log.warn("카테고리 이름 중복 : path={}", request.getRequestURI());
+            return ResponseEntity.status(code.getHttpStatus())
+                .body(ErrorResponse.of(code, code.getMessage(), request.getRequestURI()));
+        }
+
+        ErrorCode code = GlobalErrorCode.INTERNAL_SERVER_ERROR;
+        log.error("데이터 무결성 예외 발생 : message={}, path={}", e.getMessage(), request.getRequestURI(), e);
+        return ResponseEntity.status(code.getHttpStatus())
+            .body(ErrorResponse.of(code, code.getMessage(), request.getRequestURI()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

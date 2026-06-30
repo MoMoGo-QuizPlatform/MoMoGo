@@ -180,3 +180,6 @@ ALTER TABLE "TBL_NOTIFICATION" ADD CONSTRAINT "FK_TBL_USER_TO_TBL_NOTIFICATION" 
 
 -- 이메일 중복 가입 방지 부분 유니크 인덱스 (탈퇴한 회원의 이메일은 UQ 제약에서 제외하여 재가입 허용)
 CREATE UNIQUE INDEX "UQ_USER_EMAIL_ACTIVE" ON "TBL_USER" ("email") WHERE "deleted_at" IS NULL;
+
+-- 카테고리 이름 유니크 제약 (동시 요청 레이스 컨디션 방어)
+ALTER TABLE "TBL_PROBLEM_CATEGORY" ADD CONSTRAINT "UQ_PROBLEM_CATEGORY_NAME" UNIQUE ("name");

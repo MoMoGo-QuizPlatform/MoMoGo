@@ -14,9 +14,9 @@ public interface ProblemRepository extends JpaRepository<Problem, UUID>, Problem
   /**
    * 문제 단건 조회
    * - 문제 수정, 삭제 제출 시에 문제 정보가 필요하니
-   *   문제 하나를 카테고리와 함께 가져온다.
+   *   문제 하나를 카테고리 및 공간 정보와 함께 가져온다.
    */
-  @Query("SELECT p FROM Problem p JOIN FETCH p.category WHERE p.id = :id")
+  @Query("SELECT p FROM Problem p JOIN FETCH p.category JOIN FETCH p.space WHERE p.id = :id")
   Optional<Problem> findByIdWithCategory(@Param("id") UUID id);
 
   /**

@@ -42,7 +42,7 @@ public interface ProblemService {
    * 문제 단건 조회
    * @param problemId  문제 ID
    */
-  ProblemResponse getProblem(UUID problemId);
+  ProblemResponse getProblem(UUID spaceId, UUID problemId);
 
   /**
    * 문제 수정 (ADMIN 전용)

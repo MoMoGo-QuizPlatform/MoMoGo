@@ -28,7 +28,10 @@ public enum ProblemErrorCode implements ErrorCode {
       HttpStatus.NOT_FOUND, "해당 공간을 찾을 수 없습니다."),
 
   PROBLEM_NOT_IN_SPACE(3006, "PROBLEM_NOT_IN_SPACE",
-      HttpStatus.NOT_FOUND, "해당 공간에 속한 문제가 아닙니다.");
+      HttpStatus.NOT_FOUND, "해당 공간에 속한 문제가 아닙니다."),
+
+  PROBLEM_FIELD_BLANK(3007, "PROBLEM_FIELD_BLANK",
+      HttpStatus.BAD_REQUEST, "수정할 필드 값은 공백일 수 없습니다.");
 
   private final int numeric;
   private final String errorKey;
