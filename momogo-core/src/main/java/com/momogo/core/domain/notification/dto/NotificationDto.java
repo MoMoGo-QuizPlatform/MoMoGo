@@ -2,6 +2,7 @@ package com.momogo.core.domain.notification.dto;
 
 import com.momogo.core.domain.notification.entity.NotificationType;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 public record NotificationDto(
@@ -10,6 +11,6 @@ public record NotificationDto(
     String content,
     NotificationType type,
     boolean isConfirmed,
-    LocalDateTime createdAt
+    OffsetDateTime createdAt
 ) {
 }
