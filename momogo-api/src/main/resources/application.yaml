@@ -27,6 +27,10 @@ jwt:
       same-site: ${JWT_REFRESH_COOKIE_SAME_SITE}
 
 app:
+  super-admin:
+    email: ${SUPER_ADMIN_EMAIL}
+    password: ${SUPER_ADMIN_PASSWORD}
+    name: ${SUPER_ADMIN_NAME}
   jwt:
     registry: memory
   file:
