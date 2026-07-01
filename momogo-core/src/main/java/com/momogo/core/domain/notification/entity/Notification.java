@@ -3,6 +3,7 @@ package com.momogo.core.domain.notification.entity;
 import com.momogo.core.common.base.BaseTimeEntity;
 import com.momogo.core.domain.user.entity.User;
 import jakarta.persistence.*;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
@@ -12,11 +13,12 @@ import java.util.UUID;
 @Entity
 @Table(name = "TBL_NOTIFICATION")
 @Getter
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
 public class Notification extends BaseTimeEntity {
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", columnDefinition = "UUID")
     private UUID id;
 
@@ -30,7 +32,17 @@ public class Notification extends BaseTimeEntity {
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
 
+    //알림 타입 추가
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type", nullable = false)
+    private NotificationType type;
+
     @Builder.Default
-    @Column(name = "is_confirmed")
-    private Boolean isConfirmed = false;
+    @Column(name = "is_confirmed", nullable = false)
+    private boolean isConfirmed = false;
+
+    //읽음 처리 메서드
+    public void confirm() {
+        this.isConfirmed = true;
+    }
 }

@@ -119,6 +119,7 @@ CREATE TABLE "TBL_NOTIFICATION" (
                                     "receiver_id"      UUID          NOT NULL,
                                     "title"            VARCHAR(255)  NOT NULL,
                                     "content"          TEXT          NOT NULL,
+                                    "type"             VARCHAR(50)   NOT NULL,
                                     "is_confirmed"     BOOLEAN       DEFAULT FALSE NULL,
                                     "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
                                     "updated_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL
@@ -179,3 +180,6 @@ ALTER TABLE "TBL_NOTIFICATION" ADD CONSTRAINT "FK_TBL_USER_TO_TBL_NOTIFICATION" 
 
 -- 이메일 중복 가입 방지 부분 유니크 인덱스 (탈퇴한 회원의 이메일은 UQ 제약에서 제외하여 재가입 허용)
 CREATE UNIQUE INDEX "UQ_USER_EMAIL_ACTIVE" ON "TBL_USER" ("email") WHERE "deleted_at" IS NULL;
+
+-- 알림 목록 조회 성능 최적화를 위한 복합 인덱스
+CREATE INDEX "idx_notification_receiver_confirmed" ON "TBL_NOTIFICATION" ("receiver_id", "is_confirmed");
