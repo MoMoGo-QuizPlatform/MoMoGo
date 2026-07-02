@@ -183,3 +183,6 @@ CREATE UNIQUE INDEX "UQ_USER_EMAIL_ACTIVE" ON "TBL_USER" ("email") WHERE "delete
 
 -- 알림 목록 조회 성능 최적화를 위한 복합 인덱스
 CREATE INDEX "idx_notification_receiver_confirmed" ON "TBL_NOTIFICATION" ("receiver_id", "is_confirmed");
+
+-- Super Admin 부분 유니크 인덱스
+CREATE UNIQUE INDEX "UQ_USER_SUPER_ADMIN_ONLY" ON "TBL_USER" ("role") WHERE "role" = 'SUPER_ADMIN';
