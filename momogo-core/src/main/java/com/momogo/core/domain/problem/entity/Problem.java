@@ -12,15 +12,17 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.util.UUID;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.util.StringUtils;
 
 @Entity
 @Table(name = "TBL_PROBLEM")
 @Getter
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
 public class Problem extends BaseTimeEntity {
@@ -74,9 +76,9 @@ public class Problem extends BaseTimeEntity {
         String explanation,
         String correctAnswer) {
 
-        if (name != null) this.name = name;
+        if (StringUtils.hasText(name)) this.name = name;
 
-        if (content != null) this.content = content;
+        if (StringUtils.hasText(content)) this.content = content;
 
         if (explanation != null) this.explanation = explanation;
 

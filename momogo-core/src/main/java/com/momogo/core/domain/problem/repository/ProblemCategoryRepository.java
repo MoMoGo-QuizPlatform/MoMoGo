@@ -14,4 +14,7 @@ public interface ProblemCategoryRepository extends JpaRepository<ProblemCategory
 
   // 카테고리 전체 목록 조회 (사전순 정렬)
   List<ProblemCategory> findAllByOrderByNameAsc();
+
+  // 이름 중복 체크 (자기 자신 제외)
+  boolean existsByNameAndIdNot(String name, UUID id);
 }
