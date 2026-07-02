@@ -36,10 +36,19 @@ public class SuperAdminInitializer implements ApplicationRunner {
     @Value("${app.super-admin.name}")
     private String name;
 
+    /**
+     * Super Admin의 경우 무조건 한명만 존재하므로 2단계 검증을 거쳐 Super Admin을 생성한다.
+     * 1단계: Super Admin의 역할을 가진 유저가 존재하는지 확인한다.
+     * 2단계: 해당 이메일을 가진 유저가 존재하는지 확인한다.
+     */
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (!userRepository.existsByEmail(email)) {
+        if (!userRepository.existsByRole(UserRole.SUPER_ADMIN)) {
+            if (userRepository.existsByEmail(email)) {
+                log.error("[SuperAdminInitializer] Super Admin 생성 예정 이메일이 이미 선점되어 생성을 생략합니다.");
+            }
+            log.info("[SuperAdminInitializer] Super Admin이 존재하지 않아 생성합니다.");
             User superAdmin = User.builder()
                     .email(email)
                     .password(passwordEncoder.encode(password))
@@ -48,9 +57,9 @@ public class SuperAdminInitializer implements ApplicationRunner {
                     .social(SocialType.NONE)
                     .build();
             userRepository.save(superAdmin);
-            log.info("Super Admin 계정이 성공적으로 생성되었습니다.");
+            log.info("[SuperAdminInitializer] Super Admin 계정이 성공적으로 생성되었습니다.");
         } else {
-            log.info("Super Admin 계정이 이미 존재하여 스킵합니다.");
+            log.info("[SuperAdminInitializer] Super Admin 계정이 이미 존재하여 스킵합니다.");
         }
     }
 }

@@ -15,6 +15,7 @@ import com.momogo.core.domain.user.mapper.UserMapper;
 import com.momogo.core.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -38,9 +39,17 @@ public class UserServiceImpl implements UserService {
     private final UserSessionService userSessionService;
     private final StorageService storageService;
 
+    @Value("${app.super-admin.email}")
+    private String superAdminEmail;
+
     @Override
     @Transactional
     public UserResponse createUser(UserCreateRequest request) {
+        // 일반 유저가 이미 선점된 Email 주소로 회원가입하는 것을 방지
+        if (request.email().equalsIgnoreCase(superAdminEmail)) {
+            throw new BusinessException(UserErrorCode.RESERVED_EMAIL);
+        }
+
         if (userRepository.existsByEmail(request.email())) {
             throw new BusinessException(UserErrorCode.ALREADY_EXISTS);
         }
