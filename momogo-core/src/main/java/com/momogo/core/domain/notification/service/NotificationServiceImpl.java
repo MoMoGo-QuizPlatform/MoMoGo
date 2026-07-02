@@ -46,10 +46,15 @@ public class NotificationServiceImpl implements NotificationService {
     int limit = normalizeLimit(request.limit());
     Pageable pageable = PageRequest.of(0, limit + 1);
 
-    List<Notification> notifications = (request.cursor() == null || request.cursor().isBlank())
-        ? notificationRepository.findByReceiverIdOrderByCreatedAtDescIdDesc(userId, pageable)
-        : notificationRepository.findNextPageByReceiverId(
-            userId, parseCursor(request.cursor()), requireIdAfter(request), pageable);
+    boolean hasCursor = request.cursor() != null && !request.cursor().isBlank();
+    if (!hasCursor && request.idAfter() != null) {
+      throw new NotificationException(NotificationErrorCode.INVALID_CURSOR, "cursor와 idAfter는 함께 전달되어야 합니다.");
+    }
+
+    List<Notification> notifications = hasCursor
+        ? notificationRepository.findNextPageByReceiverId(
+            userId, parseCursor(request.cursor()), requireIdAfter(request), pageable)
+        : notificationRepository.findByReceiverIdOrderByCreatedAtDescIdDesc(userId, pageable);
 
     boolean hasNext = notifications.size() > limit;
     List<Notification> content = hasNext ? notifications.subList(0, limit) : notifications;
