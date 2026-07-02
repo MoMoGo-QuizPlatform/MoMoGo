@@ -190,3 +190,6 @@ CREATE INDEX "IDX_TBL_PROBLEM_SPACE_CURSOR"
     ON "TBL_PROBLEM" ("space_id", "created_at" DESC, "id" DESC);
 -- 알림 목록 조회 성능 최적화를 위한 복합 인덱스
 CREATE INDEX "idx_notification_receiver_confirmed" ON "TBL_NOTIFICATION" ("receiver_id", "is_confirmed");
+
+-- Super_Admin 부분 유니크 인덱스
+CREATE UNIQUE INDEX "UQ_USER_SUPER_ADMIN_ONLY" ON "TBL_USER" ("role") WHERE "role" = 'SUPER_ADMIN' AND "deleted_at" IS NULL;
