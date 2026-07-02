@@ -53,7 +53,7 @@ public class SpaceServiceImpl implements SpaceService {
     Space savedSpace = spaceRepository.save(space);
 
     // 개설한 유저의 공간 정보 및 역할을 ADMIN으로 업데이트
-    // user.joinSpace(savedSpace, UserRole.ADMIN);
+     user.joinSpace(savedSpace, UserRole.ADMIN);
 
     return savedSpace;
   }
@@ -79,7 +79,7 @@ public class SpaceServiceImpl implements SpaceService {
     }
 
     // 공간 가입 처리
-    //user.joinSpace(space, UserRole.USER);
+    user.joinSpace(space, UserRole.USER);
   }
 
   @Override
@@ -149,10 +149,10 @@ public class SpaceServiceImpl implements SpaceService {
         .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_NOT_FOUND));
 
     // 소속되어 있는 모든 유저 탈퇴 처리
-//    List<User> members = userRepository.findAllBySpaceId(spaceId);
-//    for (User member : members) {
-//      member.leaveSpace();
-//    }
+    List<User> members = userRepository.findAllBySpaceId(spaceId);
+    for (User member : members) {
+      member.leaveSpace();
+    }
 
     spaceRepository.delete(space);
   }
