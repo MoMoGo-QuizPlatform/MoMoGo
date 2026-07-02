@@ -120,6 +120,7 @@ CREATE TABLE "TBL_NOTIFICATION" (
                                     "receiver_id"      UUID          NOT NULL,
                                     "title"            VARCHAR(255)  NOT NULL,
                                     "content"          TEXT          NOT NULL,
+                                    "type"             VARCHAR(50)   NOT NULL,
                                     "is_confirmed"     BOOLEAN       DEFAULT FALSE NULL,
                                     "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
                                     "updated_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL
@@ -187,3 +188,5 @@ ALTER TABLE "TBL_PROBLEM_CATEGORY" ADD CONSTRAINT "UQ_PROBLEM_CATEGORY_NAME" UNI
 -- 공간별 커서 페이지네이션 성능 인덱스 (space_id 동등 조건 + created_at/id 정렬)
 CREATE INDEX "IDX_TBL_PROBLEM_SPACE_CURSOR"
     ON "TBL_PROBLEM" ("space_id", "created_at" DESC, "id" DESC);
+-- 알림 목록 조회 성능 최적화를 위한 복합 인덱스
+CREATE INDEX "idx_notification_receiver_confirmed" ON "TBL_NOTIFICATION" ("receiver_id", "is_confirmed");

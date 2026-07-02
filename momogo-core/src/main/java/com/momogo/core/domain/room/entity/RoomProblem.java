@@ -26,7 +26,7 @@ public class RoomProblem extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "id", columnDefinition = "UUID")
+    @Column(name = "id", columnDefinition = "UUID", updatable = false, nullable = false)
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -48,15 +48,15 @@ public class RoomProblem extends BaseTimeEntity {
     @Column(name = "correct_answer", columnDefinition = "TEXT")
     private String correctAnswer;
 
-    // 방 전용 문제 생성 시 사용하는 팩토리 메서드
-    public static RoomProblem create(
+    // 정적 팩토리 생성 메소드
+    public static RoomProblem of(
         Room room,
         Integer problemOrder,
         String name,
         String content,
         String explanation,
-        String correctAnswer) {
-
+        String correctAnswer
+    ) {
         return RoomProblem.builder()
             .room(room)
             .problemOrder(problemOrder)
