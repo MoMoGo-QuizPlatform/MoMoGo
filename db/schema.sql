@@ -34,14 +34,15 @@ CREATE TABLE "TBL_USER" (
 -- 문제 카테고리 테이블
 CREATE TABLE "TBL_PROBLEM_CATEGORY" (
                                         "id"               UUID          NOT NULL,
-                                        "space_id"         UUID          NOT NULL,
                                         "name"             VARCHAR(100)  NOT NULL,
-                                        "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL
+                                        "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
+                                        "updated_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL
 );
 
 -- 문제 메타데이터 테이블 (싱글모드 문제은행)
 CREATE TABLE "TBL_PROBLEM" (
                                "id"               UUID          NOT NULL,
+                               "space_id"         UUID          NOT NULL,
                                "category_id"      UUID          NOT NULL,
                                "name"             VARCHAR(255)  NOT NULL,
                                "content"          TEXT          NOT NULL,
@@ -151,8 +152,8 @@ ALTER TABLE "TBL_NOTIFICATION" ADD CONSTRAINT "PK_TBL_NOTIFICATION" PRIMARY KEY 
 ALTER TABLE "TBL_USER" ADD CONSTRAINT "FK_TBL_SPACE_TO_TBL_USER" FOREIGN KEY ("space_id") REFERENCES "TBL_SPACE" ("id");
 
 -- 카테고리 및 문제 관계
-ALTER TABLE "TBL_PROBLEM_CATEGORY" ADD CONSTRAINT "FK_TBL_SPACE_TO_TBL_PROBLEM_CATEGORY" FOREIGN KEY ("space_id") REFERENCES "TBL_SPACE" ("id");
 ALTER TABLE "TBL_PROBLEM" ADD CONSTRAINT "FK_TBL_PROBLEM_CATEGORY_TO_TBL_PROBLEM" FOREIGN KEY ("category_id") REFERENCES "TBL_PROBLEM_CATEGORY" ("id");
+ALTER TABLE "TBL_PROBLEM" ADD CONSTRAINT "FK_TBL_SPACE_TO_TBL_PROBLEM" FOREIGN KEY ("space_id") REFERENCES "TBL_SPACE" ("id");
 ALTER TABLE "TBL_PROBLEM_COUNTERS" ADD CONSTRAINT "FK_TBL_PROBLEM_TO_TBL_PROBLEM_COUNTERS" FOREIGN KEY ("problem_id") REFERENCES "TBL_PROBLEM" ("id") ON DELETE CASCADE;
 
 -- 방 및 독립 시험지 세팅
@@ -181,8 +182,11 @@ ALTER TABLE "TBL_NOTIFICATION" ADD CONSTRAINT "FK_TBL_USER_TO_TBL_NOTIFICATION" 
 -- 이메일 중복 가입 방지 부분 유니크 인덱스 (탈퇴한 회원의 이메일은 UQ 제약에서 제외하여 재가입 허용)
 CREATE UNIQUE INDEX "UQ_USER_EMAIL_ACTIVE" ON "TBL_USER" ("email") WHERE "deleted_at" IS NULL;
 
+-- 카테고리 이름 유니크 제약 (동시 요청 레이스 컨디션 방어)
+ALTER TABLE "TBL_PROBLEM_CATEGORY" ADD CONSTRAINT "UQ_PROBLEM_CATEGORY_NAME" UNIQUE ("name");
+
+-- 공간별 커서 페이지네이션 성능 인덱스 (space_id 동등 조건 + created_at/id 정렬)
+CREATE INDEX "IDX_TBL_PROBLEM_SPACE_CURSOR"
+    ON "TBL_PROBLEM" ("space_id", "created_at" DESC, "id" DESC);
 -- 알림 목록 조회 성능 최적화를 위한 복합 인덱스
 CREATE INDEX "idx_notification_receiver_confirmed" ON "TBL_NOTIFICATION" ("receiver_id", "is_confirmed");
-
--- Super Admin 부분 유니크 인덱스
-CREATE UNIQUE INDEX "UQ_USER_SUPER_ADMIN_ONLY" ON "TBL_USER" ("role") WHERE "role" = 'SUPER_ADMIN';
