@@ -148,11 +148,8 @@ public class SpaceServiceImpl implements SpaceService {
     Space space = spaceRepository.findById(spaceId)
         .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_NOT_FOUND));
 
-    // 소속되어 있는 모든 유저 탈퇴 처리
-    List<User> members = userRepository.findAllBySpaceId(spaceId);
-    for (User member : members) {
-      member.leaveSpace();
-    }
+    // 벌크 쿼리로 공간 소속 유저 탈퇴 처리
+    userRepository.bulkLeaveSpace(spaceId, UserRole.USER);
 
     spaceRepository.delete(space);
   }
