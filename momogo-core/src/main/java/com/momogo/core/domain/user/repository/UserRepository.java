@@ -1,6 +1,7 @@
 package com.momogo.core.domain.user.repository;
 
 import com.momogo.core.domain.user.entity.User;
+import com.momogo.core.domain.user.entity.enums.UserRole;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -16,4 +17,6 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmail(String email);
 
     boolean existsByEmail(String email);
+
+    boolean existsByRole(UserRole role);
 }

@@ -69,7 +69,7 @@ public class SecurityConfig {
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
-                        .requestMatchers("/actuator/**").hasRole("ADMIN")
+                        .requestMatchers("/actuator/**").hasRole("SUPER_ADMIN")
 
                         // 로그인/아웃 관련
                         .requestMatchers("/api/auth/sign-in", "/api/auth/sign-out").permitAll()
@@ -79,9 +79,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/users/me").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/users").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/{userId}").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/users").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/users").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/users/*/role").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PATCH, "/api/users/*/banned").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/users/*/banned").hasRole("SUPER_ADMIN")
 
                         // 인증 관련
                         .requestMatchers(HttpMethod.GET, "/api/auth/csrf-token").permitAll()
