@@ -39,8 +39,6 @@ public class RoomUser extends BaseCreatedTimeEntity {
         return RoomUser.builder()
             .room(room)
             .user(user)
-            .isAttended(false)
-            .score(0)
             .build();
     }
 }
