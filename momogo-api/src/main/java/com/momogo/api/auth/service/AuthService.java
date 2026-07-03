@@ -1,4 +1,4 @@
-package com.momogo.api.auth;
+package com.momogo.api.auth.service;
 
 import com.momogo.api.auth.dto.JwtDto;
 
