@@ -38,8 +38,6 @@ public record OAuth2Attributes(
         String name = attributes != null ? (String) attributes.get("name") : null;
         String email = attributes != null ? (String) attributes.get("email") : null;
 
-        // nickname은 null이 될 수 없으므로 이메일의 '@' 앞부분을 삽입한다.
-        // 만약 email이 null인 경우 nickname은 '구글 사용자'로 삽입된다.
         if (name == null || name.isBlank()) {
             if (email != null && !email.isBlank() && email.contains("@")) {
                 name = email.split("@")[0];
