@@ -43,18 +43,32 @@ public record OAuth2Attributes(
 
     /**
      * 카카오 OAuth2 프로필 응답 정보를 파싱합니다.
+     * 유저가 개인 정보 제공 동의를 안했을 경우 null 체크하여 NPE 문제를 발생시키지 않습니다.
      */
     @SuppressWarnings("unchecked")
     private static OAuth2Attributes ofKakao(String userNameAttributeName, Map<String, Object> attributes) {
-        Map<String, Object> kakaoAccount = (Map<String, Object>) attributes.get("kakao_account");
-        Map<String, Object> profile = (Map<String, Object>) kakaoAccount.get("profile");
+        Map<String, Object> kakaoAccount = attributes != null ? (Map<String, Object>) attributes.get("kakao_account") : null;
+        Map<String, Object> profile = kakaoAccount != null ? (Map<String, Object>) kakaoAccount.get("profile") : null;
+
+        String nickname = profile != null ? (String) profile.get("nickname") : null;
+        String email = kakaoAccount != null ? (String) kakaoAccount.get("email") : null;
+
+        // nickname은 null이 될 수 없으므로 이메일의 '@' 앞부분을 삽입한다.
+        // 만약 email이 null인 경우 nickname은 '카카오 사용자'로 삽입된다.
+        if (nickname == null || nickname.isBlank()) {
+            if (email != null && !email.isBlank() && email.contains("@")) {
+                nickname = email.split("@")[0];
+            } else {
+                nickname = "카카오 사용자";
+            }
+        }
 
         return new OAuth2Attributes(
                 attributes,
                 userNameAttributeName,
-                (String) profile.get("nickname"),
-                (String) kakaoAccount.get("email"),
-                (String) profile.get("thumbnail_image_url")
+                nickname,
+                email,
+                profile != null ? (String) profile.get("thumbnail_image_url") : null
         );
     }
 
