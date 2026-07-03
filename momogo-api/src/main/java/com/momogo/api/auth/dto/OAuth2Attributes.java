@@ -30,20 +30,38 @@ public record OAuth2Attributes(
 
     /**
      * 구글 OAuth2 프로필 응답 정보를 파싱합니다.
+     * 유저가 개인 정보 제공 동의를 안했을 경우 null 체크하여 NPE 문제를 발생시키지 않습니다.
+     * email이 null인 경우 name에 '구글 사용자'로 삽입됩니다.
+     * email이 null이 아닌 경우 '@' 앞부분의 이메일 주소가 삽입됩니다.
      */
     private static OAuth2Attributes ofGoogle(String userNameAttributeName, Map<String, Object> attributes) {
+        String name = attributes != null ? (String) attributes.get("name") : null;
+        String email = attributes != null ? (String) attributes.get("email") : null;
+
+        // nickname은 null이 될 수 없으므로 이메일의 '@' 앞부분을 삽입한다.
+        // 만약 email이 null인 경우 nickname은 '구글 사용자'로 삽입된다.
+        if (name == null || name.isBlank()) {
+            if (email != null && !email.isBlank() && email.contains("@")) {
+                name = email.split("@")[0];
+            } else {
+                name = "구글 사용자";
+            }
+        }
+
         return new OAuth2Attributes(
                 attributes,
                 userNameAttributeName,
-                (String) attributes.get("name"),
-                (String) attributes.get("email"),
-                (String) attributes.get("picture")
+                name,
+                email,
+                attributes != null ? (String) attributes.get("picture") : null
         );
     }
 
     /**
      * 카카오 OAuth2 프로필 응답 정보를 파싱합니다.
      * 유저가 개인 정보 제공 동의를 안했을 경우 null 체크하여 NPE 문제를 발생시키지 않습니다.
+     * email이 null인 경우 name에 '카카오 사용자'로 삽입됩니다.
+     * email이 null이 아닌 경우 '@' 앞부분의 이메일 주소가 삽입됩니다.
      */
     @SuppressWarnings("unchecked")
     private static OAuth2Attributes ofKakao(String userNameAttributeName, Map<String, Object> attributes) {
@@ -53,8 +71,6 @@ public record OAuth2Attributes(
         String nickname = profile != null ? (String) profile.get("nickname") : null;
         String email = kakaoAccount != null ? (String) kakaoAccount.get("email") : null;
 
-        // nickname은 null이 될 수 없으므로 이메일의 '@' 앞부분을 삽입한다.
-        // 만약 email이 null인 경우 nickname은 '카카오 사용자'로 삽입된다.
         if (nickname == null || nickname.isBlank()) {
             if (email != null && !email.isBlank() && email.contains("@")) {
                 nickname = email.split("@")[0];
