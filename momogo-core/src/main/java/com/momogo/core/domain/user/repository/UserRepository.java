@@ -19,4 +19,6 @@ public interface UserRepository extends JpaRepository<User, UUID>, UserRepositor
     boolean existsByEmail(String email);
 
     boolean existsByRole(UserRole role);
+
+    long countBySpaceIdAndRole(UUID spaceId, UserRole userRole);
 }

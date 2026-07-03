@@ -5,6 +5,7 @@ import com.momogo.core.domain.space.dto.request.SpaceCreateRequest;
 import com.momogo.core.domain.space.dto.request.SpaceCursorRequest;
 import com.momogo.core.domain.space.dto.request.SpaceJoinRequest;
 import com.momogo.core.domain.space.dto.request.SpaceUpdateRequest;
+import com.momogo.core.domain.space.dto.request.SpaceUserRoleUpdateRequest;
 import com.momogo.core.domain.space.dto.response.SpaceCursorPaginationResponse;
 import com.momogo.core.domain.space.dto.response.SpaceResponse;
 import com.momogo.core.domain.space.entity.Space;
@@ -20,6 +21,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -145,6 +147,25 @@ public class SpaceController {
   ) {
     spaceService.deleteSpace(userDetails.getUserResponse().id(), spaceId);
     return ResponseEntity.noContent().build();
+  }
+
+  /**
+   * 공간 멤버 권한 변경 (USER <-> ADMIN)
+   * @param userDetails 유저 아이디
+   * @param spaceId 공간 아이디
+   * @param targetUserId 대상 유저 아이디
+   * @param request 권한 변경 요청 DTO
+   * @return 권한 변경 성공 여부
+   */
+  @PatchMapping("/{spaceId}/users/{userId}/role")
+  public ResponseEntity<Void> changeUserRole(
+      @AuthenticationPrincipal MoMoGoUserDetails userDetails,
+      @PathVariable UUID spaceId,
+      @PathVariable("userId") UUID targetUserId,
+      @Valid @RequestBody SpaceUserRoleUpdateRequest request
+  ) {
+    spaceService.changeUserRole(userDetails.getUserResponse().id(), spaceId, targetUserId, request.userRole());
+    return ResponseEntity.ok().build();
   }
 }
 
