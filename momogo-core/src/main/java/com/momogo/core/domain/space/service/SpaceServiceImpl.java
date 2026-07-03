@@ -1,6 +1,7 @@
 package com.momogo.core.domain.space.service;
 
 import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.common.security.PasswordEncryptor;
 import com.momogo.core.domain.space.dto.request.SpaceCreateRequest;
 import com.momogo.core.domain.space.dto.request.SpaceUpdateRequest;
 import com.momogo.core.domain.space.dto.response.SpaceCursorPaginationResponse;
@@ -11,7 +12,6 @@ import com.momogo.core.domain.space.repository.SpaceRepository;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.repository.UserRepository;
-import com.momogo.core.common.security.PasswordEncryptor;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -161,6 +161,11 @@ public class SpaceServiceImpl implements SpaceService {
     // 요청 보낸 유저가 해당 공간의 ADMIN 권한을 가졌는지 검증
     validateAndGetSpaceAdmin(adminUserId, spaceId);
 
+    // 본인의 권한을 스스로 변경하는 행위 차단
+    if (adminUserId.equals(targetUserId)) {
+      throw new BusinessException(SpaceErrorCode.LAST_ADMIN_DEMOTION_BLOCKED);
+    }
+
     // 권한 변경 대상 유저 조회
     User targetUser = userRepository.findById(targetUserId)
         .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
@@ -168,6 +173,14 @@ public class SpaceServiceImpl implements SpaceService {
     // 대상 유저가 나와 같은 공간에 소속되어 있는지 체크
     if (targetUser.getSpace() == null || !targetUser.getSpace().getId().equals(spaceId)) {
       throw new BusinessException(SpaceErrorCode.NOT_SPACE_MEMBER);
+    }
+
+    // ADMIN에서 USER로 강등 시도 시, 마지막 남은 유일한 ADMIN인지 체크
+    if (targetUser.getRole() == UserRole.ADMIN && role == UserRole.USER) {
+      long adminCount = userRepository.countBySpaceIdAndRole(spaceId, UserRole.ADMIN);
+      if (adminCount <= 1) {
+        throw new BusinessException(SpaceErrorCode.LAST_ADMIN_DEMOTION_BLOCKED);
+      }
     }
 
     // 권한 변경
