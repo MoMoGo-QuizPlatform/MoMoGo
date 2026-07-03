@@ -175,14 +175,6 @@ public class SpaceServiceImpl implements SpaceService {
       throw new BusinessException(SpaceErrorCode.NOT_SPACE_MEMBER);
     }
 
-    // ADMIN에서 USER로 강등 시도 시, 마지막 남은 유일한 ADMIN인지 체크
-    if (targetUser.getRole() == UserRole.ADMIN && role == UserRole.USER) {
-      long adminCount = userRepository.countBySpaceIdAndRole(spaceId, UserRole.ADMIN);
-      if (adminCount <= 1) {
-        throw new BusinessException(SpaceErrorCode.LAST_ADMIN_DEMOTION_BLOCKED);
-      }
-    }
-
     // 권한 변경
     targetUser.changeRole(role);
   }
