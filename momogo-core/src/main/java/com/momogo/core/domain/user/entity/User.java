@@ -123,4 +123,10 @@ public class User extends BaseTimeEntity {
         this.space = null;
         this.role = UserRole.USER;
     }
+
+    public void changeRole(UserRole role) {
+        if (role != null) {
+            this.role = role;
+        }
+    }
 }

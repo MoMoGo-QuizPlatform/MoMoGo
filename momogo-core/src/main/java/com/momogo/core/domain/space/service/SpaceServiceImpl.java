@@ -156,6 +156,26 @@ public class SpaceServiceImpl implements SpaceService {
 
     spaceRepository.delete(space);
   }
+
+  @Override
+  @Transactional
+  public void changeUserRole(UUID adminUserId, UUID spaceId, UUID targetUserId, UserRole role) {
+
+    // 요청 보낸 유저가 해당 공간의 ADMIN 권한을 가졌는지 검증
+    validateAndGetSpaceAdmin(adminUserId, spaceId);
+
+    // 권한 변경 대상 유저 조회
+    User targetUser = userRepository.findById(targetUserId)
+        .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
+
+    // 대상 유저가 나와 같은 공간에 소속되어 있는지 체크
+    if (targetUser.getSpace() == null || !targetUser.getSpace().getId().equals(spaceId)) {
+      throw new BusinessException(SpaceErrorCode.NOT_SPACE_MEMBER);
+    }
+
+    // 권한 변경
+    targetUser.changeRole(role);
+  }
  
   // 공통 헬퍼 메소드: 사용자 조회 및 공간 관리자 권한 검증
   private User validateAndGetSpaceAdmin(UUID userId, UUID spaceId) {
