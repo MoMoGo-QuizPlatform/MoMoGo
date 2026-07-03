@@ -163,7 +163,7 @@ public class SpaceServiceImpl implements SpaceService {
 
     // 본인의 권한을 스스로 변경하는 행위 차단
     if (adminUserId.equals(targetUserId)) {
-      throw new BusinessException(SpaceErrorCode.LAST_ADMIN_DEMOTION_BLOCKED);
+      throw new BusinessException(SpaceErrorCode.SELF_ROLE_CHANGE_BLOCKED);
     }
 
     // 권한 변경 대상 유저 조회
