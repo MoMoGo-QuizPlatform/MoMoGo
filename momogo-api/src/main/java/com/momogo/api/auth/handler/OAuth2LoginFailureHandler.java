@@ -44,7 +44,7 @@ public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
         log.error("[OAuth2LoginFailureHandler] 소셜 로그인 실패: {}", exception.getMessage());
 
         // 에러 메시지를 프론트엔드가 알아볼 수 있게 인코딩하여 리다이렉트 주소에 포함
-        String errorMessage = exception.getMessage();
+        String errorMessage = exception.getMessage() != null ? exception.getMessage() : "소셜 로그인 인증에 실패했습니다.";
 
         // 커스텀 예외 메시지 포맷팅
         String targetUrl = UriComponentsBuilder.fromUriString(failureRedirectUrl)

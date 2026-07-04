@@ -71,8 +71,8 @@ app:
       # 물리 디스크 저장 경로
       dir: ${APP_FILE_UPLOAD_DIR}
   oauth2:
-    success-redirect-url: ${OAuth2_SUCCESS_REDIRECT_URL}
-    failure-redirect-url: ${OAuth2_FAILURE_REDIRECT_URL}
+    success-redirect-url: ${OAUTH2_SUCCESS_REDIRECT_URL}
+    failure-redirect-url: ${OAUTH2_FAILURE_REDIRECT_URL}
 
 server:
   port: 8080
