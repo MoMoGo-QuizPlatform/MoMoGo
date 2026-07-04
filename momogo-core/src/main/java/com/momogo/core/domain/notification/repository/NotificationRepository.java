@@ -7,8 +7,11 @@ import org.springframework.stereotype.Repository;
 import java.util.UUID;
 
 @Repository
-public interface NotificationRepository extends JpaRepository<Notification, UUID> {
+public interface NotificationRepository extends JpaRepository<Notification, UUID>, NotificationRepositoryCustom {
 
   //본인 알람 확인
   Optional<Notification> findByIdAndReceiverId(UUID id, UUID receiverId);
+
+  //사용자의 전체 알림 개수 조회
+  long countByReceiverId(UUID receiverId);
 }
