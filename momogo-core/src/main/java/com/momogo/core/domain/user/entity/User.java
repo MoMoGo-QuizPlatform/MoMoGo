@@ -110,10 +110,10 @@ public class User extends BaseTimeEntity {
         this.profileImageUrl = profileImageUrl;
     }
 
-    // 임시 비밀번호를 세팅하고 만료 시간을 현재 시간 기준으로 3분 뒤로 설정합니다.
+    // 임시 비밀번호를 세팅하고 만료 시간을 현재 시간 기준으로 10분 뒤로 설정합니다.
     public void setTemporaryPassword(String hashedTempPassword) {
         this.tempPassword = hashedTempPassword;
-        this.tempPasswordExpiredAt = OffsetDateTime.now().plusMinutes(3);
+        this.tempPasswordExpiredAt = OffsetDateTime.now().plusMinutes(10);
     }
 
     // 비밀번호 변경 시 임시 비밀번호를 초기화 합니다.

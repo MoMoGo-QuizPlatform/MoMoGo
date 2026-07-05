@@ -74,15 +74,19 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
+    /**
+     * 초기화된 비밀번호를 사용자에게 이메일로 발송
+     * 비인증 상태에서 유효한 이메일(존재하는 이메일, 소셜 계정)인지 노출하지 않고 return
+     *
+     * @param request 복구할 이메일 정보 DTO
+     */
     @Override
     @Transactional
     public void sendTemporaryPassword(PasswordFindRequest request) {
-        User user = userRepository.findByEmail(request.email())
-                .orElseThrow(() -> new BusinessException(UserErrorCode.NOT_FOUND));
-
-        // 소셜 로그인 가입자 임시 비밀번호 발급 차단
-        if (user.getSocial() != SocialType.NONE) {
-            throw new BusinessException(UserErrorCode.SOCIAL_USER_CANNOT_CHANGE_PASSWORD);
+        User user = userRepository.findByEmail(request.email()).orElse(null);
+        if (user == null || user.getSocial() != SocialType.NONE) {
+            log.info("[AuthService] 임시 비밀번호 발급 조건 미충족 (미가입/소셜 계정)");
+            return;
         }
 
         String tempPassword = PasswordGenerator.generateRandomPassword();

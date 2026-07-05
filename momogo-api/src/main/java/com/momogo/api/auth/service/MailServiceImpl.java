@@ -19,7 +19,7 @@ public class MailServiceImpl implements MailService {
         message.setText("안녕하세요. MoMoGo 서비스입니다.\n\n"
                 + "요청하신 임시 비밀번호가 발급되었습니다.\n"
                 + "임시 비밀번호: [" + tempPassword + "]\n\n"
-                + "본 임시 비밀번호는 발급 후 3분간만 유효합니다.\n"
+                + "본 임시 비밀번호는 발급 후 10분간만 유효합니다.\n"
                 + "로그인 후 반드시 비밀번호를 변경해 주세요."
         );
         mailSender.send(message);

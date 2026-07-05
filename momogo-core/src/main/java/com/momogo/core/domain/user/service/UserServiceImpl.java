@@ -190,7 +190,7 @@ public class UserServiceImpl implements UserService {
     }
 
     /**
-     * 임시 비밀번호가 존재하고, 3분 유효시간 이내이며, 입력받은 평문 비밀번호와 일치하는지 판단합니다.
+     * 임시 비밀번호가 존재하고, 10분 유효시간 이내이며, 입력받은 평문 비밀번호와 일치하는지 판단합니다.
      */
     private boolean isValidTemporaryPassword(User user, String rawPassword) {
         // 임시 비밀번호가 비어 있는지 확인

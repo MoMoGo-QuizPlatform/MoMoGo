@@ -1,4 +1,7 @@
 spring:
+  threads:
+    virtual:
+      enabled: true
   application:
     name: momogo-api
   profiles:
@@ -18,7 +21,7 @@ spring:
       mail:
         smtp:
           auth: true
-          connectiontimeout: 5000
+          connectiontimeout: 3000
           timeout: 5000
           writetimeout: 5000
           starttls:

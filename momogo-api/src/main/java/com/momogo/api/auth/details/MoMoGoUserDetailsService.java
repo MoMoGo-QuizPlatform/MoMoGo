@@ -52,7 +52,7 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
 
         UserResponse userResponse = userMapper.toResponse(user);
 
-        // 3분 이내 유효한 임시 비밀번호가 존재한다면 검증용 비밀번호로 임시 비밀번호 사용
+        // 10분 이내 유효한 임시 비밀번호가 존재한다면 검증용 비밀번호로 임시 비밀번호 사용
         String passwordForAuth = user.getPassword();
         if (user.getTempPassword() != null && user.getTempPasswordExpiredAt() != null
                 && OffsetDateTime.now().isBefore(user.getTempPasswordExpiredAt())) {
