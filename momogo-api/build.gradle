@@ -13,6 +13,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.16'
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
 
     // Spring Integration (HTTP 및 JPA 연동 파트)
     implementation 'org.springframework.boot:spring-boot-starter-integration'

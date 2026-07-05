@@ -25,6 +25,7 @@ import com.momogo.core.domain.user.dto.request.ProfileImageUploadRequest;
 import org.springframework.dao.DataIntegrityViolationException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Slf4j
@@ -42,6 +43,15 @@ public class UserServiceImpl implements UserService {
     @Value("${app.super-admin.email}")
     private String superAdminEmail;
 
+    /**
+     * 신규 회원 가입을 처리합니다.
+     * 이메일 중복 검사 및 예약된 이메일 가입 방지 검증을 포함합니다.
+     *
+     * @param request 회원가입 요청 DTO
+     * @return 가입 완료된 유저 정보 DTO
+     * @throws BusinessException 이메일이 중복되었거나 사용할 수 없는 이메일인 경우
+     */
+    // TODO: 회원 가입 시 해당 실제 이메일이 존재하는지 검증 로직 구현
     @Override
     @Transactional
     public UserResponse createUser(UserCreateRequest request) {
@@ -77,6 +87,16 @@ public class UserServiceImpl implements UserService {
         }
     }
 
+    /**
+     * 회원 프로필(이름, 프로필 이미지) 및 비밀번호를 수정합니다.
+     * 임시 비밀번호가 활성화된 경우 이를 확인 및 무효화(초기화) 처리합니다.
+     *
+     * @param userId 회원 식별자
+     * @param request 이름 및 패스워드 변경 정보 DTO
+     * @param profile 업로드할 프로필 이미지 정보 DTO
+     * @return 수정 완료된 유저 정보 DTO
+     * @throws BusinessException 유저를 찾을 수 없거나, 소셜 계정의 비밀번호 수정을 시도하거나, 현재 비밀번호가 불일치하는 경우
+     */
     @Override
     @Transactional
     public UserResponse updateUser(UUID userId, UserUpdateRequest request, ProfileImageUploadRequest profile) {
@@ -127,18 +147,29 @@ public class UserServiceImpl implements UserService {
         }
 
         if (request != null && request.newPassword() != null && !request.newPassword().isBlank()) {
+
+            // 소셜 로그인 가입자 비밀번호 변경 시도 차단
+            if (user.getSocial() != SocialType.NONE) {
+                throw new BusinessException(UserErrorCode.SOCIAL_USER_CANNOT_CHANGE_PASSWORD);
+            }
+
             // 새 비밀번호는 입력했는데 현재 비밀번호가 누락된 경우
             if (request.currentPassword() == null || request.currentPassword().isBlank()) {
                 throw new BusinessException(UserErrorCode.CURRENT_PASSWORD_REQUIRED);
             }
 
-            // 현재 비밀번호가 일치하는지 검증
-            if (!passwordEncryptor.matches(request.currentPassword(), user.getPassword())) {
+            // 비밀 번호 검증 (영구 비밀번호 혹은 유효한 임시 비밀번호 중 하나라도 부합하는지 체크)
+            boolean isCurrentPasswordValid = passwordEncryptor.matches(request.currentPassword(), user.getPassword())
+                    || isValidTemporaryPassword(user, request.currentPassword());
+
+            if (!isCurrentPasswordValid) {
                 throw new BusinessException(UserErrorCode.PASSWORD_MISMATCH);
             }
 
             String encodedPassword = passwordEncryptor.encrypt(request.newPassword());
             user.updatePassword(encodedPassword);
+
+            user.clearTemporaryPassword();
 
             userSessionService.invalidateUserSessions(userId);
         }
@@ -156,5 +187,19 @@ public class UserServiceImpl implements UserService {
             return false;
         }
         return message.toLowerCase().contains("uq_user_email_active");
+    }
+
+    /**
+     * 임시 비밀번호가 존재하고, 3분 유효시간 이내이며, 입력받은 평문 비밀번호와 일치하는지 판단합니다.
+     */
+    private boolean isValidTemporaryPassword(User user, String rawPassword) {
+        // 임시 비밀번호가 비어 있는지 확인
+        if (user.getTempPassword() == null || user.getTempPasswordExpiredAt() == null) {
+            return false;
+        }
+        if (OffsetDateTime.now().isAfter(user.getTempPasswordExpiredAt())) {
+            return false;
+        }
+        return passwordEncryptor.matches(rawPassword, user.getTempPassword());
     }
 }

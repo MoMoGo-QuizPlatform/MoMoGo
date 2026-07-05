@@ -1,23 +1,41 @@
 package com.momogo.api.auth.service;
 
+import com.momogo.api.auth.details.MoMoGoUserDetails;
+import com.momogo.api.auth.dto.JwtInformation;
+import com.momogo.api.auth.dto.request.PasswordFindRequest;
+import com.momogo.api.auth.dto.response.JwtDto;
 import com.momogo.api.auth.jwt.JwtRegistry;
 import com.momogo.api.auth.jwt.JwtTokenProvider;
-import com.momogo.api.auth.details.MoMoGoUserDetails;
-import com.momogo.api.auth.dto.JwtDto;
-import com.momogo.api.auth.dto.JwtInformation;
+import com.momogo.api.auth.util.PasswordGenerator;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
+import com.momogo.core.domain.user.entity.User;
+import com.momogo.core.domain.user.entity.enums.SocialType;
+import com.momogo.core.domain.user.event.TemporaryPasswordGeneratedEvent;
+import com.momogo.core.domain.user.exception.UserErrorCode;
+import com.momogo.core.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
+@Transactional(readOnly = true)
 @RequiredArgsConstructor
 @Service
 public class AuthServiceImpl implements AuthService {
 
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    // Jwt
     private final JwtTokenProvider jwtTokenProvider;
     private final JwtRegistry jwtRegistry;
+
+    // Event
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public JwtDto refresh(String refreshToken) {
@@ -55,4 +73,24 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException(GlobalErrorCode.UNAUTHORIZED, "토큰 갱신 중 시스템 에러가 발생했습니다.");
         }
     }
+
+    @Override
+    @Transactional
+    public void sendTemporaryPassword(PasswordFindRequest request) {
+        User user = userRepository.findByEmail(request.email())
+                .orElseThrow(() -> new BusinessException(UserErrorCode.NOT_FOUND));
+
+        // 소셜 로그인 가입자 임시 비밀번호 발급 차단
+        if (user.getSocial() != SocialType.NONE) {
+            throw new BusinessException(UserErrorCode.SOCIAL_USER_CANNOT_CHANGE_PASSWORD);
+        }
+
+        String tempPassword = PasswordGenerator.generateRandomPassword();
+        String hashedTempPassword = passwordEncoder.encode(tempPassword);
+
+        user.setTemporaryPassword(hashedTempPassword);
+
+        eventPublisher.publishEvent(new TemporaryPasswordGeneratedEvent(user.getEmail(), tempPassword));
+    }
+
 }
