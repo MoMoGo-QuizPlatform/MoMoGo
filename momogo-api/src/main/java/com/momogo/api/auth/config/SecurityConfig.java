@@ -1,5 +1,6 @@
-package com.momogo.api.auth;
+package com.momogo.api.auth.config;
 
+import com.momogo.api.auth.jwt.JwtAuthenticationFilter;
 import com.momogo.api.auth.details.OAuth2UserDetailsService;
 import com.momogo.api.auth.handler.*;
 import jakarta.servlet.DispatcherType;
