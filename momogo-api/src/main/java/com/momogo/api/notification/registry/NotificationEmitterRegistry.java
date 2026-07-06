@@ -25,14 +25,11 @@ public class NotificationEmitterRegistry {
 
   // 연결이 정상종료되거나, 타임아웃되거나, 에러가 났을 때 목록에서 제거
   // 유저의 emitter가 다 없어지면 메모리 누수 방지를 위해 그 유저의 key 자체도 지움
+  // computeIfPresent로 묶어서 key에 대해 서로 끼어들지 못하게 함
   public void remove(UUID userId, SseEmitter emitter) {
-    List<SseEmitter> userEmitters = emitters.get(userId);
-    if (userEmitters == null) {
-      return;
-    }
-    userEmitters.remove(emitter);
-    if (userEmitters.isEmpty()) {
-      emitters.remove(userId);
-    }
+    emitters.computeIfPresent(userId, (id, userEmitters) -> {
+      userEmitters.remove(emitter);
+      return userEmitters.isEmpty() ? null : userEmitters;
+    });
   }
 }

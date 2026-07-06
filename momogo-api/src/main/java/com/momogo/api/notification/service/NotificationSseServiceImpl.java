@@ -39,6 +39,7 @@ public class NotificationSseServiceImpl implements NotificationSseService {
     try {
       emitter.send(SseEmitter.event().name("connect").data("connected"));
     } catch (IOException e) {
+      emitter.completeWithError(e);
       emitterRegistry.remove(userId, emitter);
     }
 
