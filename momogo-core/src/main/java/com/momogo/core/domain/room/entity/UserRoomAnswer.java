@@ -17,6 +17,7 @@ import java.util.UUID;
 @Builder
 public class UserRoomAnswer extends BaseCreatedTimeEntity {
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", columnDefinition = "UUID")
     private UUID id;
 
@@ -33,4 +34,14 @@ public class UserRoomAnswer extends BaseCreatedTimeEntity {
 
     @Column(name = "user_answer", columnDefinition = "TEXT")
     private String userAnswer;
+
+    // 정적 팩토리 메서드
+    public static UserRoomAnswer of(User user, RoomProblem roomProblem, String userAnswer) {
+        return UserRoomAnswer.builder()
+            .user(user)
+            .roomProblem(roomProblem)
+            .userAnswer(userAnswer)
+            .isSolved(userAnswer != null && !userAnswer.isBlank())
+            .build();
+    }
 }

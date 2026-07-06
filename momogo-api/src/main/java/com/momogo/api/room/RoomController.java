@@ -1,6 +1,7 @@
 package com.momogo.api.room;
 
 import com.momogo.api.auth.details.MoMoGoUserDetails;
+import com.momogo.core.domain.room.dto.request.RoomAnswerSubmitRequest;
 import com.momogo.core.domain.room.dto.request.RoomCreateRequest;
 import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
 import com.momogo.core.domain.room.dto.response.RoomResponse;
@@ -72,5 +73,15 @@ public class RoomController {
   ) {
     List<RoomProblemResponse> response = roomService.getRoomProblems(userId, roomId);
     return ResponseEntity.ok(response);
+  }
+
+  @PostMapping("/rooms/{roomId}/submit")
+  public ResponseEntity<Void> submitRoomAnswer(
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID userId,
+      @PathVariable UUID roomId,
+      @Valid @RequestBody RoomAnswerSubmitRequest request
+  ) {
+    roomService.submitRoomAnswer(userId, roomId, request);
+    return ResponseEntity.ok().build();
   }
 }

@@ -1,6 +1,7 @@
 package com.momogo.core.domain.room.service;
 
 import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.domain.room.dto.request.RoomAnswerSubmitRequest;
 import com.momogo.core.domain.room.dto.request.RoomCreateRequest;
 import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
 import com.momogo.core.domain.room.dto.response.RoomResponse;
@@ -8,12 +9,14 @@ import com.momogo.core.domain.room.entity.Room;
 import com.momogo.core.domain.room.entity.RoomProblem;
 import com.momogo.core.domain.room.entity.RoomUser;
 import com.momogo.core.domain.room.entity.RoomUserId;
+import com.momogo.core.domain.room.entity.UserRoomAnswer;
 import com.momogo.core.domain.room.event.RoomCreatedEvent;
 import com.momogo.core.domain.room.exception.RoomErrorCode;
 import com.momogo.core.domain.room.mapper.RoomMapper;
 import com.momogo.core.domain.room.repository.RoomProblemRepository;
 import com.momogo.core.domain.room.repository.RoomRepository;
 import com.momogo.core.domain.room.repository.RoomUserRepository;
+import com.momogo.core.domain.room.repository.UserRoomAnswerRepository;
 import com.momogo.core.domain.space.entity.Space;
 import com.momogo.core.domain.space.exception.SpaceErrorCode;
 import com.momogo.core.domain.space.repository.SpaceRepository;
@@ -40,6 +43,7 @@ public class RoomServiceImpl implements RoomService{
   private final RoomUserRepository roomUserRepository;
   private final UserRepository userRepository;
   private final SpaceRepository spaceRepository;
+  private final UserRoomAnswerRepository userRoomAnswerRepository;
   private final RoomMapper roomMapper;
   private final ApplicationEventPublisher eventPublisher;
 
@@ -138,6 +142,52 @@ public class RoomServiceImpl implements RoomService{
     List<RoomProblem> roomProblems = roomProblemRepository.findByRoomIdOrderByProblemOrder(roomId);
 
     return roomMapper.toProblemResponseList(roomProblems);
+  }
+
+  @Override
+  @Transactional
+  public void submitRoomAnswer(UUID userId, UUID roomId, RoomAnswerSubmitRequest request) {
+    log.info("[RoomService] 시험 답안 제출 시작 - userId: {}, roomId: {}", userId, roomId);
+
+    // 방 존재 검증
+    Room room = roomRepository.findById(roomId)
+        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+
+    // 시간 검증 - 시험 시작 전 제출 시도 차단
+    OffsetDateTime now = OffsetDateTime.now();
+    if (now.isBefore(room.getTestStartAt())) {
+      throw new BusinessException(RoomErrorCode.INVALID_ACCESS_BEFORE_START);
+    }
+
+    // 상태 검증 - 이미 최종적으로 끝난 시험이면 추가 제출 불가
+    if (Boolean.TRUE.equals(room.getIsEnded())) {
+      throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
+    }
+
+    // 응시 대상 유저  자격 검증
+    RoomUserId roomUserId = new RoomUserId(roomId, userId);
+    RoomUser roomUser = roomUserRepository.findById(roomUserId)
+        .orElseThrow(() -> new BusinessException(SpaceErrorCode.NOT_SPACE_MEMBER));
+
+    // 요청 유저 획득
+    User user = userRepository.findById(userId)
+        .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
+
+    // 각 문제 답안 일괄 매핑, 저장
+    List<UserRoomAnswer> userRoomAnswers = request.answers().stream()
+        .map(ans -> {
+          RoomProblem problem = roomProblemRepository.findById(ans.roomProblemId())
+              .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+          return UserRoomAnswer.of(user, problem, ans.userAnswer());
+        })
+        .toList();
+    userRoomAnswerRepository.saveAll(userRoomAnswers);
+
+    // 응시 완료 상태 업데이트
+    roomUser.attend();
+
+    log.info("[RoomService] 시험 답안 제출 완료 - userId: {}, roomId: {}, 제출 문항 수: {}",
+        userId, roomId, userRoomAnswers.size());
   }
 
 
