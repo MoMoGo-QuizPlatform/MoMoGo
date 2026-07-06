@@ -4,6 +4,7 @@ import com.momogo.core.domain.space.dto.request.SpaceCreateRequest;
 import com.momogo.core.domain.space.dto.request.SpaceUpdateRequest;
 import com.momogo.core.domain.space.dto.response.SpaceCursorPaginationResponse;
 import com.momogo.core.domain.space.entity.Space;
+import com.momogo.core.domain.user.entity.enums.UserRole;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,4 +28,7 @@ public interface SpaceService {
 
   // 공간 삭제 (ADMIN 권한 검증)
   void deleteSpace(UUID userId, UUID spaceId);
+
+  // 공간 내 유저 권한 변경
+  void changeUserRole(UUID adminUserId, UUID spaceId, UUID targetUserId, UserRole role);
 }

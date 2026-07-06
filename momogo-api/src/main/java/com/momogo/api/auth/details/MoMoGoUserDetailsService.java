@@ -13,6 +13,8 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
+
 @Slf4j
 @RequiredArgsConstructor
 @Service
@@ -39,6 +41,7 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
 
     /**
      * 공통 사용자 정보 조회 및 UserDetails 변환 메서드입니다.
+     * 임시 패스워드가 존재하는 경우 로그인에 사용되는 비밀번호를 대체합니다.
      */
     private UserDetails loadUserDetails(String username) {
         User user = userRepository.findByEmail(username)
@@ -48,7 +51,15 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
                 });
 
         UserResponse userResponse = userMapper.toResponse(user);
-        return new MoMoGoUserDetails(userResponse, user.getPassword());
+
+        // 10분 이내 유효한 임시 비밀번호가 존재한다면 검증용 비밀번호로 임시 비밀번호 사용
+        String passwordForAuth = user.getPassword();
+        if (user.getTempPassword() != null && user.getTempPasswordExpiredAt() != null
+                && OffsetDateTime.now().isBefore(user.getTempPasswordExpiredAt())) {
+            passwordForAuth = user.getTempPassword();
+        }
+
+        return new MoMoGoUserDetails(userResponse, passwordForAuth);
     }
 
     /**

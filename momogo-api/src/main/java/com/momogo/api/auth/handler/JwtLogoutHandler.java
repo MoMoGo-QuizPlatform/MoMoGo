@@ -1,7 +1,7 @@
 package com.momogo.api.auth.handler;
 
-import com.momogo.api.auth.JwtRegistry;
-import com.momogo.api.auth.JwtTokenProvider;
+import com.momogo.api.auth.jwt.JwtRegistry;
+import com.momogo.api.auth.jwt.JwtTokenProvider;
 import com.momogo.api.auth.details.MoMoGoUserDetails;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;

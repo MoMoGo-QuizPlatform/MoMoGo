@@ -1,4 +1,4 @@
-package com.momogo.api.auth;
+package com.momogo.api.auth.component;
 
 import com.momogo.core.common.security.PasswordEncryptor;
 import lombok.RequiredArgsConstructor;

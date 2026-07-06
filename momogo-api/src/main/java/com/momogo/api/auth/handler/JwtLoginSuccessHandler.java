@@ -1,10 +1,10 @@
 package com.momogo.api.auth.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.momogo.api.auth.JwtRegistry;
-import com.momogo.api.auth.JwtTokenProvider;
+import com.momogo.api.auth.jwt.JwtRegistry;
+import com.momogo.api.auth.jwt.JwtTokenProvider;
 import com.momogo.api.auth.details.MoMoGoUserDetails;
-import com.momogo.api.auth.dto.JwtDto;
+import com.momogo.api.auth.dto.response.JwtDto;
 import com.momogo.api.auth.dto.JwtInformation;
 import com.momogo.core.domain.user.dto.response.UserResponse;
 import jakarta.servlet.ServletException;

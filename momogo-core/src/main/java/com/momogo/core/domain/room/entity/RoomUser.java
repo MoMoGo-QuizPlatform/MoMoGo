@@ -41,4 +41,8 @@ public class RoomUser extends BaseCreatedTimeEntity {
             .user(user)
             .build();
     }
+
+    public void attend() {
+        this.isAttended = true;
+    }
 }

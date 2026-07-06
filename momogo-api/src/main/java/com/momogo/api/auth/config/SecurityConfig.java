@@ -1,5 +1,6 @@
-package com.momogo.api.auth;
+package com.momogo.api.auth.config;
 
+import com.momogo.api.auth.jwt.JwtAuthenticationFilter;
 import com.momogo.api.auth.details.OAuth2UserDetailsService;
 import com.momogo.api.auth.handler.*;
 import jakarta.servlet.DispatcherType;
@@ -87,6 +88,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/auth/csrf-token").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/refresh").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/reset-password").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/password-find").permitAll()
 
                         // 소셜 로그인 관련
                         .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()

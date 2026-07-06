@@ -1,4 +1,7 @@
 spring:
+  threads:
+    virtual:
+      enabled: true
   application:
     name: momogo-api
   profiles:
@@ -9,12 +12,55 @@ spring:
       prod:
         - prod
 
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          connectiontimeout: 3000
+          timeout: 5000
+          writetimeout: 5000
+          starttls:
+            enable: true
+
   jpa:
     open-in-view: false
     properties:
       hibernate:
         default_batch_fetch_size: 100
 
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope:
+              - profile
+              - email
+          # 카카오 registration 추가
+          kakao:
+            client-id: ${KAKAO_CLIENT_ID}
+            client-secret: ${KAKAO_CLIENT_SECRET}
+            client-authentication-method: client_secret_post
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            scope:
+              - profile_nickname
+              - profile_image
+              - account_email
+            client-name: Kakao
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id # 카카오가 제공하는 고유 회원식별자 키 이름 (Integer id)
 jwt:
   access-token:
     secret: ${JWT_ACCESS_TOKEN_SECRET}
@@ -42,6 +88,9 @@ app:
       max-mark-size: 10MB
       # 물리 디스크 저장 경로
       dir: ${APP_FILE_UPLOAD_DIR}
+  oauth2:
+    success-redirect-url: ${OAUTH2_SUCCESS_REDIRECT_URL}
+    failure-redirect-url: ${OAUTH2_FAILURE_REDIRECT_URL}
 
 server:
   port: 8080

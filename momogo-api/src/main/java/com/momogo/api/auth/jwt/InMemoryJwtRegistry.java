@@ -1,4 +1,4 @@
-package com.momogo.api.auth;
+package com.momogo.api.auth.jwt;
 
 import com.momogo.api.auth.dto.JwtInformation;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

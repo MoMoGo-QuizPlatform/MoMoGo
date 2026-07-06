@@ -1,5 +1,6 @@
-package com.momogo.api.auth;
+package com.momogo.api.auth.service;
 
+import com.momogo.api.auth.jwt.JwtRegistry;
 import com.momogo.core.domain.user.service.UserSessionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

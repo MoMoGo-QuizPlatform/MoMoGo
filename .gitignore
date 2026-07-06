@@ -97,3 +97,7 @@ $RECYCLE.BIN/
 # Gradle wrapper 관련 설정은 제외되지 않도록 강제 적용
 !gradle-wrapper.jar
 !gradle-wrapper.properties
+
+# User Profile Uploads (사용자 프로필 업로드 폴더 제외)
+uploads/
+

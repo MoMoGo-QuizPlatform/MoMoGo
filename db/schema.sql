@@ -24,6 +24,8 @@ CREATE TABLE "TBL_USER" (
                             "role"             VARCHAR(50)   NOT NULL, -- SUPER_ADMIN, ADMIN, USER
                             "social"           VARCHAR(50)   DEFAULT 'NONE' NOT NULL, -- NONE, GOOGLE, KAKAO
                             "is_banned"        BOOLEAN       DEFAULT FALSE NULL,
+                            "temp_password"    VARCHAR(255)  NULL,
+                            "temp_password_expired_at" TIMESTAMPTZ NULL,
                             "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
                             "updated_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
                             "deleted_at"       TIMESTAMPTZ   NULL, -- 논리 삭제용 유예 기간 필드
@@ -193,3 +195,6 @@ CREATE INDEX "idx_notification_receiver_confirmed" ON "TBL_NOTIFICATION" ("recei
 
 -- Super_Admin 부분 유니크 인덱스
 CREATE UNIQUE INDEX "UQ_USER_SUPER_ADMIN_ONLY" ON "TBL_USER" ("role") WHERE "role" = 'SUPER_ADMIN' AND "deleted_at" IS NULL;
+
+-- 알림 커서 기반 페이지네이션 조회 성능 최적화를 위한 복합 인덱스
+CREATE INDEX "idx_notification_receiver_cursor" ON "TBL_NOTIFICATION" ("receiver_id", "created_at" DESC, "id" DESC);

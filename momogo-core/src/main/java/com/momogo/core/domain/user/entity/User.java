@@ -1,14 +1,16 @@
 package com.momogo.core.domain.user.entity;
 
 import com.momogo.core.common.base.BaseTimeEntity;
+import com.momogo.core.common.security.PasswordEncryptor;
 import com.momogo.core.domain.space.entity.Space;
 import com.momogo.core.domain.user.entity.enums.SocialType;
 import com.momogo.core.domain.user.entity.enums.UserRole;
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -67,6 +69,12 @@ public class User extends BaseTimeEntity {
     @Column(name = "is_banned", nullable = false)
     private Boolean isBanned = false;
 
+    @Column(name = "temp_password")
+    private String tempPassword;
+
+    @Column(name = "temp_password_expired_at")
+    private OffsetDateTime tempPasswordExpiredAt;
+
     @Column(
             name = "deleted_at",
             columnDefinition = "TIMESTAMPTZ"
@@ -102,6 +110,18 @@ public class User extends BaseTimeEntity {
         this.profileImageUrl = profileImageUrl;
     }
 
+    // 임시 비밀번호를 세팅하고 만료 시간을 현재 시간 기준으로 10분 뒤로 설정합니다.
+    public void setTemporaryPassword(String hashedTempPassword) {
+        this.tempPassword = hashedTempPassword;
+        this.tempPasswordExpiredAt = OffsetDateTime.now().plusMinutes(10);
+    }
+
+    // 비밀번호 변경 시 임시 비밀번호를 초기화 합니다.
+    public void clearTemporaryPassword() {
+        this.tempPassword = null;
+        this.tempPasswordExpiredAt = null;
+    }
+
     public void ban() {
         this.isBanned = true;
     }
@@ -122,5 +142,11 @@ public class User extends BaseTimeEntity {
     public void leaveSpace() {
         this.space = null;
         this.role = UserRole.USER;
+    }
+
+    public void changeRole(UserRole role) {
+        if (role != null) {
+            this.role = role;
+        }
     }
 }
