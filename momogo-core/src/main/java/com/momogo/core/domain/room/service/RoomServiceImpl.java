@@ -2,10 +2,12 @@ package com.momogo.core.domain.room.service;
 
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.room.dto.request.RoomCreateRequest;
+import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
 import com.momogo.core.domain.room.dto.response.RoomResponse;
 import com.momogo.core.domain.room.entity.Room;
 import com.momogo.core.domain.room.entity.RoomProblem;
 import com.momogo.core.domain.room.entity.RoomUser;
+import com.momogo.core.domain.room.entity.RoomUserId;
 import com.momogo.core.domain.room.event.RoomCreatedEvent;
 import com.momogo.core.domain.room.exception.RoomErrorCode;
 import com.momogo.core.domain.room.mapper.RoomMapper;
@@ -18,6 +20,7 @@ import com.momogo.core.domain.space.repository.SpaceRepository;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.repository.UserRepository;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -91,6 +94,52 @@ public class RoomServiceImpl implements RoomService{
 
     return roomMapper.toResponse(savedRoom);
   }
+
+  @Override
+  public RoomResponse getRoomDetails(UUID userId, UUID roomId) {
+    log.info("[RoomService] 시험방 상세 조회 - userId: {}, roomId: {}", userId, roomId);
+
+    // 방 존재 검증
+    Room room = roomRepository.findById(roomId)
+        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+
+    // 권한 검증 - 요청 유저가 해당 방의 소속 공간 멤버가 맞는지 확인
+    User user = userRepository.findById(userId)
+        .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
+
+    if (user.getSpace() == null || !user.getSpace().getId().equals(room.getSpace().getId())) {
+      throw new BusinessException(SpaceErrorCode.NOT_SPACE_MEMBER);
+    }
+
+    return  roomMapper.toResponse(room);
+  }
+
+  @Override
+  public List<RoomProblemResponse> getRoomProblems(UUID userId, UUID roomId) {
+    log.info("[RoomService] 시험 문제지 조회 - userId: {}, roomId: {}", userId, roomId);
+
+    // 방 존재 검증
+    Room room = roomRepository.findById(roomId)
+        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+
+    // 시간 검증 - 현재 시각이 시험 시작 시각 이전인지 확인
+    if (OffsetDateTime.now().isBefore(room.getTestStartAt())) {
+      log.warn("[RoomService] 시험 시작 전 문제 조회 차단 - roomId: {}, testStartAt: {}", roomId, room.getTestStartAt());
+      throw new BusinessException(RoomErrorCode.INVALID_ACCESS_BEFORE_START);
+    }
+
+    // 응시 대상 유저 자격 검증 (RoomUser 매핑 테이블 존재 확인)
+    RoomUserId roomUserId = new RoomUserId(roomId, userId);
+    if (!roomUserRepository.existsById(roomUserId)) {
+      throw new BusinessException(SpaceErrorCode.NOT_SPACE_MEMBER);
+    }
+
+    // 문제 목록 조회 및 정렬 반환
+    List<RoomProblem> roomProblems = roomProblemRepository.findByRoomIdOrderByProblemOrder(roomId);
+
+    return roomMapper.toProblemResponseList(roomProblems);
+  }
+
 
   // 시험방 생성을 위한 유효성 검증 및 도메인 엔티티 일괄 조회 헬퍼 메서드
   private ValidatedRoomTarget validateAndGetTargets(UUID userId, UUID spaceId, RoomCreateRequest request) {
