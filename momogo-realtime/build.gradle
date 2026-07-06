@@ -11,6 +11,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
     implementation 'org.springframework.security:spring-security-messaging'
 
+    // JWT 라이브러리
+    implementation 'com.nimbusds:nimbus-jose-jwt:9.37.3'
+
     // Spring Integration (WebSocket 및 STOMP 메시지 브로커 파트)
     implementation 'org.springframework.boot:spring-boot-starter-integration'
     implementation 'org.springframework.integration:spring-integration-websocket'

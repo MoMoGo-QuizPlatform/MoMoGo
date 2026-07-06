@@ -1,6 +1,5 @@
-package com.momogo.api.auth.exception;
+package com.momogo.core.common.exception;
 
-import com.momogo.core.common.exception.ErrorCode;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
