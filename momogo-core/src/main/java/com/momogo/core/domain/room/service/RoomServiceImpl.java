@@ -1,6 +1,7 @@
 package com.momogo.core.domain.room.service;
 
 import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.domain.room.dto.request.ProblemAnswerRequest;
 import com.momogo.core.domain.room.dto.request.RoomAnswerSubmitRequest;
 import com.momogo.core.domain.room.dto.request.RoomCreateRequest;
 import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
@@ -25,7 +26,10 @@ import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.repository.UserRepository;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -104,8 +108,7 @@ public class RoomServiceImpl implements RoomService{
     log.info("[RoomService] 시험방 상세 조회 - userId: {}, roomId: {}", userId, roomId);
 
     // 방 존재 검증
-    Room room = roomRepository.findById(roomId)
-        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+    Room room = findRoomOrThrow(roomId);
 
     // 권한 검증 - 요청 유저가 해당 방의 소속 공간 멤버가 맞는지 확인
     User user = userRepository.findById(userId)
@@ -123,8 +126,7 @@ public class RoomServiceImpl implements RoomService{
     log.info("[RoomService] 시험 문제지 조회 - userId: {}, roomId: {}", userId, roomId);
 
     // 방 존재 검증
-    Room room = roomRepository.findById(roomId)
-        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+    Room room = findRoomOrThrow(roomId);
 
     // 시간 검증 - 현재 시각이 시험 시작 시각 이전인지 확인
     if (OffsetDateTime.now().isBefore(room.getTestStartAt())) {
@@ -135,7 +137,7 @@ public class RoomServiceImpl implements RoomService{
     // 응시 대상 유저 자격 검증 (RoomUser 매핑 테이블 존재 확인)
     RoomUserId roomUserId = new RoomUserId(roomId, userId);
     if (!roomUserRepository.existsById(roomUserId)) {
-      throw new BusinessException(SpaceErrorCode.NOT_SPACE_MEMBER);
+      throw new BusinessException(RoomErrorCode.NOT_ROOM_PARTICIPANT);
     }
 
     // 문제 목록 조회 및 정렬 반환
@@ -150,8 +152,7 @@ public class RoomServiceImpl implements RoomService{
     log.info("[RoomService] 시험 답안 제출 시작 - userId: {}, roomId: {}", userId, roomId);
 
     // 방 존재 검증
-    Room room = roomRepository.findById(roomId)
-        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+    Room room = findRoomOrThrow(roomId);
 
     // 시간 검증 - 시험 시작 전 제출 시도 차단
     OffsetDateTime now = OffsetDateTime.now();
@@ -173,11 +174,21 @@ public class RoomServiceImpl implements RoomService{
     User user = userRepository.findById(userId)
         .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
 
+    List<UUID> problemIds = request.answers().stream().map(ProblemAnswerRequest::roomProblemId).toList();
+    Map<UUID, RoomProblem> problemsById = roomProblemRepository.findAllById(problemIds).stream()
+        .collect(Collectors.toMap(RoomProblem::getId, Function.identity()));
+
+    if (Boolean.TRUE.equals(roomUser.getIsAttended())) {
+      throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
+    }
+
     // 각 문제 답안 일괄 매핑, 저장
     List<UserRoomAnswer> userRoomAnswers = request.answers().stream()
         .map(ans -> {
-          RoomProblem problem = roomProblemRepository.findById(ans.roomProblemId())
-              .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+          RoomProblem problem = problemsById.get(ans.roomProblemId());
+          if (problem == null || !problem.getRoom().getId().equals(roomId)) {
+            throw new BusinessException(RoomErrorCode.PROBLEM_NOT_FOUND);
+          }
           return UserRoomAnswer.of(user, problem, ans.userAnswer());
         })
         .toList();
@@ -228,4 +239,8 @@ public class RoomServiceImpl implements RoomService{
     return new ValidatedRoomTarget(space, targetUsers);
   }
 
+  private Room findRoomOrThrow(UUID roomId) {
+    return roomRepository.findById(roomId)
+        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+  }
 }

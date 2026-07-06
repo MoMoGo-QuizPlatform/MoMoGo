@@ -1,6 +1,5 @@
 package com.momogo.api.room;
 
-import com.momogo.api.auth.details.MoMoGoUserDetails;
 import com.momogo.core.domain.room.dto.request.RoomAnswerSubmitRequest;
 import com.momogo.core.domain.room.dto.request.RoomCreateRequest;
 import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
@@ -29,19 +28,19 @@ public class RoomController {
 
   /**
    * 평가 시험 개설
-   * @param userDetails 유저 아이디
+   * @param userId 유저 아이디
    * @param spaceId 공간 아이디
    * @param request 평가 시험 개설 요청 DTO
    * @return 개설된 평가 시험 정보
    */
   @PostMapping("/spaces/{spaceId}/rooms")
   public ResponseEntity<RoomResponse> createRoom(
-      @AuthenticationPrincipal MoMoGoUserDetails userDetails,
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID userId,
       @PathVariable UUID spaceId,
       @Valid @RequestBody RoomCreateRequest request
   ) {
 
-    RoomResponse response = roomService.createRoom(userDetails.getUserResponse().id(), spaceId, request);
+    RoomResponse response = roomService.createRoom(userId, spaceId, request);
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
