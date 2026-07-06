@@ -1,23 +1,41 @@
 package com.momogo.api.auth.service;
 
+import com.momogo.api.auth.details.MoMoGoUserDetails;
+import com.momogo.api.auth.dto.JwtInformation;
+import com.momogo.api.auth.dto.request.PasswordFindRequest;
+import com.momogo.api.auth.dto.response.JwtDto;
 import com.momogo.api.auth.jwt.JwtRegistry;
 import com.momogo.api.auth.jwt.JwtTokenProvider;
-import com.momogo.api.auth.details.MoMoGoUserDetails;
-import com.momogo.api.auth.dto.JwtDto;
-import com.momogo.api.auth.dto.JwtInformation;
+import com.momogo.api.auth.util.PasswordGenerator;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
+import com.momogo.core.domain.user.entity.User;
+import com.momogo.core.domain.user.entity.enums.SocialType;
+import com.momogo.core.domain.user.event.TemporaryPasswordGeneratedEvent;
+import com.momogo.core.domain.user.exception.UserErrorCode;
+import com.momogo.core.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
+@Transactional(readOnly = true)
 @RequiredArgsConstructor
 @Service
 public class AuthServiceImpl implements AuthService {
 
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    // Jwt
     private final JwtTokenProvider jwtTokenProvider;
     private final JwtRegistry jwtRegistry;
+
+    // Event
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public JwtDto refresh(String refreshToken) {
@@ -55,4 +73,28 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException(GlobalErrorCode.UNAUTHORIZED, "토큰 갱신 중 시스템 에러가 발생했습니다.");
         }
     }
+
+    /**
+     * 초기화된 비밀번호를 사용자에게 이메일로 발송
+     * 비인증 상태에서 유효한 이메일(존재하는 이메일, 소셜 계정)인지 노출하지 않고 return
+     *
+     * @param request 복구할 이메일 정보 DTO
+     */
+    @Override
+    @Transactional
+    public void sendTemporaryPassword(PasswordFindRequest request) {
+        User user = userRepository.findByEmail(request.email()).orElse(null);
+        if (user == null || user.getSocial() != SocialType.NONE) {
+            log.info("[AuthService] 임시 비밀번호 발급 조건 미충족 (미가입/소셜 계정)");
+            return;
+        }
+
+        String tempPassword = PasswordGenerator.generateRandomPassword();
+        String hashedTempPassword = passwordEncoder.encode(tempPassword);
+
+        user.setTemporaryPassword(hashedTempPassword);
+
+        eventPublisher.publishEvent(new TemporaryPasswordGeneratedEvent(user.getEmail(), tempPassword));
+    }
+
 }

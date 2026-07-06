@@ -1,11 +1,13 @@
 package com.momogo.api.auth.controller;
 
+import com.momogo.api.auth.dto.request.PasswordFindRequest;
+import com.momogo.api.auth.dto.response.JwtDto;
 import com.momogo.api.auth.jwt.JwtTokenProvider;
-import com.momogo.api.auth.dto.JwtDto;
 import com.momogo.api.auth.service.AuthService;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -45,5 +47,11 @@ public class AuthController {
         jwtTokenProvider.addRefreshCookie(response, jwtDto.getRefreshToken());
 
         return ResponseEntity.ok(jwtDto);
+    }
+
+    @PostMapping("/password-find")
+    public ResponseEntity<Void> findPassword(@RequestBody @Valid PasswordFindRequest request) {
+        authService.sendTemporaryPassword(request);
+        return ResponseEntity.noContent().build();
     }
 }

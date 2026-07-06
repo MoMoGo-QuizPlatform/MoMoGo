@@ -1,4 +1,4 @@
-package com.momogo.api.auth.dto;
+package com.momogo.api.auth.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.momogo.core.domain.user.dto.response.UserResponse;
