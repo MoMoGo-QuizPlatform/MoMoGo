@@ -75,6 +75,13 @@ public class RoomController {
     return ResponseEntity.ok(response);
   }
 
+  /**
+   * 평가 시험 답안 제출
+   * @param userId 유저 아이디
+   * @param roomId 평가 시험 아이디
+   * @param request 답안 제출 요청 DTO
+   * @return 답안 제출 성공 여부
+   */
   @PostMapping("/rooms/{roomId}/submit")
   public ResponseEntity<Void> submitRoomAnswer(
       @AuthenticationPrincipal(expression = "userResponse.id") UUID userId,
