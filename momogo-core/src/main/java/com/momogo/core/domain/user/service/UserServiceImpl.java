@@ -211,8 +211,7 @@ public class UserServiceImpl implements UserService {
      */
     @Override
     public void deleteExpiredUsers() {
-//        OffsetDateTime threshold = OffsetDateTime.now().minusDays(30);
-        OffsetDateTime threshold = OffsetDateTime.now().minusMinutes(1);
+        OffsetDateTime threshold = OffsetDateTime.now().minusDays(30);
         List<User> expiredUsers = userRepository.findAllByDeletedAtBefore(threshold);
 
         for (User user : expiredUsers) {
