@@ -24,6 +24,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         // ws://localhost:8080/ws
         registry.addEndpoint("/ws")
             .setAllowedOriginPatterns("*"); // CORS 임시 허용
+        // TODO: 배포 전 `setAllowedOriginPatterns("https://app.example.com")` 등으로 변경
     }
 
     @Override

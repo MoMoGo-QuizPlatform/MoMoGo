@@ -17,20 +17,22 @@ import org.springframework.stereotype.Component;
 public class JwtTokenParser {
 
   private final JWSVerifier accessTokenVerifier;
+  private static final String ACCESS_TOKEN_SECRET_KEY = "${jwt.access-token.secret}";
 
-  private static final String SECRET_KEY = "${jwt.access-token.secret}";
+  // 검증, 파싱이 완료된 토큰의 데이터를 담을 레코드 클래스
+  public record TokenPrincipal(UUID userId, List<String> roles) {}
 
-  public JwtTokenParser(@Value(SECRET_KEY) String accessTokenSecret) throws Exception {
+  public JwtTokenParser(@Value(ACCESS_TOKEN_SECRET_KEY) String accessTokenSecret) throws Exception {
     byte[] accessSecretBytes = accessTokenSecret.getBytes(StandardCharsets.UTF_8);
     this.accessTokenVerifier = new MACVerifier(accessSecretBytes);
   }
 
   /**
-   * JWT 토큰의 서명 및 만료 시각 검증 후, 사용자 ID 반환
-   * @param token JWT 토큰
-   * @return 사용자 ID
+   * JWT 토큰을 1회 파싱하고, 서명 및 만료 시각, 타입 검증 후, TokenPrincipal 객체 반환
+   * @param token JWT 토큰 문자
+   * @return 검증된 유저의 식별자(UUID) 및 권한(roles) 정보 객체
    */
-  public UUID extractUserId(String token) {
+  public TokenPrincipal parseAndValidate(String token) {
 
     try {
       SignedJWT signedJWT = SignedJWT.parse(token);
@@ -48,18 +50,26 @@ public class JwtTokenParser {
         throw new BusinessException(AuthErrorCode.EXPIRED_TOKEN);
       }
 
-      // 3. 토큰 타입 검증 (access 토큰이 맞는지 확인)
+      // 토큰 타입 검증 (access 토큰이 맞는지 확인)
       String tokenType = (String) claimsSet.getClaim("type");
       if (!"access".equals(tokenType)) {
         throw new BusinessException(AuthErrorCode.INVALID_TOKEN_TYPE);
       }
 
+      // 필수 클레임 검증 (userId)
       Object userId = claimsSet.getClaim("userId");
       if (userId == null) {
         throw new BusinessException(AuthErrorCode.MISSING_TOKEN_CLAIM);
       }
 
-      return UUID.fromString(userId.toString());
+      // 필수 클레임 검증 (roles), null 방어
+      List<String> roles = claimsSet.getStringListClaim("roles");
+      if (roles == null) {
+        throw new BusinessException(AuthErrorCode.MISSING_TOKEN_CLAIM);
+      }
+
+      return new TokenPrincipal(UUID.fromString(userId.toString()), roles);
+
     } catch (BusinessException e){
         throw e;
     } catch (Exception e) {
@@ -67,19 +77,5 @@ public class JwtTokenParser {
     }
   }
 
-  /**
-   * 토큰에서 권한 리스트를 추출해서 반환
-   * @param token JWT 토큰
-   * @return 권한 리스트
-   */
-  public List<String> extractRoles(String token) {
-    try {
-      SignedJWT signedJWT = SignedJWT.parse(token);
-      JWTClaimsSet claimsSet = signedJWT.getJWTClaimsSet();
 
-      return claimsSet.getStringListClaim("roles");
-    } catch (Exception e) {
-      throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
-    }
-  }
 }
