@@ -1,5 +1,6 @@
 package com.momogo.api.problem;
 
+import com.momogo.core.domain.problem.dto.request.ProblemAiCreateRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemCreateRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemSearchRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemUpdateRequest;
@@ -7,6 +8,7 @@ import com.momogo.core.domain.problem.dto.response.ProblemCursorResponse;
 import com.momogo.core.domain.problem.dto.response.ProblemResponse;
 import com.momogo.core.domain.problem.service.ProblemService;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -89,6 +91,9 @@ public class ProblemController {
         .ok(problemService.updateProblem(spaceId, problemId, request));
   }
 
+  /**
+   * 문제 삭제
+   */
   @DeleteMapping("/{problemId}")
   @PreAuthorize("hasRole('ADMIN')")
   public ResponseEntity<Void> deleteProblem(
@@ -98,6 +103,22 @@ public class ProblemController {
     problemService.deleteProblem(spaceId, problemId);
 
     return ResponseEntity.noContent().build();
+  }
+
+  /**
+   * AI 기반 문제 자동 생성 (ADMIN 전용)
+   */
+  @PostMapping("/ai")
+  @PreAuthorize("hasRole('ADMIN')")
+  public ResponseEntity<List<ProblemResponse>> createProblemsByAi(
+      @PathVariable UUID spaceId,
+      @RequestBody @Valid ProblemAiCreateRequest request) {
+
+    List<ProblemResponse> response = problemService.createProblemsByAi(spaceId, request);
+
+    return ResponseEntity
+        .status(HttpStatus.CREATED)
+        .body(response);
   }
 
   // 문제 제출은 아직 서비스 미완 및 협의가 필요한 부분이라

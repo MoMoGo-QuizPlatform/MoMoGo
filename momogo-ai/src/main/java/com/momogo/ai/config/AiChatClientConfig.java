@@ -1,10 +1,15 @@
 package com.momogo.ai.config;
 
+import java.time.Duration;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.web.client.RestClient;
 
 /**
  * AI 관련 설정 클래스
@@ -47,5 +52,20 @@ public class AiChatClientConfig {
         // 채점은 일관성을 보장해야 하기에 조금 낮게 설정
         .defaultOptions(OpenAiChatOptions.builder().temperature(0.2).build())
         .build();
+  }
+
+  /**
+   * OpenAI 호출 타임아웃 설정
+   */
+  @Bean
+  public RestClient.Builder restClientBuilder() {
+
+    ClientHttpRequestFactorySettings settings = ClientHttpRequestFactorySettings.defaults()
+        .withConnectTimeout(Duration.ofSeconds(5))  // 연결 5초
+        .withReadTimeout(Duration.ofSeconds(30));   // 응답 30초
+
+    ClientHttpRequestFactory factory = ClientHttpRequestFactoryBuilder.detect().build(settings);
+
+    return RestClient.builder().requestFactory(factory);
   }
 }
