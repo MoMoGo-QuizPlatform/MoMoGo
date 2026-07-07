@@ -2,6 +2,7 @@ package com.momogo.realtime.websocket;
 
 import com.momogo.core.common.exception.AuthErrorCode;
 import com.momogo.core.common.exception.BusinessException;
+import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSVerifier;
 import com.nimbusds.jose.crypto.MACVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
@@ -22,7 +23,7 @@ public class JwtTokenParser {
   // 검증, 파싱이 완료된 토큰의 데이터를 담을 레코드 클래스
   public record TokenPrincipal(UUID userId, List<String> roles) {}
 
-  public JwtTokenParser(@Value(ACCESS_TOKEN_SECRET_KEY) String accessTokenSecret) throws Exception {
+  public JwtTokenParser(@Value(ACCESS_TOKEN_SECRET_KEY) String accessTokenSecret) throws JOSEException {
     byte[] accessSecretBytes = accessTokenSecret.getBytes(StandardCharsets.UTF_8);
     this.accessTokenVerifier = new MACVerifier(accessSecretBytes);
   }
