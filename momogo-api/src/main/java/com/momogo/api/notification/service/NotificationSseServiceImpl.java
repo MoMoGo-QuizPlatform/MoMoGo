@@ -34,9 +34,8 @@ public class NotificationSseServiceImpl implements NotificationSseService, Notif
     try {
       emitter.send(SseEmitter.event().name("connect").data("connected"));
     } catch (IOException e) {
+      // 이 시점 실패는 서블릿 컨테이너의 오류 디스패치로 정리되므로 로그만 남김
       log.warn("SSE 초기 연결 이벤트 전송 실패 - userId: {}", userId, e);
-      // completeWithError()가 emitter의 onError 콜백을 트리거 -> registry 정리
-      emitter.completeWithError(e);
     }
 
     return emitter;
