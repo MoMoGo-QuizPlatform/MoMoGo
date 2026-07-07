@@ -1,6 +1,7 @@
 package com.momogo.api.auth.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.momogo.core.common.exception.BusinessException;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -34,7 +35,12 @@ public class LoginFailureHandler implements AuthenticationFailureHandler {
         String errorCode = "AUTHENTICATION_FAILED";
         int status = HttpServletResponse.SC_UNAUTHORIZED;
 
-        if (exception instanceof LockedException || exception instanceof DisabledException) {
+        // UserDetailsService 등에서 던진 커스텀 비즈니스 예외(BusinessException) 감지
+        if (exception.getCause() instanceof BusinessException businessException) {
+            errorMessage = businessException.getMessage();
+            errorCode = businessException.getErrorCode().getCode();
+            status = businessException.getErrorCode().getHttpStatus().value();
+        } else if (exception instanceof LockedException || exception instanceof DisabledException) {
             log.warn("로그인 실패(제한된 계정): {}", exception.getClass().getSimpleName());
         } else {
             log.info("로그인 실패: {}", exception.getClass().getSimpleName());

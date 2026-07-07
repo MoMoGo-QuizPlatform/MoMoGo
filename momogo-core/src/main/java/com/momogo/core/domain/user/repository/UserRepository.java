@@ -5,6 +5,7 @@ import com.momogo.core.domain.user.entity.enums.UserRole;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -19,6 +20,10 @@ public interface UserRepository extends JpaRepository<User, UUID>, UserRepositor
     boolean existsByEmail(String email);
 
     boolean existsByRole(UserRole role);
+
+    List<User> findAllByDeletedAtBefore(OffsetDateTime threshold);
+
+    Optional<User> findBySpaceIdAndRole(UUID spaceId, UserRole role);
 
     long countBySpaceIdAndRole(UUID spaceId, UserRole userRole);
 }

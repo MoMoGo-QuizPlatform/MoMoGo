@@ -12,4 +12,10 @@ public interface UserService {
     UserResponse createUser(UserCreateRequest request);
 
     UserResponse updateUser(UUID userId, UserUpdateRequest request, ProfileImageUploadRequest profile);
+
+    void softDeleteUser(UUID userId);
+
+    void deleteExpiredUsers();
+
+    void restoreUser(String email);
 }

@@ -88,6 +88,16 @@ public class OAuth2UserDetailsService extends DefaultOAuth2UserService {
     }
 
     private User validateSocialUser(User user, SocialType socialType) {
+        // 소셜 로그인 시도 유저가 탈퇴 진행 중인 상태인 경우 예외 발생
+        // TODO: 이메일 평문 노출 보안 방지를 위해 추후 암호화된 이메일을 전달하는 방식 도입 예정
+        if (user.getDeletedAt() != null) {
+            log.error("[OAuth2UserDetailsService] 탈퇴 대기 중인 이메일({})로 소셜 로그인 시도됨", user.getEmail());
+            throw new OAuth2AuthenticationException(
+                    new OAuth2Error("delete_in_progress"),
+                    user.getEmail()
+            );
+        }
+
         if (user.getSocial() != socialType) {
             log.error("[OAuth2UserDetailsService] 이메일({})은 이미 {} 방식으로 가입되어 있어 {} 로그인하실 수 없습니다.",
                     user.getEmail(), user.getSocial(), socialType);
