@@ -16,11 +16,15 @@ public record RoomProblemCreatedRequest(
 
     @NotBlank(message = "문제 제목은 필수입니다.")
     String name,
+
     @NotBlank(message = "문제 내용은 필수입니다.")
     String content,
+
     String explanation,
+
     @NotBlank(message = "정답은 필수입니다.")
     String correctAnswer,
+
     @NotNull(message = "문제 순서는 필수입니다.")
     @Positive(message = "문제 순서는 양수여야 합니다.")
     Integer problemOrder
