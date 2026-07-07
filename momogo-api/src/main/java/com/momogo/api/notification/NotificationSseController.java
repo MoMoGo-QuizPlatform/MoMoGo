@@ -1,6 +1,6 @@
 package com.momogo.api.notification;
 
-import com.momogo.api.notification.service.NotificationSseServiceImpl;
+import com.momogo.api.notification.service.NotificationSseConnector;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -15,7 +15,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequestMapping("/api/sse")
 public class NotificationSseController {
 
-  private final NotificationSseServiceImpl notificationSseService;
+  private final NotificationSseConnector notificationSseConnector;
 
   // produces = TEXT_EVENT_STREAM_VALUE ("text/event-stream")로 지정해야
   // 브라우저의 EventSource가 이 응답을 SSE 스트림으로 인식하고 계속 열어둠.
@@ -23,6 +23,6 @@ public class NotificationSseController {
   public SseEmitter connect(
       @AuthenticationPrincipal(expression = "userResponse.id") UUID userId
   ) {
-    return notificationSseService.connect(userId);
+    return notificationSseConnector.connect(userId);
   }
 }

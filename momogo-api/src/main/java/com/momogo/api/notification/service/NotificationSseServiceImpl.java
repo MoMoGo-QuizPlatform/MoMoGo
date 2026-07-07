@@ -11,27 +11,22 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /*
- * momogo-core의 NotificationSseService 인터페이스 구현체.
+ * NotificationSseService(publish) + NotificationSseConnector(connect) 구현체.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class NotificationSseServiceImpl implements NotificationSseService {
+public class NotificationSseServiceImpl implements NotificationSseService, NotificationSseConnector {
 
   // SSE 연결 최대 유지 시간
   private static final long TIMEOUT = 30L * 60 * 1000; // 30분
 
   private final NotificationEmitterRegistry emitterRegistry;
 
-  //클라이언트의 최초 SSE 연결 요청을 처리.
+  // 클라이언트의 최초 SSE 연결 요청을 처리
+  @Override
   public SseEmitter connect(UUID userId) {
     SseEmitter emitter = new SseEmitter(TIMEOUT);
-
-    // 연결이 종료되면 레지스트리에서 반드시 제거
-    emitter.onCompletion(() -> emitterRegistry.remove(userId, emitter));
-    emitter.onTimeout(() -> emitterRegistry.remove(userId, emitter));
-    emitter.onError(e -> emitterRegistry.remove(userId, emitter));
-
     emitterRegistry.register(userId, emitter);
 
     // 연결 직후 더미 이벤트를 하나 보내는 이유:
@@ -39,8 +34,9 @@ public class NotificationSseServiceImpl implements NotificationSseService {
     try {
       emitter.send(SseEmitter.event().name("connect").data("connected"));
     } catch (IOException e) {
+      log.warn("SSE 초기 연결 이벤트 전송 실패 - userId: {}", userId, e);
+      // completeWithError()가 emitter의 onError 콜백을 트리거 -> registry 정리
       emitter.completeWithError(e);
-      emitterRegistry.remove(userId, emitter);
     }
 
     return emitter;
@@ -56,9 +52,9 @@ public class NotificationSseServiceImpl implements NotificationSseService {
             .name("notifications")
             .data(notification));
       } catch (IOException e) {
-        // 전송 실패는 클라이언트 연결이 끊어진 상태로 보고 emitter를 정리
+        log.warn("SSE 알림 전송 실패 - userId: {}", userId, e);
+        // completeWithError()가 emitter의 onError 콜백을 트리거 -> registry 정리
         emitter.completeWithError(e);
-        emitterRegistry.remove(userId, emitter);
       }
     }
   }
