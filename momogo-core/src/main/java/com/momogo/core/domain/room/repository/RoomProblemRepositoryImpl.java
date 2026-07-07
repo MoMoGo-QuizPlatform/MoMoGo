@@ -25,4 +25,17 @@ public class RoomProblemRepositoryImpl implements RoomProblemRepositoryCustom {
         .orderBy(roomProblem.problemOrder.asc())
         .fetch();
   }
+
+  // 삭제된 문제보다 큰 순번들을 한 번에 -1 시키는 벌크 연산
+  @Override
+  public long decreaseOrderAfter(UUID roomId, int targetOrder) {
+    return queryFactory
+        .update(roomProblem)
+        .set(roomProblem.problemOrder, roomProblem.problemOrder.subtract(1))
+        .where(
+            roomProblem.room.id.eq(roomId),
+            roomProblem.problemOrder.gt(targetOrder)
+        )
+        .execute();
+  }
 }
