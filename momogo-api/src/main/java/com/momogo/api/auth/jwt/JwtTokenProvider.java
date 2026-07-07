@@ -1,7 +1,7 @@
 package com.momogo.api.auth.jwt;
 
 import com.momogo.api.auth.details.MoMoGoUserDetails;
-import com.momogo.api.auth.exception.AuthErrorCode;
+import com.momogo.core.common.exception.AuthErrorCode;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.user.dto.response.UserResponse;
 import com.momogo.core.domain.user.entity.enums.UserRole;
