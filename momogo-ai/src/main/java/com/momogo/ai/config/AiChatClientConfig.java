@@ -1,0 +1,51 @@
+package com.momogo.ai.config;
+
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * AI 관련 설정 클래스
+ */
+@Configuration
+public class AiChatClientConfig {
+
+  /**
+   * 문제 생성 전용 ChatClient
+   */
+  @Bean
+  @Qualifier("problemGenerationChatClient")
+  public ChatClient problemGenerationChatClient(ChatClient.Builder builder) {
+
+    return builder
+        .defaultSystem("""
+            당신은 교육 콘텐츠 제작 전문가입니다.
+            주어진 참고자료를 기반으로 명확하고, 정확한 문제를 출제합니다.
+            문제는 모호함이 없어야 하며 정답은 참고자료 안에서 명확히 근거를 찾을 수 있어야 합니다.
+            """)
+        // 생성은 다양성이 필요 -> temperature 조금 높게 설정
+        .defaultOptions(OpenAiChatOptions.builder().temperature(0.7).build())
+        .build();
+  }
+
+  /**
+   * 문제 채점 전용 ChatClient
+   */
+  @Bean
+  @Qualifier("problemGradingChatClient")
+  public ChatClient problemGradingChatClient(ChatClient.Builder builder) {
+
+    return builder
+        .defaultSystem("""
+            당신은 공정하고, 엄격한 채점관입니다.
+            응시자의 답안이 모범 답안과 의미적으로 일치하는지 판단합니다.
+            표현이 다르더라도 핵심 내용이 같으면 정답으로 인정합니다.
+            핵심 내용이 빠지거나 틀린 경우에만 오답으로 판단합니다.
+            """)
+        // 채점은 일관성을 보장해야 하기에 조금 낮게 설정
+        .defaultOptions(OpenAiChatOptions.builder().temperature(0.2).build())
+        .build();
+  }
+}
