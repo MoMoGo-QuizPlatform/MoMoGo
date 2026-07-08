@@ -1,7 +1,10 @@
 package com.momogo.core.domain.room.service;
 
 import com.lowagie.text.Document;
+import com.lowagie.text.DocumentException;
+import com.lowagie.text.Font;
 import com.lowagie.text.Paragraph;
+import com.lowagie.text.pdf.BaseFont;
 import com.lowagie.text.pdf.PdfWriter;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.room.dto.request.ProblemAnswerRequest;
@@ -31,6 +34,7 @@ import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.repository.UserRepository;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -220,12 +224,7 @@ public class RoomServiceImpl implements RoomService{
     Room room = findRoomOrThrow(roomId);
 
     // 권한 검증 - 마감 요청자가 ADMIN인지 + 방의 소속 공간 관리자가 맞는지 확인
-    User adminUser = userRepository.findById(adminUserId)
-        .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
-
-    if (adminUser.getRole() != UserRole.ADMIN || adminUser.getSpace() == null || !adminUser.getSpace().getId().equals(room.getSpace().getId())) {
-      throw new BusinessException(SpaceErrorCode.NOT_SPACE_ADMIN);
-    }
+    validateSpaceAdmin(adminUserId, room);
 
     // 중복 마감 차단 검증
     if (Boolean.TRUE.equals(room.getIsEnded())) {
@@ -317,13 +316,8 @@ public class RoomServiceImpl implements RoomService{
     // 방 존재 검증
     Room room = findRoomOrThrow(roomId);
 
-    // 권한 검증
-    User adminUser = userRepository.findById(adminUserId)
-        .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
-
-    if (adminUser.getRole() != UserRole.ADMIN || adminUser.getSpace() == null || !adminUser.getSpace().getId().equals(room.getSpace().getId())) {
-      throw new BusinessException(SpaceErrorCode.NOT_SPACE_ADMIN);
-    }
+    // 권한 검증 - 마감 요청자가 ADMIN인지 + 방의 소속 공간 관리자가 맞는지 확인
+    validateSpaceAdmin(adminUserId, room);
 
     // 문제 목록 및 응시자 리스트 일괄 획득
     List<RoomProblem> roomProblems = roomProblemRepository.findByRoomIdOrderByProblemOrder(roomId);
@@ -418,36 +412,41 @@ public class RoomServiceImpl implements RoomService{
 
       document.open();
 
+      // 한글 폰트 세팅 - 내장 한글 고딕 폰트 지정
+      BaseFont baseFont = BaseFont.createFont("HYGoThic-Medium", "UniKS-UCS2-H", BaseFont.NOT_EMBEDDED);
+      Font fontTitle = new Font(baseFont, 16, Font.BOLD);
+      Font fontBody = new Font(baseFont, 11, Font.NORMAL);
+
       // PDF 타이틀 및 기본 정보 기재
-      document.add(new Paragraph("=================================================="));
-      document.add(new Paragraph("             MoMoGo Exam Evaluation Report        "));
-      document.add(new Paragraph("=================================================="));
-      document.add(new Paragraph(" "));
-      document.add(new Paragraph("Exam Room: " + report.roomName()));
-      document.add(new Paragraph("Room ID: " + report.roomId().toString()));
-      document.add(new Paragraph(" "));
-      document.add(new Paragraph("------------------ Statistics ------------------"));
-      document.add(new Paragraph("Total Applicants : " + report.totalApplicants()));
-      document.add(new Paragraph("Attended Count   : " + report.attendedCount()));
-      document.add(new Paragraph("Average Score    : " + report.averageScore()));
-      document.add(new Paragraph("Maximum Score    : " + report.maxScore()));
-      document.add(new Paragraph("-------------------------------------------------"));
-      document.add(new Paragraph(" "));
+      document.add(new Paragraph("==================================================", fontBody));
+      document.add(new Paragraph("             MoMoGo Exam Evaluation Report        ", fontTitle));
+      document.add(new Paragraph("==================================================", fontBody));
+      document.add(new Paragraph(" ", fontBody));
+      document.add(new Paragraph("Exam Room: " + report.roomName(), fontBody));
+      document.add(new Paragraph("Room ID: " + report.roomId().toString(), fontBody));
+      document.add(new Paragraph(" ", fontBody));
+      document.add(new Paragraph("------------------ Statistics ------------------", fontBody));
+      document.add(new Paragraph("Total Applicants : " + report.totalApplicants(), fontBody));
+      document.add(new Paragraph("Attended Count   : " + report.attendedCount(), fontBody));
+      document.add(new Paragraph("Average Score    : " + report.averageScore(), fontBody));
+      document.add(new Paragraph("Maximum Score    : " + report.maxScore(), fontBody));
+      document.add(new Paragraph("-------------------------------------------------", fontBody));
+      document.add(new Paragraph(" ", fontBody));
 
       // 응시자 목록 헤더 추가
-      document.add(new Paragraph("Taker Grade Matrix:"));
+      document.add(new Paragraph("Taker Grade Matrix:", fontBody));
       for (TakerGradeReport grade : report.takerGrades()) {
         String status = Boolean.TRUE.equals(grade.isAttended()) ? "Attended" : "Absent";
         document.add(new Paragraph(String.format(" - %s (%s) | Status: %s | Score: %d",
-            grade.name(), grade.email(), status, grade.score())));
+            grade.name(), grade.email(), status, grade.score()), fontBody));
       }
 
       document.close();
       return out.toByteArray();
 
-    } catch (Exception e) {
-      log.error("[RoomService] PDF 생성 중 실패 - roomId: {}", roomId, e);
-      throw new BusinessException(RoomErrorCode.ROOM_NOT_FOUND);
+    } catch (IOException | DocumentException e) {
+      log.error("[RoomService] PDF 생성 중 입출력/문서 포맷팅 예외 발생 - roomId: {}", roomId, e);
+      throw new BusinessException(RoomErrorCode.REPORT_GENERATION_FAILED);
     }
   }
 
@@ -491,5 +490,15 @@ public class RoomServiceImpl implements RoomService{
   private Room findRoomOrThrow(UUID roomId) {
     return roomRepository.findById(roomId)
         .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+  }
+
+  private void validateSpaceAdmin(UUID adminUserId, Room room) {
+    // 권한 검증
+    User adminUser = userRepository.findById(adminUserId)
+        .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
+
+    if (adminUser.getRole() != UserRole.ADMIN || adminUser.getSpace() == null || !adminUser.getSpace().getId().equals(room.getSpace().getId())) {
+      throw new BusinessException(SpaceErrorCode.NOT_SPACE_ADMIN);
+    }
   }
 }

@@ -7,9 +7,11 @@ import com.momogo.core.domain.room.dto.response.RoomReportResponse;
 import com.momogo.core.domain.room.dto.response.RoomResponse;
 import com.momogo.core.domain.room.service.RoomService;
 import jakarta.validation.Valid;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -139,7 +141,11 @@ public class RoomController {
 
     HttpHeaders headers = new HttpHeaders();
     headers.setContentType(MediaType.APPLICATION_PDF);
-    headers.setContentDispositionFormData("attachment", "room_" + roomId + "_report.pdf");
+
+    ContentDisposition contentDisposition = ContentDisposition.attachment()
+            .filename("room_" + roomId + "_report.pdf", StandardCharsets.UTF_8)
+                .build();
+    headers.setContentDisposition(contentDisposition);
 
     return ResponseEntity.ok().headers(headers).body(pdfBytes);
   }

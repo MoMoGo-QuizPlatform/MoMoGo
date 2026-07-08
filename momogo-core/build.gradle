@@ -24,7 +24,7 @@ dependencies {
     api 'com.fasterxml.jackson.core:jackson-annotations'
 
     // PDF 라이브러리
-    implementation 'com.github.librepdf:openpdf:2.0.2'
+    implementation 'com.github.librepdf:openpdf:2.2.2'
 
     // 인프라 테스트용 Testcontainers
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'

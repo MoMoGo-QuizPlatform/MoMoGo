@@ -16,8 +16,8 @@ public record TakerGradeReport(
     UUID userId,
     String name,
     String email,
-    Boolean isAttended,
-    Integer score,
+    boolean isAttended,
+    int score,
     List<ProblemGradeReport> problemGrades
 ) {
 

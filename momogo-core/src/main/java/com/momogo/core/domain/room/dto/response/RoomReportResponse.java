@@ -16,10 +16,10 @@ import java.util.UUID;
 public record RoomReportResponse(
     UUID roomId,
     String roomName,
-    Integer totalApplicants,
-    Integer attendedCount,
-    Double averageScore,
-    Integer maxScore,
+    int totalApplicants,
+    int attendedCount,
+    double averageScore,
+    int maxScore,
     List<TakerGradeReport> takerGrades
 ) {
 

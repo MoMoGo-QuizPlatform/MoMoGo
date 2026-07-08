@@ -17,7 +17,7 @@ public record ProblemGradeReport(
     String name,
     String userAnswer,
     String correctAnswer,
-    Boolean isCorrect
+    boolean isCorrect
 ) {
 
 }
