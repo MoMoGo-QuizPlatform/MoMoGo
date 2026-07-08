@@ -164,8 +164,17 @@ public class RoomServiceImpl implements RoomService{
   public void submitRoomAnswer(UUID userId, UUID roomId, RoomAnswerSubmitRequest request) {
     log.info("[RoomService] 시험 답안 제출 시작 - userId: {}, roomId: {}", userId, roomId);
 
+    // 요청 리스트 내 동일한 문제 ID가 중복 유입되는지 검증
+    long uniqueProblemCount = request.answers().stream()
+        .map(ProblemAnswerRequest::roomProblemId)
+        .distinct().count();
+    if (uniqueProblemCount != request.answers().size()) {
+      throw new BusinessException(RoomErrorCode.DUPLICATE_ANSWER_SUBMITTED);
+    }
+
     // 방 존재 검증
-    Room room = findRoomOrThrow(roomId);
+    Room room = roomRepository.findByIdForUpdate(roomId)
+        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
 
     // 시간 검증 - 시험 시작 전 제출 시도 차단
     OffsetDateTime now = OffsetDateTime.now();
@@ -220,8 +229,9 @@ public class RoomServiceImpl implements RoomService{
 
     log.info("[RoomService] 시험 채점 최종 마감 시작 - adminUserId: {}, roomId: {}", adminUserId, roomId);
 
-    // 방 존재 검증
-    Room room = findRoomOrThrow(roomId);
+    // 방 존재 검증, 비관적 락 적용
+    Room room = roomRepository.findByIdForUpdate(roomId)
+        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
 
     // 권한 검증 - 마감 요청자가 ADMIN인지 + 방의 소속 공간 관리자가 맞는지 확인
     validateSpaceAdmin(adminUserId, room);
@@ -318,6 +328,11 @@ public class RoomServiceImpl implements RoomService{
 
     // 권한 검증 - 마감 요청자가 ADMIN인지 + 방의 소속 공간 관리자가 맞는지 확인
     validateSpaceAdmin(adminUserId, room);
+
+    // 채점이 마감되지 않은 상태이면 리포트 생성 차단
+    if (!Boolean.TRUE.equals(room.getIsEnded())) {
+      throw new BusinessException(RoomErrorCode.REPORT_NOT_READY);
+    }
 
     // 문제 목록 및 응시자 리스트 일괄 획득
     List<RoomProblem> roomProblems = roomProblemRepository.findByRoomIdOrderByProblemOrder(roomId);

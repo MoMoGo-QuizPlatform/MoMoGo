@@ -16,7 +16,9 @@ public enum RoomErrorCode implements ErrorCode {
   INVALID_ACCESS_BEFORE_START(4005, "INVALID_ACCESS_BEFORE_START", HttpStatus.BAD_REQUEST, "시험 시작 시간 전에는 문제를 조회할 수 없습니다."),
   NOT_ROOM_PARTICIPANT(4006, "NOT_ROOM_PARTICIPANT", HttpStatus.FORBIDDEN, "해당 평가 시험의 응시 대상자가 아닙니다."),
   PROBLEM_NOT_FOUND(4007, "PROBLEM_NOT_FOUND", HttpStatus.NOT_FOUND, "존재하지 않는 문제입니다."),
-  REPORT_GENERATION_FAILED(4008, "REPORT_GENERATION_FAILED", HttpStatus.INTERNAL_SERVER_ERROR, "리포트 PDF 문서 생성 중 서버 내부 오류가 발생했습니다.");
+  REPORT_GENERATION_FAILED(4008, "REPORT_GENERATION_FAILED", HttpStatus.INTERNAL_SERVER_ERROR, "리포트 PDF 문서 생성 중 서버 내부 오류가 발생했습니다."),
+  DUPLICATE_ANSWER_SUBMITTED(4009, "DUPLICATE_ANSWER_SUBMITTED", HttpStatus.BAD_REQUEST, "동일한 문제에 대한 중복 답안 제출은 허용되지 않습니다."),
+  REPORT_NOT_READY(4010, "REPORT_NOT_READY", HttpStatus.BAD_REQUEST, "아직 채점이 완료되지 않아 리포트가 준비되지 않았습니다.");
 
   private final int numeric;
   private final String errorKey;
