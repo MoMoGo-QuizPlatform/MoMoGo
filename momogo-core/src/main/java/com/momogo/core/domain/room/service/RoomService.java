@@ -3,6 +3,7 @@ package com.momogo.core.domain.room.service;
 import com.momogo.core.domain.room.dto.request.RoomAnswerSubmitRequest;
 import com.momogo.core.domain.room.dto.request.RoomCreateRequest;
 import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
+import com.momogo.core.domain.room.dto.response.RoomReportResponse;
 import com.momogo.core.domain.room.dto.response.RoomResponse;
 import java.util.List;
 import java.util.UUID;
@@ -18,4 +19,6 @@ public interface RoomService {
   void submitRoomAnswer(UUID userId, UUID roomId, RoomAnswerSubmitRequest request);
 
   void finalizeGrade(UUID adminUserId, UUID roomId);
+
+  RoomReportResponse getRoomReport(UUID adminUserId, UUID roomId);
 }

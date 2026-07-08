@@ -4,8 +4,11 @@ import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.room.dto.request.ProblemAnswerRequest;
 import com.momogo.core.domain.room.dto.request.RoomAnswerSubmitRequest;
 import com.momogo.core.domain.room.dto.request.RoomCreateRequest;
+import com.momogo.core.domain.room.dto.response.ProblemGradeReport;
 import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
+import com.momogo.core.domain.room.dto.response.RoomReportResponse;
 import com.momogo.core.domain.room.dto.response.RoomResponse;
+import com.momogo.core.domain.room.dto.response.TakerGradeReport;
 import com.momogo.core.domain.room.entity.Room;
 import com.momogo.core.domain.room.entity.RoomProblem;
 import com.momogo.core.domain.room.entity.RoomUser;
@@ -25,6 +28,8 @@ import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.repository.UserRepository;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -189,7 +194,7 @@ public class RoomServiceImpl implements RoomService{
           if (problem == null || !problem.getRoom().getId().equals(roomId)) {
             throw new BusinessException(RoomErrorCode.PROBLEM_NOT_FOUND);
           }
-          return UserRoomAnswer.of(user, problem, ans.userAnswer());
+          return UserRoomAnswer.of(user, problem, ans.userAnswer(), null);
         })
         .toList();
     userRoomAnswerRepository.saveAll(userRoomAnswers);
@@ -241,6 +246,8 @@ public class RoomServiceImpl implements RoomService{
         .collect(Collectors.groupingBy(ans -> ans.getUser().getId()));
 
     int totalProblems = roomProblems.size();
+    // 일괄 업데이트할 답안 리스트
+    List<UserRoomAnswer> answersToUpdate = new ArrayList<>();
 
     // 메모리 상에서 채점 루프
     for (RoomUser roomUser : roomUsers) {
@@ -255,19 +262,27 @@ public class RoomServiceImpl implements RoomService{
         }
 
         // 문제별 제출 답안 매핑용 맵 생성
-        Map<UUID, String> problemAnswerMap = submitted.stream()
+        Map<UUID, UserRoomAnswer> problemAnswerMap = submitted.stream()
             .collect(Collectors.toMap(
                 ans -> ans.getRoomProblem().getId(),
-                ans -> ans.getUserAnswer() != null ? ans.getUserAnswer().trim() : ""
+                ans -> ans
             ));
 
         int correctCount = 0;
         for (RoomProblem problem : roomProblems) {
-          String userAnswer = problemAnswerMap.get(problem.getId());
-          String correctAnswer = problem.getCorrectAnswer() != null ? problem.getCorrectAnswer().trim() : "";
+          UserRoomAnswer ans = problemAnswerMap.get(problem.getId());
 
-          if (userAnswer != null && userAnswer.equals(correctAnswer)) {
-            correctCount++;
+          if (ans != null) {
+            String userAnswer = ans.getUserAnswer() != null ? ans.getUserAnswer().trim() : "";
+            String correctAnswer = problem.getCorrectAnswer() != null ? problem.getCorrectAnswer().trim() : "";
+            Boolean isCorrect = userAnswer.equals(correctAnswer);
+
+            // 개별 답안 엔티티에 정답 오답 판정 결과를 주입하고 일괄 업데이트 대상에 추가
+            ans.grade(isCorrect);
+            answersToUpdate.add(ans);
+            if (isCorrect) {
+              correctCount++;
+            }
           }
         }
 
@@ -281,12 +296,107 @@ public class RoomServiceImpl implements RoomService{
 
     // 벌크 연산3. 배치 쓰기(Batch Update) 유도
     roomUserRepository.saveAll(roomUsers);
+    // 변경된 정오표 DB 기록
+    userRoomAnswerRepository.saveAll(answersToUpdate);
 
     // 시험 마감 처리
     room.finalizeTest();
     log.info("[RoomService] 시험 채점 최종 마감 및 비활성화 완료 - roomId: {}", roomId);
   }
 
+  @Override
+  @Transactional(readOnly = true)
+  public RoomReportResponse getRoomReport(UUID adminUserId, UUID roomId) {
+
+    log.info("[RoomService] 시험 리포트 조회 시작 - adminUserId: {}, roomId: {}", adminUserId, roomId);
+
+    // 방 존재 검증
+    Room room = findRoomOrThrow(roomId);
+
+    // 권한 검증
+    User adminUser = userRepository.findById(adminUserId)
+        .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
+
+    if (adminUser.getRole() != UserRole.ADMIN || adminUser.getSpace() == null || !adminUser.getSpace().getId().equals(room.getSpace().getId())) {
+      throw new BusinessException(SpaceErrorCode.NOT_SPACE_ADMIN);
+    }
+
+    // 문제 목록 및 응시자 리스트 일괄 획득
+    List<RoomProblem> roomProblems = roomProblemRepository.findByRoomIdOrderByProblemOrder(roomId);
+    List<RoomUser> roomUsers = roomUserRepository.findAllByRoomId(roomId);
+
+    if (roomUsers.isEmpty()) {
+      return new RoomReportResponse(roomId, room.getName(), 0, 0, 0.0, 0, List.of());
+    }
+
+    // 이 방의 모든 제출 답안 목록 전체 획득
+    List<UserRoomAnswer> allAnswers = userRoomAnswerRepository.findByRoomProblemRoomId(roomId);
+
+    // 유저 id별로 제출된 답안 목록 그룹핑
+    Map<UUID, List<UserRoomAnswer>> answersByTakerMap = allAnswers.stream()
+        .collect(Collectors.groupingBy(ans -> ans.getUser().getId()));
+
+    // 통계 지표 계산 (평균, 최고점, 응시율)
+    int totalApplicant = roomUsers.size();
+    List<RoomUser> attendedUsers = roomUsers.stream()
+        .filter(u -> Boolean.TRUE.equals(u.getIsAttended()))
+        .toList();
+
+    int attendedCount = attendedUsers.size();
+
+    double averageScore = attendedCount > 0
+        ? attendedUsers.stream().mapToInt(RoomUser::getScore).average().orElse(0.0)
+        : 0.0;
+
+    int maxScore = attendedCount > 0
+        ? attendedUsers.stream().mapToInt(RoomUser::getScore).max().orElse(0)
+        : 0;
+
+    // 유저별 상세 문항 성적표 목록 생성
+    List<TakerGradeReport> takerGrades = roomUsers.stream().map(roomUser -> {
+      User user = roomUser.getUser();
+
+      List<ProblemGradeReport> problemGrades;
+      if (Boolean.TRUE.equals(roomUser.getIsAttended())) {
+        List<UserRoomAnswer> submitted = answersByTakerMap.getOrDefault(user.getId(),
+            Collections.emptyList());
+        Map<UUID, UserRoomAnswer> problemAnswerMap = submitted.stream()
+            .collect(Collectors.toMap(ans -> ans.getRoomProblem().getId(), ans -> ans));
+
+        problemGrades = roomProblems.stream().map(problem -> {
+          UserRoomAnswer ans = problemAnswerMap.get(problem.getId());
+          return new ProblemGradeReport(
+              problem.getId(),
+              problem.getProblemOrder(),
+              problem.getName(),
+              ans != null ? ans.getUserAnswer() : "",
+              problem.getCorrectAnswer(),
+              ans != null && Boolean.TRUE.equals(ans.getIsCorrect())
+          );
+        }).toList();
+      } else {
+        problemGrades = roomProblems.stream().map(problem -> new ProblemGradeReport(
+            problem.getId(),
+            problem.getProblemOrder(),
+            problem.getName(),
+            "",
+            problem.getCorrectAnswer(),
+            false
+        )).toList();
+      }
+
+      return new TakerGradeReport(
+          user.getId(),
+          user.getName(),
+          user.getEmail(),
+          roomUser.getIsAttended(),
+          roomUser.getScore(),
+          problemGrades
+      );
+    }).toList();
+
+    return new RoomReportResponse(roomId, room.getName(), totalApplicant, attendedCount, averageScore, maxScore, takerGrades);
+  }
 
   // 시험방 생성을 위한 유효성 검증 및 도메인 엔티티 일괄 조회 헬퍼 메서드
   private ValidatedRoomTarget validateAndGetTargets(UUID userId, UUID spaceId, RoomCreateRequest request) {
