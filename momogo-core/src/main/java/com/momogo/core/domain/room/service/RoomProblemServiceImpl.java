@@ -150,7 +150,7 @@ public class RoomProblemServiceImpl implements RoomProblemService {
 
   private void validateAdmin(UUID userId, Room room) {
 
-    User user = userRepository.findById(userId)
+    User user = userRepository.findByIdWithSpace(userId)
         .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
 
     if (user.getRole() != UserRole.ADMIN || user.getSpace() == null || !user.getSpace().getId().equals(room.getSpace().getId())) {

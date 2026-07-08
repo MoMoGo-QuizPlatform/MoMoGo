@@ -1,11 +1,14 @@
 package com.momogo.core.domain.room.service;
 
+import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.problem.dto.response.GeneratedProblemData;
 import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
 import com.momogo.core.domain.room.entity.Room;
 import com.momogo.core.domain.room.entity.RoomProblem;
+import com.momogo.core.domain.room.exception.RoomErrorCode;
 import com.momogo.core.domain.room.mapper.RoomProblemMapper;
 import com.momogo.core.domain.room.repository.RoomProblemRepository;
+import com.momogo.core.domain.room.repository.RoomRepository;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RoomProblemPersister {
+
+  private final RoomRepository roomRepository;
 
   private final RoomProblemRepository roomProblemRepository;
 
@@ -28,7 +33,11 @@ public class RoomProblemPersister {
       Room room,
       List<GeneratedProblemData> generated) {
 
-    Integer nextOrder = roomProblemRepository.findMaxProblemOrderByRoomId(room.getId())
+    // 같은 방에 대한 동시 채번 요청을 직렬화하기 위해 비관적 락으로 재조회
+    Room lockedRoom = roomRepository.findByIdForUpdate(room.getId())
+        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+
+    Integer nextOrder = roomProblemRepository.findMaxProblemOrderByRoomId(lockedRoom.getId())
         .map(o -> o + 1)
         .orElse(1);
 
@@ -38,7 +47,7 @@ public class RoomProblemPersister {
 
       saved.add(roomProblemRepository.save(
           RoomProblem.of(
-              room,
+              lockedRoom,
               nextOrder++,
               dto.name(),
               dto.content(),
