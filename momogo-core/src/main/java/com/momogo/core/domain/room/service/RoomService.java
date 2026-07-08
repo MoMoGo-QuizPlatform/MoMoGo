@@ -21,4 +21,6 @@ public interface RoomService {
   void finalizeGrade(UUID adminUserId, UUID roomId);
 
   RoomReportResponse getRoomReport(UUID adminUserId, UUID roomId);
+
+  byte[] downloadRoomReportPdf(UUID adminUserId, UUID roomId);
 }

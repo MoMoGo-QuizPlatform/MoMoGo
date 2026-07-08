@@ -1,5 +1,8 @@
 package com.momogo.core.domain.room.service;
 
+import com.lowagie.text.Document;
+import com.lowagie.text.Paragraph;
+import com.lowagie.text.pdf.PdfWriter;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.room.dto.request.ProblemAnswerRequest;
 import com.momogo.core.domain.room.dto.request.RoomAnswerSubmitRequest;
@@ -27,6 +30,7 @@ import com.momogo.core.domain.space.repository.SpaceRepository;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.repository.UserRepository;
+import java.io.ByteArrayOutputStream;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -396,6 +400,55 @@ public class RoomServiceImpl implements RoomService{
     }).toList();
 
     return new RoomReportResponse(roomId, room.getName(), totalApplicant, attendedCount, averageScore, maxScore, takerGrades);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public byte[] downloadRoomReportPdf(UUID adminUserId, UUID roomId) {
+
+    log.info("[RoomService] 시험 리포트 PDF 다운로드 시작 - adminUserId: {}, roomId: {}", adminUserId, roomId);
+
+    // 성적 리포트 데이터 획득
+    RoomReportResponse report = getRoomReport(adminUserId, roomId);
+
+    // OpenPDF 라이브러리를 활용해 바이너리 스트림 생성
+    try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+      Document document = new Document();
+      PdfWriter.getInstance(document, out);
+
+      document.open();
+
+      // PDF 타이틀 및 기본 정보 기재
+      document.add(new Paragraph("=================================================="));
+      document.add(new Paragraph("             MoMoGo Exam Evaluation Report        "));
+      document.add(new Paragraph("=================================================="));
+      document.add(new Paragraph(" "));
+      document.add(new Paragraph("Exam Room: " + report.roomName()));
+      document.add(new Paragraph("Room ID: " + report.roomId().toString()));
+      document.add(new Paragraph(" "));
+      document.add(new Paragraph("------------------ Statistics ------------------"));
+      document.add(new Paragraph("Total Applicants : " + report.totalApplicants()));
+      document.add(new Paragraph("Attended Count   : " + report.attendedCount()));
+      document.add(new Paragraph("Average Score    : " + report.averageScore()));
+      document.add(new Paragraph("Maximum Score    : " + report.maxScore()));
+      document.add(new Paragraph("-------------------------------------------------"));
+      document.add(new Paragraph(" "));
+
+      // 응시자 목록 헤더 추가
+      document.add(new Paragraph("Taker Grade Matrix:"));
+      for (TakerGradeReport grade : report.takerGrades()) {
+        String status = Boolean.TRUE.equals(grade.isAttended()) ? "Attended" : "Absent";
+        document.add(new Paragraph(String.format(" - %s (%s) | Status: %s | Score: %d",
+            grade.name(), grade.email(), status, grade.score())));
+      }
+
+      document.close();
+      return out.toByteArray();
+
+    } catch (Exception e) {
+      log.error("[RoomService] PDF 생성 중 실패 - roomId: {}", roomId, e);
+      throw new BusinessException(RoomErrorCode.ROOM_NOT_FOUND);
+    }
   }
 
   // 시험방 생성을 위한 유효성 검증 및 도메인 엔티티 일괄 조회 헬퍼 메서드
