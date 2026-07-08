@@ -76,6 +76,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/sign-in", "/api/auth/sign-out").permitAll()
 
                         // 유저 관련
+                        .requestMatchers(HttpMethod.GET, "/api/users/me").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/users/me").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/users/{userId}").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/users").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/restore").permitAll()
@@ -83,9 +85,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/users/*/role").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/users/*/banned").hasRole("SUPER_ADMIN")
 
-                        .requestMatchers(HttpMethod.GET, "/api/users/me").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/users").authenticated()
-                        .requestMatchers(HttpMethod.PATCH, "/api/users/me").authenticated()
 
                         // 인증 관련
                         .requestMatchers(HttpMethod.GET, "/api/auth/csrf-token").permitAll()
@@ -155,7 +155,6 @@ public class SecurityConfig {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
         authProvider.setUserDetailsService(userDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder());
-        authProvider.setHideUserNotFoundExceptions(false);
         return authProvider;
     }
 

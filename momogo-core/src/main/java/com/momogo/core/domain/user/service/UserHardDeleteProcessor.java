@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.UUID;
 
@@ -34,7 +36,17 @@ public class UserHardDeleteProcessor {
                 .orElseThrow(() -> new BusinessException(UserErrorCode.NOT_FOUND));
 
         if (user.getProfileImageUrl() != null && !user.getProfileImageUrl().isBlank()) {
-            storageService.delete(PROFILE_IMAGE_DIR + "/" + user.getProfileImageUrl());
+            String profileImageUrl = user.getProfileImageUrl();
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCompletion(int status) {
+                            if (status == STATUS_COMMITTED) {
+                                storageService.delete(PROFILE_IMAGE_DIR + "/" + profileImageUrl);
+                            }
+                        }
+                    }
+            );
         }
         // DB 유저 데이터 물리 삭제
         userRepository.delete(user);

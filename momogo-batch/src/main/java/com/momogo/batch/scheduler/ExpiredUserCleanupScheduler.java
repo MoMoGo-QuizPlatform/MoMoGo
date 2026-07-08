@@ -19,7 +19,7 @@ public class ExpiredUserCleanupScheduler {
      * 매일 새벽 4시에 백그라운드 태스크로 작동하도록 스케줄이 등록되어 있습니다.
      * 크론식 구성: 초(0) 분(0) 시(4) 일(*) 월(*) 요일(*)
      */
-    @Scheduled(cron = "* * 4 * * *")
+    @Scheduled(cron = "0 0 4 * * *")
     public void runExpiredUserCleanupJob() {
         log.info("[ExpiredUserCleanupScheduler] 30일 경과 회원 물리 삭제 스케줄 작업 시작");
         try {

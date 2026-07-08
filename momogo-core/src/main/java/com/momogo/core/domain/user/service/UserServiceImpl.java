@@ -185,11 +185,7 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public void softDeleteUser(UUID userId) {
-        User user = findUser(userId);
-
-        if (user.getDeletedAt() != null) {
-            throw new BusinessException(UserErrorCode.ALREADY_IN_PROGRESS_DELETE);
-        }
+        User user = findActiveUser(userId);
 
         // 탈퇴 전, 소속된 공간이 있다면 퇴장 처리
         if (user.getSpace() != null) {
@@ -225,18 +221,25 @@ public class UserServiceImpl implements UserService {
     }
 
     /**
-     * 논리 삭제 상태인 회원 계정을 30일 이내에 복구합니다.
+     * 논리 삭제 상태인 회원 계정을 비밀번호 검증 후 30일 이내에 복구합니다.
      *
-     * @param email 복구 대상 회원의 이메일
+     * @param email    복구 대상 회원의 이메일
+     * @param password 본인 확인을 위한 비밀번호
      */
     @Override
     @Transactional
-    public void restoreUser(String email) {
+    public void restoreUser(String email, String password) {
+        // TODO: 이메일로 1회성 복구 토큰으로 구현할 예정
         User user = findUserByEmail(email);
 
         // 탈퇴 상태가 아니거나 이미 30일이 지난 경우 복구할 수 없음.
         if (!user.isRestorable()) {
             throw new BusinessException(UserErrorCode.NOT_ABLE_RESTORE);
+        }
+
+        // 비밀번호 검증
+        if (!passwordEncryptor.matches(password, user.getPassword())) {
+            throw new BusinessException(UserErrorCode.PASSWORD_MISMATCH);
         }
 
         // 복구 처리 (deletedAt = null)

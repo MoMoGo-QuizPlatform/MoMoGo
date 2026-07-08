@@ -1,12 +1,15 @@
 package com.momogo.api.auth.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.momogo.api.auth.jwt.JwtTokenProvider;
 import com.momogo.core.common.exception.BusinessException;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.core.AuthenticationException;
@@ -23,6 +26,7 @@ import java.util.Map;
 public class LoginFailureHandler implements AuthenticationFailureHandler {
 
     private final ObjectMapper objectMapper;
+    private final JwtTokenProvider jwtTokenProvider;
 
     @Override
     public void onAuthenticationFailure(
@@ -40,6 +44,26 @@ public class LoginFailureHandler implements AuthenticationFailureHandler {
             errorMessage = businessException.getMessage();
             errorCode = businessException.getErrorCode().getCode();
             status = businessException.getErrorCode().getHttpStatus().value();
+
+            // 탈퇴 대기 상태(ALREADY_IN_PROGRESS_DELETE)로 인한 로그인 실패 시 복구 쿠키 발급
+            if ("ALREADY_IN_PROGRESS_DELETE".equals(businessException.getErrorCode().getErrorKey())) {
+                String email = request.getParameter("username"); // 스프링 시큐리티 기본 로그인 폼의 이메일 파라미터명
+                if (email != null && !email.isBlank()) {
+                    try {
+                        String restoreToken = jwtTokenProvider.generateRestoreToken(email);
+                        ResponseCookie cookie = ResponseCookie.from("RESTORE_TOKEN", restoreToken)
+                                .httpOnly(true)
+                                .secure(true)
+                                .path("/")
+                                .maxAge(300) // 5분
+                                .sameSite("Lax")
+                                .build();
+                        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+                    } catch (Exception e) {
+                        log.error("[LoginFailureHandler] 일반 로그인 복구 토큰 생성 실패", e);
+                    }
+                }
+            }
         } else if (exception instanceof LockedException || exception instanceof DisabledException) {
             log.warn("로그인 실패(제한된 계정): {}", exception.getClass().getSimpleName());
         } else {

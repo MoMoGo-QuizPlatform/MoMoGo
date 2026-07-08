@@ -69,6 +69,49 @@ public class JwtTokenProvider {
         return createToken(userDetails, refreshTokenExpirationMs, refreshTokenSigner, "refresh");
     }
 
+    public String generateRestoreToken(String email) throws JOSEException {
+        String tokenId = UUID.randomUUID().toString();
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + 300_000L); // 5분 유효
+
+        JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
+                .subject(email)
+                .jwtID(tokenId)
+                .claim("type", "restore")
+                .issueTime(now)
+                .expirationTime(expiryDate)
+                .build();
+
+        SignedJWT signedJWT = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claimsSet);
+        signedJWT.sign(accessTokenSigner);
+        return signedJWT.serialize();
+    }
+
+    public String getEmailFromRestoreToken(String token) {
+        try {
+            SignedJWT signedJWT = parseToken(token);
+            if (!signedJWT.verify(accessTokenVerifier)) {
+                throw new BusinessException(AuthErrorCode.SIGNATURE_FAILED);
+            }
+
+            String tokenType = (String) signedJWT.getJWTClaimsSet().getClaim("type");
+            if (!"restore".equals(tokenType)) {
+                throw new BusinessException(AuthErrorCode.INVALID_TOKEN_TYPE);
+            }
+
+            Date exp = signedJWT.getJWTClaimsSet().getExpirationTime();
+            if (exp == null || exp.before(new Date())) {
+                throw new BusinessException(AuthErrorCode.EXPIRED_TOKEN);
+            }
+
+            return signedJWT.getJWTClaimsSet().getSubject();
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
+        }
+    }
+
     private String createToken(
             MoMoGoUserDetails userDetails,
             long expirationMs,

@@ -6,7 +6,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.AuthenticationException;
-import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -24,11 +23,7 @@ public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
 
     /**
      * 소셜(구글/카카오) 로그인 인증 실패 시 예외 처리를 담당하는 핸들러 클래스입니다.
-     * 인증 과정에서 발생한 예외 메시지를 파싱하여 프론트엔드의 지정된 실패 리다이렉트 URL로 전달합니다.
-     * 소셜 로그인 인증 실패 시 호출되어 실패 로그를 남기고 사용자를 에러 정보와 함께 리다이렉트시킵니다.
-     * - 에러 메시지 획득: 발생한 예외(OAuth2AuthenticationException 등)에서 에러 문구를 추출합니다.
-     * - URL 인코딩: 한글 깨짐 방지를 위해 UTF-8 규격으로 에러 메시지를 안전하게 인코딩합니다.
-     * - 리다이렉트 처리: 프론트엔드 실패 URL(app.oauth2.failure-redirect-url) 뒤에 error 파라미터로 메시지를 실어 리다이렉트합니다.
+     * 인증 과정에서 발생한 예외 메시지를 파싱하여 프론트엔드의 지정된 실패 리다이렉트 URL로 리다이렉트합니다.
      *
      * @param request   HttpServletRequest 요청 객체
      * @param response  HttpServletResponse 응답 객체
@@ -43,25 +38,6 @@ public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
             AuthenticationException exception
     ) throws IOException, ServletException {
         log.error("[OAuth2LoginFailureHandler] 소셜 로그인 실패: {}", exception.getMessage());
-
-        // OAuth2 인증 예외 중, 탈퇴 대기 상태(delete_in_progress)로 인한 실패 처리
-        if (exception instanceof OAuth2AuthenticationException oauthException) {
-            String errorCode = oauthException.getError().getErrorCode();
-
-            if ("delete_in_progress".equals(errorCode)) {
-                // OAuth2UserDetailsService에서 실어 보낸 이메일 주소 획득
-                String email = oauthException.getMessage();
-
-                // 프론트엔드로 에러 코드와 복구 대상 이메일을 파라미터에 실어 리다이렉트
-                String targetUrl = UriComponentsBuilder.fromUriString(failureRedirectUrl)
-                        .queryParam("error", errorCode)
-                        .queryParam("email", email)
-                        .build().toUriString();
-
-                response.sendRedirect(targetUrl);
-                return;
-            }
-        }
 
         // 에러 메시지를 프론트엔드가 알아볼 수 있게 인코딩하여 리다이렉트 주소에 포함
         String errorMessage = exception.getMessage() != null ? exception.getMessage() : "소셜 로그인 인증에 실패했습니다.";
