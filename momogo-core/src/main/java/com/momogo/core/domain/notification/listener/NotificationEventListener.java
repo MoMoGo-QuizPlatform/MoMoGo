@@ -11,6 +11,7 @@ import com.momogo.core.domain.room.event.RoomCreatedEvent;
 import com.momogo.core.domain.space.event.SpaceUserJoinedEvent;
 import com.momogo.core.domain.space.event.SpaceUserRoleChangedEvent;
 import com.momogo.core.domain.user.entity.User;
+import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.exception.UserErrorCode;
 import com.momogo.core.domain.user.repository.UserRepository;
 import java.util.UUID;
@@ -60,19 +61,25 @@ public class NotificationEventListener {
         "관리 중인 공간에 새로운 유저가 가입했습니다.", NotificationType.NEW_USER_JOINED);
   }
 
+  // AFTER_COMMIT 단계에서 예외가 퍼지면 원본 트랜잭션은 이미 커밋됐는데도 클라이언트가 에러 응답을 받고,
+  // 반복 호출(handleRoomCreated 등) 중이면 이후 유저 알림까지 중단되므로, 실패해도 로그만 남기고 삼킴
   private void notify(UUID userId, String title, String content, NotificationType type) {
-    User receiver = userRepository.findById(userId)
-        .orElseThrow(() -> new BusinessException(UserErrorCode.NOT_FOUND));
+    try {
+      User receiver = userRepository.findById(userId)
+          .orElseThrow(() -> new BusinessException(UserErrorCode.NOT_FOUND));
 
-    Notification notification = Notification.builder()
-        .receiver(receiver)
-        .title(title)
-        .content(content)
-        .type(type)
-        .build();
+      Notification notification = Notification.builder()
+          .receiver(receiver)
+          .title(title)
+          .content(content)
+          .type(type)
+          .build();
 
-    Notification saved = notificationRepository.save(notification);
-    NotificationResponse response = notificationMapper.toResponse(saved);
-    notificationSseService.publish(userId, response);
+      Notification saved = notificationRepository.save(notification);
+      NotificationResponse response = notificationMapper.toResponse(saved);
+      notificationSseService.publish(userId, response);
+    } catch (Exception e) {
+      log.error("알림 처리 실패 - userId: {}, type: {}", userId, type, e);
+    }
   }
 }
