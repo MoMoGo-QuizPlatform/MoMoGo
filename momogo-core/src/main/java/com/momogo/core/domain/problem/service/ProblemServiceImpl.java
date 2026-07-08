@@ -1,9 +1,11 @@
 package com.momogo.core.domain.problem.service;
 
 import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.domain.problem.dto.request.ProblemAiCreateRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemCreateRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemSolveRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemUpdateRequest;
+import com.momogo.core.domain.problem.dto.response.GeneratedProblemData;
 import com.momogo.core.domain.problem.dto.response.ProblemCursorResponse;
 import com.momogo.core.domain.problem.dto.response.ProblemResponse;
 import com.momogo.core.domain.problem.dto.response.ProblemSolveResponse;
@@ -22,6 +24,7 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -38,6 +41,10 @@ public class ProblemServiceImpl implements ProblemService {
   private final SpaceRepository spaceRepository;
 
   private final ProblemMapper problemMapper;
+  
+  private final ProblemGenerationService problemGenerationService;
+
+  private final ProblemPersister problemPersister;
 
   /**
    * 문제 직접 생성
@@ -204,5 +211,30 @@ public class ProblemServiceImpl implements ProblemService {
       ProblemSolveRequest request) {
 
     return null;
+  }
+
+  /**
+   * AI 기반 문제 자동 생성 (ADMIN 전용)
+   * @param spaceId   공간 ID
+   * @param request   AI 문제 자동 생성 요청 DTO
+   */
+  @Override
+  @Transactional(propagation = Propagation.NOT_SUPPORTED) // 해당 메서드 자체는 트랜잭션 없이 실행
+  public List<ProblemResponse> createProblemsByAi(UUID spaceId, ProblemAiCreateRequest request) {
+    
+    // 공간 / 카테고리 검증
+    Space space = spaceRepository.findById(spaceId)
+        .orElseThrow(() -> new BusinessException(ProblemErrorCode.SPACE_NOT_FOUND));
+
+    ProblemCategory category = categoryRepository.findById(request.categoryId())
+        .orElseThrow(() -> new BusinessException(ProblemErrorCode.CATEGORY_NOT_FOUND));
+    
+    // AI 생성 호출 (트랜잭션 밖 - 커넥션 안 잡고 LLM 응답 대기)
+    List<GeneratedProblemData> generated = problemGenerationService.generateProblems(
+        request.referenceText(),
+        request.questionCount()
+    );
+    
+    return problemPersister.saveGeneratedProblems(space, category, generated);
   }
 }

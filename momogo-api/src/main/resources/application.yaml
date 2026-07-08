@@ -12,6 +12,14 @@ spring:
       prod:
         - prod
 
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:dummy-key}
+      chat:
+        options:
+          model: gpt-4o-mini
+          temperature: 0.7 # 응답의 다양성 값
+
   mail:
     host: smtp.gmail.com
     port: 587
