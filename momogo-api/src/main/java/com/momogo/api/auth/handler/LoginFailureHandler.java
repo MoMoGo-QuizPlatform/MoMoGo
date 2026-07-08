@@ -47,8 +47,9 @@ public class LoginFailureHandler implements AuthenticationFailureHandler {
 
             // 탈퇴 대기 상태(ALREADY_IN_PROGRESS_DELETE)로 인한 로그인 실패 시 복구 쿠키 발급
             if ("ALREADY_IN_PROGRESS_DELETE".equals(businessException.getErrorCode().getErrorKey())) {
-                String email = request.getParameter("username"); // 스프링 시큐리티 기본 로그인 폼의 이메일 파라미터명
-                if (email != null && !email.isBlank()) {
+                String[] usernames = request.getParameterValues("username");
+                if (usernames != null && usernames.length == 1 && !usernames[0].isBlank()) {
+                    String email = usernames[0];
                     try {
                         String restoreToken = jwtTokenProvider.generateRestoreToken(email);
                         ResponseCookie cookie = ResponseCookie.from("RESTORE_TOKEN", restoreToken)
@@ -62,6 +63,8 @@ public class LoginFailureHandler implements AuthenticationFailureHandler {
                     } catch (Exception e) {
                         log.error("[LoginFailureHandler] 일반 로그인 복구 토큰 생성 실패", e);
                     }
+                } else {
+                    log.warn("[LoginFailureHandler] 로그인 실패 처리에 유효하지 않거나 중복된 username 파라미터가 들어왔습니다.");
                 }
             }
         } else if (exception instanceof LockedException || exception instanceof DisabledException) {

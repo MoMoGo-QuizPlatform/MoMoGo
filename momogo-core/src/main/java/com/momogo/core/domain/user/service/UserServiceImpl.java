@@ -229,7 +229,6 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public void restoreUser(String email, String password) {
-        // TODO: 이메일로 1회성 복구 토큰으로 구현할 예정
         User user = findUserByEmail(email);
 
         // 탈퇴 상태가 아니거나 이미 30일이 지난 경우 복구할 수 없음.

@@ -92,6 +92,13 @@ public class OAuth2UserDetailsService extends DefaultOAuth2UserService {
     private User validateSocialUser(User user, SocialType socialType) {
         // 소셜 로그인 시도 유저가 탈퇴 진행 중인 상태인 경우 자동으로 복구 처리
         if (user.getDeletedAt() != null) {
+            if (!user.isRestorable()) {
+                log.info("[OAuth2UserDetailsService] 복구 기간이 만료된 소셜 유저({}) 로그인 시도", EmailUtils.maskEmail(user.getEmail()));
+                throw new OAuth2AuthenticationException(
+                        new OAuth2Error("restore_expired"),
+                        "탈퇴 후 30일이 경과하여 복구할 수 없습니다."
+                );
+            }
             log.info("[OAuth2UserDetailsService] 탈퇴 대기 중인 소셜 유저({}) 복구 및 로그인 진행", EmailUtils.maskEmail(user.getEmail()));
             user.restore();
             userRepository.save(user);
