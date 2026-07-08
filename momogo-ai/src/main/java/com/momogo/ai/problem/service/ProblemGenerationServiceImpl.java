@@ -8,6 +8,8 @@ import com.momogo.core.domain.problem.service.ProblemGenerationService;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.retry.NonTransientAiException;
+import org.springframework.ai.retry.TransientAiException;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
@@ -52,8 +54,14 @@ public class ProblemGenerationServiceImpl implements ProblemGenerationService {
               dto.correctAnswer(),
               dto.explanation()))
           .toList();
+    } catch (TransientAiException | NonTransientAiException e) {
+
+      log.error("LLM API 호출 실패. referenceText 길이={}, questionCount={}", referenceText.length(), questionCount, e);
+
+      throw new BusinessException(ProblemErrorCode.AI_GENERATION_FAILED);
     } catch (Exception e) {
-      log.error("AI 문제 생성 실패. referenceText 길이={}, questionCount={}", referenceText.length(), questionCount, e);
+
+      log.error("LLM 응답 파싱 실패. referenceText 길이={}, questionCount={}", referenceText.length(), questionCount, e);
 
       throw new BusinessException(ProblemErrorCode.AI_GENERATION_FAILED);
     }
