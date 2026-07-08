@@ -61,4 +61,9 @@ public class Room extends BaseTimeEntity {
             .isEnded(false)
             .build();
     }
+
+    // 마감 처리
+    public void finalizeTest() {
+        this.isEnded = true;
+    }
 }

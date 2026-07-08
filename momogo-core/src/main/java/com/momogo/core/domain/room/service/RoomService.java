@@ -16,4 +16,6 @@ public interface RoomService {
   List<RoomProblemResponse> getRoomProblems(UUID userId, UUID roomId);
 
   void submitRoomAnswer(UUID userId, UUID roomId, RoomAnswerSubmitRequest request);
+
+  void finalizeGrade(UUID adminUserId, UUID roomId);
 }

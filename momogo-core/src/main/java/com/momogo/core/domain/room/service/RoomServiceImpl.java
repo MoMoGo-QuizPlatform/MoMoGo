@@ -201,6 +201,92 @@ public class RoomServiceImpl implements RoomService{
         userId, roomId, userRoomAnswers.size());
   }
 
+  @Override
+  @Transactional
+  public void finalizeGrade(UUID adminUserId, UUID roomId) {
+
+    log.info("[RoomService] 시험 채점 최종 마감 시작 - adminUserId: {}, roomId: {}", adminUserId, roomId);
+
+    // 방 존재 검증
+    Room room = findRoomOrThrow(roomId);
+
+    // 권한 검증 - 마감 요청자가 ADMIN인지 + 방의 소속 공간 관리자가 맞는지 확인
+    User adminUser = userRepository.findById(adminUserId)
+        .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
+
+    if (adminUser.getRole() != UserRole.ADMIN || adminUser.getSpace() == null || !adminUser.getSpace().getId().equals(room.getSpace().getId())) {
+      throw new BusinessException(SpaceErrorCode.NOT_SPACE_ADMIN);
+    }
+
+    // 중복 마감 차단 검증
+    if (Boolean.TRUE.equals(room.getIsEnded())) {
+      throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
+    }
+
+    // 시험 문제 목록 및 응시자 목록 조회
+    List<RoomProblem> roomProblems = roomProblemRepository.findByRoomIdOrderByProblemOrder(roomId);
+    List<RoomUser> roomUsers = roomUserRepository.findAllByRoomId(roomId);
+
+    if (roomProblems.isEmpty()) {
+      log.warn("[RoomService] 출제된 문제가 없는 시험방입니다. roomId: {}", roomId);
+      room.finalizeTest();
+      return;
+    }
+
+    // 벌크 연산1. 해당 방의 모든 응시자 제출 답안을 일괄 조회
+    List<UserRoomAnswer> allSubmittedAnswers = userRoomAnswerRepository.findByRoomProblemRoomId(roomId);
+
+    // 벌크 연산2. 모든 답안을 유저 ID별로 그룹핑해서 메모리 맵으로 전환
+    Map<UUID, List<UserRoomAnswer>> answersByTakerMap = allSubmittedAnswers.stream()
+        .collect(Collectors.groupingBy(ans -> ans.getUser().getId()));
+
+    int totalProblems = roomProblems.size();
+
+    // 메모리 상에서 채점 루프
+    for (RoomUser roomUser : roomUsers) {
+      UUID testTakerId = roomUser.getUser().getId();
+
+      if (Boolean.TRUE.equals(roomUser.getIsAttended())) {
+        List<UserRoomAnswer> submitted = answersByTakerMap.get(testTakerId);
+
+        if (submitted == null) {
+          roomUser.updateScore(0);
+          continue;
+        }
+
+        // 문제별 제출 답안 매핑용 맵 생성
+        Map<UUID, String> problemAnswerMap = submitted.stream()
+            .collect(Collectors.toMap(
+                ans -> ans.getRoomProblem().getId(),
+                ans -> ans.getUserAnswer() != null ? ans.getUserAnswer().trim() : ""
+            ));
+
+        int correctCount = 0;
+        for (RoomProblem problem : roomProblems) {
+          String userAnswer = problemAnswerMap.get(problem.getId());
+          String correctAnswer = problem.getCorrectAnswer() != null ? problem.getCorrectAnswer().trim() : "";
+
+          if (userAnswer != null && userAnswer.equals(correctAnswer)) {
+            correctCount++;
+          }
+        }
+
+        int finalScore = (int) Math.round((double) correctCount / totalProblems * 100);
+        roomUser.updateScore(finalScore);
+      } else {
+        // 미응시자 0점 처리
+        roomUser.updateScore(0);
+      }
+    }
+
+    // 벌크 연산3. 배치 쓰기(Batch Update) 유도
+    roomUserRepository.saveAll(roomUsers);
+
+    // 시험 마감 처리
+    room.finalizeTest();
+    log.info("[RoomService] 시험 채점 최종 마감 및 비활성화 완료 - roomId: {}", roomId);
+  }
+
 
   // 시험방 생성을 위한 유효성 검증 및 도메인 엔티티 일괄 조회 헬퍼 메서드
   private ValidatedRoomTarget validateAndGetTargets(UUID userId, UUID spaceId, RoomCreateRequest request) {

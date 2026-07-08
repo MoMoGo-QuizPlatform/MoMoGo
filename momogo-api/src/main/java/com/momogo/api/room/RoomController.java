@@ -90,4 +90,19 @@ public class RoomController {
     roomService.submitRoomAnswer(userId, roomId, request);
     return ResponseEntity.ok().build();
   }
+
+  /**
+   * 평가 시험 채점 최종 마감
+   * @param adminUserId 관리자 유저 아이디
+   * @param roomId 평가 시험 아이디
+   * @return 채점 최종 마감 성공 여부
+   */
+  @PostMapping("/rooms/{roomId}/finalize-grade")
+  public ResponseEntity<Void> finalizeGrade(
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID adminUserId,
+      @PathVariable UUID roomId
+  ) {
+    roomService.finalizeGrade(adminUserId, roomId);
+    return ResponseEntity.ok().build();
+  }
 }
