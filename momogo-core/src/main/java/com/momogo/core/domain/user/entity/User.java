@@ -134,6 +134,17 @@ public class User extends BaseTimeEntity {
         this.deletedAt = OffsetDateTime.now();
     }
 
+    public void restore() {
+        this.deletedAt = null;
+    }
+
+    public boolean isRestorable() {
+        if (this.deletedAt == null) {
+            return false;
+        }
+        return this.deletedAt.plusDays(30).isAfter(OffsetDateTime.now());
+    }
+
     public void joinSpace(Space space, UserRole role) {
         this.space = space;
         this.role = role;

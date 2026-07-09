@@ -23,16 +23,12 @@ public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
 
     /**
      * 소셜(구글/카카오) 로그인 인증 실패 시 예외 처리를 담당하는 핸들러 클래스입니다.
-     * 인증 과정에서 발생한 예외 메시지를 파싱하여 프론트엔드의 지정된 실패 리다이렉트 URL로 전달합니다.
-     * 소셜 로그인 인증 실패 시 호출되어 실패 로그를 남기고 사용자를 에러 정보와 함께 리다이렉트시킵니다.
-     * - 에러 메시지 획득: 발생한 예외(OAuth2AuthenticationException 등)에서 에러 문구를 추출합니다.
-     * - URL 인코딩: 한글 깨짐 방지를 위해 UTF-8 규격으로 에러 메시지를 안전하게 인코딩합니다.
-     * - 리다이렉트 처리: 프론트엔드 실패 URL(app.oauth2.failure-redirect-url) 뒤에 error 파라미터로 메시지를 실어 리다이렉트합니다.
+     * 인증 과정에서 발생한 예외 메시지를 파싱하여 프론트엔드의 지정된 실패 리다이렉트 URL로 리다이렉트합니다.
      *
-     * @param request HttpServletRequest 요청 객체
-     * @param response HttpServletResponse 응답 객체
+     * @param request   HttpServletRequest 요청 객체
+     * @param response  HttpServletResponse 응답 객체
      * @param exception 인증 실패 시 발생한 예외 객체
-     * @throws IOException 입출력 예외 발생 시
+     * @throws IOException      입출력 예외 발생 시
      * @throws ServletException 서블릿 예외 발생 시
      */
     @Override

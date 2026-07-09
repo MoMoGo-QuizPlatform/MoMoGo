@@ -5,6 +5,7 @@ import com.momogo.core.common.exception.AuthErrorCode;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.user.dto.response.UserResponse;
 import com.momogo.core.domain.user.entity.enums.UserRole;
+import com.momogo.core.domain.user.service.RestoreTokenValidator;
 import com.nimbusds.jose.*;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jose.crypto.MACVerifier;
@@ -25,7 +26,7 @@ import java.util.UUID;
 
 @Slf4j
 @Component
-public class JwtTokenProvider {
+public class JwtTokenProvider implements RestoreTokenValidator {
 
     public static final String REFRESH_TOKEN_COOKIE_NAME = "REFRESH_TOKEN";
     private final long accessTokenExpirationMs;
@@ -38,6 +39,8 @@ public class JwtTokenProvider {
 
     private final boolean refreshCookieSecure;
     private final String refreshCookieSameSite;
+
+    public static final long RESTORE_TOKEN_EXPIRATION_SECONDS = 300L;
 
     public JwtTokenProvider(
             @Value("${jwt.access-token.secret}") String accessTokenSecret,
@@ -67,6 +70,49 @@ public class JwtTokenProvider {
 
     public String generateRefreshToken(MoMoGoUserDetails userDetails) throws JOSEException {
         return createToken(userDetails, refreshTokenExpirationMs, refreshTokenSigner, "refresh");
+    }
+
+    public String generateRestoreToken(String email) throws JOSEException {
+        String tokenId = UUID.randomUUID().toString();
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + (RESTORE_TOKEN_EXPIRATION_SECONDS * 1000L)); // 5분 유효
+
+        JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
+                .subject(email)
+                .jwtID(tokenId)
+                .claim("type", "restore")
+                .issueTime(now)
+                .expirationTime(expiryDate)
+                .build();
+
+        SignedJWT signedJWT = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claimsSet);
+        signedJWT.sign(accessTokenSigner);
+        return signedJWT.serialize();
+    }
+
+    public String getEmailFromRestoreToken(String token) {
+        try {
+            SignedJWT signedJWT = parseToken(token);
+            if (!signedJWT.verify(accessTokenVerifier)) {
+                throw new BusinessException(AuthErrorCode.SIGNATURE_FAILED);
+            }
+
+            String tokenType = (String) signedJWT.getJWTClaimsSet().getClaim("type");
+            if (!"restore".equals(tokenType)) {
+                throw new BusinessException(AuthErrorCode.INVALID_TOKEN_TYPE);
+            }
+
+            Date exp = signedJWT.getJWTClaimsSet().getExpirationTime();
+            if (exp == null || exp.before(new Date())) {
+                throw new BusinessException(AuthErrorCode.EXPIRED_TOKEN);
+            }
+
+            return signedJWT.getJWTClaimsSet().getSubject();
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
+        }
     }
 
     private String createToken(
@@ -230,6 +276,7 @@ public class JwtTokenProvider {
                     role,
                     null,
                     false,
+                    null,
                     null
             );
 

@@ -1,8 +1,11 @@
 package com.momogo.api.auth.config;
 
+import com.momogo.api.auth.details.MoMoGoUserDetails;
 import com.momogo.api.auth.jwt.JwtAuthenticationFilter;
 import com.momogo.api.auth.details.OAuth2UserDetailsService;
 import com.momogo.api.auth.handler.*;
+import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.domain.user.exception.UserErrorCode;
 import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,6 +15,8 @@ import org.springframework.security.access.expression.method.MethodSecurityExpre
 import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.CredentialsExpiredException;
+import org.springframework.security.authentication.InternalAuthenticationServiceException;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -78,11 +83,14 @@ public class SecurityConfig {
                         // 유저 관련
                         .requestMatchers(HttpMethod.GET, "/api/users/me").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/users/me").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/users").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/{userId}").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/users").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/users").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/restore").permitAll()
+
                         .requestMatchers(HttpMethod.PATCH, "/api/users/*/role").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/users/*/banned").hasRole("SUPER_ADMIN")
+
+                        .requestMatchers(HttpMethod.GET, "/api/users").authenticated()
 
                         // 인증 관련
                         .requestMatchers(HttpMethod.GET, "/api/auth/csrf-token").permitAll()
@@ -152,6 +160,24 @@ public class SecurityConfig {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
         authProvider.setUserDetailsService(userDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder());
+
+        // 비밀번호 검증이 성공적으로 통과된 이후 호출되는 로직 설정
+        authProvider.setPostAuthenticationChecks(toCheck -> {
+            if (!toCheck.isCredentialsNonExpired()) {
+                throw new CredentialsExpiredException("유저의 인증정보는 만료되었습니다.");
+            }
+
+            // 유저가 탈퇴 처리 진행 중인지 검사
+            if (toCheck instanceof MoMoGoUserDetails userDetails) {
+                if (userDetails.getUserResponse().deletedAt() != null) {
+                    throw new InternalAuthenticationServiceException(
+                            "이미 삭제가 진행중인 유저입니다.",
+                            new BusinessException(UserErrorCode.ALREADY_IN_PROGRESS_DELETE)
+                    );
+                }
+            }
+        });
+
         return authProvider;
     }
 

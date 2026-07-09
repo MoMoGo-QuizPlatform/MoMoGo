@@ -1,4 +1,6 @@
 spring:
+  main:
+    keep-alive: true
   threads:
     virtual:
       enabled: true
@@ -24,3 +26,13 @@ spring:
 
 server:
   port: 8082
+
+app:
+  super-admin:
+    email: ${SUPER_ADMIN_EMAIL:admin@admin.com}
+  file:
+    base-url: ${APP_FILE_BASE_URL:http://localhost:8080/uploads}
+    upload:
+      allowed-extensions: jpg,jpeg,png,webp
+      allowed-mime-types: image/jpeg,image/png,image/webp
+
