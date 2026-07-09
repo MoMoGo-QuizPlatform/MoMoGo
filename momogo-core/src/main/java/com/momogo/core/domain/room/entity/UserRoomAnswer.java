@@ -14,7 +14,7 @@ import java.util.UUID;
     name = "TBL_USER_ROOM_ANSWER",
     uniqueConstraints = {
         @UniqueConstraint(
-            name = "uk_user_room_problem",
+            name = "UQ_USER_ROOM_ANSWER_USER_PROBLEM",
             columnNames = {"user_id", "room_problem_id"}
         )
     }
