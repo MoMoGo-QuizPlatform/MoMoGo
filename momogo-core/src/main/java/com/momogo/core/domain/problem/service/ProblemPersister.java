@@ -1,10 +1,12 @@
 package com.momogo.core.domain.problem.service;
 
+import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.problem.dto.response.GeneratedProblemData;
 import com.momogo.core.domain.problem.dto.response.ProblemResponse;
 import com.momogo.core.domain.problem.entity.Problem;
 import com.momogo.core.domain.problem.entity.ProblemCategory;
 import com.momogo.core.domain.problem.entity.ProblemCounters;
+import com.momogo.core.domain.problem.exception.ProblemErrorCode;
 import com.momogo.core.domain.problem.mapper.ProblemMapper;
 import com.momogo.core.domain.problem.repository.ProblemCategoryRepository;
 import com.momogo.core.domain.problem.repository.ProblemCountersRepository;
@@ -40,9 +42,11 @@ public class ProblemPersister {
       UUID categoryId,
       List<GeneratedProblemData> generated) {
 
-    Space space = spaceRepository.getReferenceById(spaceId);
+    Space space = spaceRepository.findById(spaceId)
+        .orElseThrow(() -> new BusinessException(ProblemErrorCode.SPACE_NOT_FOUND));
 
-    ProblemCategory category = categoryRepository.getReferenceById(categoryId);
+    ProblemCategory category = categoryRepository.findById(categoryId)
+        .orElseThrow(() -> new BusinessException(ProblemErrorCode.CATEGORY_NOT_FOUND));
 
     // 생성된 문제들 -> 엔티티로 변환해서 일괄 저장
     List<Problem> savedProblems = generated.stream()
