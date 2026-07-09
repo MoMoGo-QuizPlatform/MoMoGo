@@ -10,7 +10,15 @@ import lombok.Builder;
 import java.util.UUID;
 
 @Entity
-@Table(name = "TBL_USER_ROOM_ANSWER")
+@Table(
+    name = "TBL_USER_ROOM_ANSWER",
+    uniqueConstraints = {
+        @UniqueConstraint(
+            name = "uk_user_room_problem",
+            columnNames = {"user_id", "room_problem_id"}
+        )
+    }
+)
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor

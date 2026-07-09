@@ -189,7 +189,7 @@ public class RoomServiceImpl implements RoomService{
 
     // 응시 대상 유저  자격 검증
     RoomUserId roomUserId = new RoomUserId(roomId, userId);
-    RoomUser roomUser = roomUserRepository.findById(roomUserId)
+    RoomUser roomUser = roomUserRepository.findByIdForUpdate(roomUserId)
         .orElseThrow(() -> new BusinessException(RoomErrorCode.NOT_ROOM_PARTICIPANT));
 
     // 요청 유저 획득

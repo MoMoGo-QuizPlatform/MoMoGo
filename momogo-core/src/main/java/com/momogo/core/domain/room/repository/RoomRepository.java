@@ -13,10 +13,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface RoomRepository extends JpaRepository<Room, UUID> {
 
-  @Lock(LockModeType.PESSIMISTIC_WRITE)
-  @Query("SELECT r FROM Room r WHERE r.id = :id")
-  Optional<Room> findByIdForUpdate(@Param("id") UUID id);
-  
   @Query("select r from Room r join fetch r.space where r.id = :roomId")
   Optional<Room> findByIdWithSpace(@Param("roomId") UUID roomId);
 
