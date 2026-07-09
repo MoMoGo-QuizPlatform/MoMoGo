@@ -1,5 +1,6 @@
 package com.momogo.core.domain.problem.service;
 
+import com.momogo.core.domain.problem.dto.request.ProblemAiCreateRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemCreateRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemSolveRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemUpdateRequest;
@@ -7,6 +8,7 @@ import com.momogo.core.domain.problem.dto.response.ProblemCursorResponse;
 import com.momogo.core.domain.problem.dto.response.ProblemResponse;
 import com.momogo.core.domain.problem.dto.response.ProblemSolveResponse;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public interface ProblemService {
@@ -64,4 +66,11 @@ public interface ProblemService {
    * @param request   문제 제출 요청 DTO
    */
   ProblemSolveResponse solveProblem(UUID problemId, UUID userId, ProblemSolveRequest request);
+
+  /**
+   * AI 기반 문제 자동 생성 (ADMIN 전용)
+   * @param spaceId   공간 ID
+   * @param request   AI 문제 자동 생성 요청 DTO
+   */
+  List<ProblemResponse> createProblemsByAi(UUID spaceId, ProblemAiCreateRequest request);
 }

@@ -34,7 +34,10 @@ public enum ProblemErrorCode implements ErrorCode {
       HttpStatus.BAD_REQUEST, "수정할 필드 값은 공백일 수 없습니다."),
 
   INVALID_CURSOR(3008, "INVALID_CURSOR",
-      HttpStatus.BAD_REQUEST, "커서 값이 올바르지 않습니다. cursor와 cursorId는 함께 존재하거나 함께 없어야 합니다.");
+      HttpStatus.BAD_REQUEST, "커서 값이 올바르지 않습니다. cursor와 cursorId는 함께 존재하거나 함께 없어야 합니다."),
+
+  AI_GENERATION_FAILED(3009, "AI_GENERATION_FAILED",
+      HttpStatus.SERVICE_UNAVAILABLE, "AI 문제 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
 
   private final int numeric;
   private final String errorKey;

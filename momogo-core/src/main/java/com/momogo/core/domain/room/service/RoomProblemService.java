@@ -1,8 +1,10 @@
 package com.momogo.core.domain.room.service;
 
+import com.momogo.core.domain.room.dto.request.RoomProblemAiCreateRequest;
 import com.momogo.core.domain.room.dto.request.RoomProblemCreatedRequest;
 import com.momogo.core.domain.room.dto.request.RoomProblemUpdateRequest;
 import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
+import java.util.List;
 import java.util.UUID;
 
 public interface RoomProblemService {
@@ -31,4 +33,12 @@ public interface RoomProblemService {
    * @param roomProblemId 방 문제 ID
    */
   void deleteRoomProblem(UUID userId, UUID roomId, UUID roomProblemId);
+
+  /**
+   * 방 문제 AI 자동 생성 (ADMIN 전용)
+   * @param userId        유저 ID
+   * @param roomId        방 ID
+   * @param request       AI 문제 생성 DTO
+   */
+  List<RoomProblemResponse> createRoomProblemsByAi(UUID userId, UUID roomId, RoomProblemAiCreateRequest request);
 }
