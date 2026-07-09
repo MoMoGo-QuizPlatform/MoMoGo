@@ -42,6 +42,7 @@ public class UserServiceImpl implements UserService {
     private final UserMapper userMapper;
     private final UserSessionService userSessionService;
     private final StorageService storageService;
+    private final RestoreTokenValidator restoreTokenValidator;
 
     private final UserHardDeleteProcessor hardDeleteProcessor;
 
@@ -223,12 +224,14 @@ public class UserServiceImpl implements UserService {
     /**
      * 논리 삭제 상태인 회원 계정을 비밀번호 검증 후 30일 이내에 복구합니다.
      *
-     * @param email    복구 대상 회원의 이메일
+     * @param restoreToken    복구를 위한 토큰
      * @param password 본인 확인을 위한 비밀번호
      */
     @Override
     @Transactional
-    public void restoreUser(String email, String password) {
+    public void restoreUser(String restoreToken, String password) {
+        String email = restoreTokenValidator.getEmailFromRestoreToken(restoreToken);
+
         User user = findUserByEmail(email);
 
         // 탈퇴 상태가 아니거나 이미 30일이 지난 경우 복구할 수 없음.

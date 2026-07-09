@@ -100,8 +100,7 @@ public class AuthController {
             throw new BusinessException(GlobalErrorCode.UNAUTHORIZED, "만료되었거나 올바르지 않은 복구 세션입니다.");
         }
 
-        String email = jwtTokenProvider.getEmailFromRestoreToken(restoreToken);
-        userService.restoreUser(email, request.password());
+        userService.restoreUser(restoreToken, request.password());
 
         // 복구 성공 후 임시 복구 쿠키 삭제 처리 (즉시 만료)
         ResponseCookie deleteCookie = ResponseCookie.from("RESTORE_TOKEN", "")

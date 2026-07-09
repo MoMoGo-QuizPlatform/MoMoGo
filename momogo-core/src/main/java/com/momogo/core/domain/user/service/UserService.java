@@ -17,5 +17,5 @@ public interface UserService {
 
     void deleteExpiredUsers();
 
-    void restoreUser(String email, String password);
+    void restoreUser(String restoreToken, String password);
 }

@@ -52,10 +52,6 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
                     return new BusinessException(UserErrorCode.NOT_FOUND);
                 });
 
-        if (user.getDeletedAt() != null) {
-            throw new BusinessException(UserErrorCode.ALREADY_IN_PROGRESS_DELETE);
-        }
-
         UserResponse userResponse = userMapper.toResponse(user);
 
         // 10분 이내 유효한 임시 비밀번호가 존재한다면 검증용 비밀번호로 임시 비밀번호 사용

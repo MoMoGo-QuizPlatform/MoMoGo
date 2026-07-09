@@ -56,7 +56,7 @@ public class LoginFailureHandler implements AuthenticationFailureHandler {
                                 .httpOnly(true)
                                 .secure(true)
                                 .path("/")
-                                .maxAge(300) // 5분
+                                .maxAge(JwtTokenProvider.RESTORE_TOKEN_EXPIRATION_SECONDS)
                                 .sameSite("Lax")
                                 .build();
                         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());

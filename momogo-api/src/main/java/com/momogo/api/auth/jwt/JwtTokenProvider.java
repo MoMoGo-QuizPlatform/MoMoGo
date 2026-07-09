@@ -5,6 +5,7 @@ import com.momogo.core.common.exception.AuthErrorCode;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.user.dto.response.UserResponse;
 import com.momogo.core.domain.user.entity.enums.UserRole;
+import com.momogo.core.domain.user.service.RestoreTokenValidator;
 import com.nimbusds.jose.*;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jose.crypto.MACVerifier;
@@ -25,7 +26,7 @@ import java.util.UUID;
 
 @Slf4j
 @Component
-public class JwtTokenProvider {
+public class JwtTokenProvider implements RestoreTokenValidator {
 
     public static final String REFRESH_TOKEN_COOKIE_NAME = "REFRESH_TOKEN";
     private final long accessTokenExpirationMs;
@@ -38,6 +39,8 @@ public class JwtTokenProvider {
 
     private final boolean refreshCookieSecure;
     private final String refreshCookieSameSite;
+
+    public static final long RESTORE_TOKEN_EXPIRATION_SECONDS = 300L;
 
     public JwtTokenProvider(
             @Value("${jwt.access-token.secret}") String accessTokenSecret,
@@ -72,7 +75,7 @@ public class JwtTokenProvider {
     public String generateRestoreToken(String email) throws JOSEException {
         String tokenId = UUID.randomUUID().toString();
         Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + 300_000L); // 5분 유효
+        Date expiryDate = new Date(now.getTime() + (RESTORE_TOKEN_EXPIRATION_SECONDS * 1000L)); // 5분 유효
 
         JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
                 .subject(email)
@@ -273,6 +276,7 @@ public class JwtTokenProvider {
                     role,
                     null,
                     false,
+                    null,
                     null
             );
 

@@ -14,6 +14,7 @@ public record UserResponse(
         UserRole role,
         SocialType social,
         Boolean banned,
-        OffsetDateTime createdAt
+        OffsetDateTime createdAt,
+        OffsetDateTime deletedAt
 ) {
 }

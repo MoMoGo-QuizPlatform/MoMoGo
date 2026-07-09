@@ -82,7 +82,8 @@ public class OAuth2UserDetailsService extends DefaultOAuth2UserService {
                         user.getRole(),
                         user.getSocial(),
                         user.getIsBanned(),
-                        user.getCreatedAt()
+                        user.getCreatedAt(),
+                        user.getDeletedAt()
                 ),
                 user.getPassword(),
                 attributes.attributes()
