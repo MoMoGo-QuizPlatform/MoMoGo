@@ -10,6 +10,7 @@ import com.momogo.core.domain.room.event.RoomCreatedEvent;
 import com.momogo.core.domain.space.event.SpaceUserJoinedEvent;
 import com.momogo.core.domain.space.event.SpaceUserRoleChangedEvent;
 import com.momogo.core.domain.user.entity.User;
+import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.repository.UserRepository;
 import java.util.Map;
 import java.util.UUID;
@@ -52,8 +53,6 @@ public class NotificationEventListener {
   }
 
   // 공간 내 권한 변경 -> 변경된 본인에게 알림
-  // TODO: SpaceServiceImpl.changeUserRole()에서 아직 이 이벤트를 발행하지 않음.
-  //  targetUser.changeRole(role) 다음 줄에 publishEvent(new SpaceUserRoleChangedEvent(...)) 추가 필요
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
   public void handleUserRoleChanged(SpaceUserRoleChangedEvent event) {
     User receiver = userRepository.findById(event.targetUserId()).orElse(null);
@@ -66,13 +65,11 @@ public class NotificationEventListener {
   }
 
   // 공간에 새 유저 가입 -> 그 공간 ADMIN에게 알림
-  // TODO: SpaceServiceImpl.joinSpace()에서 아직 이 이벤트를 발행하지 않음.
-  //  UserRepository.findBySpaceIdAndRole 머지되면 admin 조회 후 publishEvent(new SpaceUserJoinedEvent(...)) 추가 필요
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
   public void handleUserJoined(SpaceUserJoinedEvent event) {
-    User receiver = userRepository.findById(event.adminUserId()).orElse(null);
+    User receiver = userRepository.findBySpaceIdAndRole(event.spaceId(), UserRole.ADMIN).orElse(null);
     if (receiver == null) {
-      log.error("알림 대상 유저를 찾을 수 없음 - userId: {}", event.adminUserId());
+      log.error("공간의 ADMIN을 찾을 수 없음 - spaceId: {}", event.spaceId());
       return;
     }
     notify(receiver, "새로운 유저가 가입했습니다",
