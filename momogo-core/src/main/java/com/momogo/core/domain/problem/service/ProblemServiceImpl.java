@@ -223,11 +223,13 @@ public class ProblemServiceImpl implements ProblemService {
   public List<ProblemResponse> createProblemsByAi(UUID spaceId, ProblemAiCreateRequest request) {
     
     // 공간 / 카테고리 검증
-    Space space = spaceRepository.findById(spaceId)
-        .orElseThrow(() -> new BusinessException(ProblemErrorCode.SPACE_NOT_FOUND));
+    if (!spaceRepository.existsById(spaceId)) {
+      throw new BusinessException(ProblemErrorCode.SPACE_NOT_FOUND);
+    }
 
-    ProblemCategory category = categoryRepository.findById(request.categoryId())
-        .orElseThrow(() -> new BusinessException(ProblemErrorCode.CATEGORY_NOT_FOUND));
+    if (!categoryRepository.existsById(request.categoryId())) {
+      throw new BusinessException(ProblemErrorCode.CATEGORY_NOT_FOUND);
+    }
     
     // AI 생성 호출 (트랜잭션 밖 - 커넥션 안 잡고 LLM 응답 대기)
     List<GeneratedProblemData> generated = problemGenerationService.generateProblems(
@@ -235,6 +237,6 @@ public class ProblemServiceImpl implements ProblemService {
         request.questionCount()
     );
     
-    return problemPersister.saveGeneratedProblems(space, category, generated);
+    return problemPersister.saveGeneratedProblems(spaceId, request.categoryId(), generated);
   }
 }

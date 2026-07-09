@@ -1,6 +1,9 @@
 package com.momogo.core.domain.room.service;
 
 import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.domain.problem.dto.response.GeneratedProblemData;
+import com.momogo.core.domain.problem.service.ProblemGenerationService;
+import com.momogo.core.domain.room.dto.request.RoomProblemAiCreateRequest;
 import com.momogo.core.domain.room.dto.request.RoomProblemCreatedRequest;
 import com.momogo.core.domain.room.dto.request.RoomProblemUpdateRequest;
 import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
@@ -15,9 +18,11 @@ import com.momogo.core.domain.space.exception.SpaceErrorCode;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.repository.UserRepository;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -32,6 +37,10 @@ public class RoomProblemServiceImpl implements RoomProblemService {
   private final UserRepository userRepository;
 
   private final RoomProblemMapper roomProblemMapper;
+
+  private final ProblemGenerationService problemGenerationService;
+
+  private final RoomProblemPersister roomProblemPersister;
 
   /**
    * 방 문제 추가 (ADMIN 전용)
@@ -97,6 +106,30 @@ public class RoomProblemServiceImpl implements RoomProblemService {
     roomProblemRepository.delete(target);
   }
 
+  /**
+   * 방 문제 AI 자동 생성 (ADMIN 전용)
+   */
+  @Override
+  @Transactional(propagation = Propagation.NOT_SUPPORTED) // 해당 메서드 자체는 트랜잭션 없이 실행
+  public List<RoomProblemResponse> createRoomProblemsByAi(
+      UUID userId,
+      UUID roomId,
+      RoomProblemAiCreateRequest request) {
+
+    Room room = roomRepository.findByIdWithSpace(roomId)
+        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+
+    validateAdmin(userId, room);
+
+    List<GeneratedProblemData> generated = problemGenerationService.generateProblems(
+        request.referenceText(),
+        request.questionCount()
+    );
+
+    return roomProblemPersister.saveGeneratedProblems(roomId, generated);
+  }
+
+
   private Room getRoom(UUID roomId) {
 
     return roomRepository.findById(roomId)
@@ -117,7 +150,7 @@ public class RoomProblemServiceImpl implements RoomProblemService {
 
   private void validateAdmin(UUID userId, Room room) {
 
-    User user = userRepository.findById(userId)
+    User user = userRepository.findByIdWithSpace(userId)
         .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
 
     if (user.getRole() != UserRole.ADMIN || user.getSpace() == null || !user.getSpace().getId().equals(room.getSpace().getId())) {
