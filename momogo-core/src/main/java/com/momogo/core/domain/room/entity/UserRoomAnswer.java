@@ -10,7 +10,15 @@ import lombok.Builder;
 import java.util.UUID;
 
 @Entity
-@Table(name = "TBL_USER_ROOM_ANSWER")
+@Table(
+    name = "TBL_USER_ROOM_ANSWER",
+    uniqueConstraints = {
+        @UniqueConstraint(
+            name = "UQ_USER_ROOM_ANSWER_USER_PROBLEM",
+            columnNames = {"user_id", "room_problem_id"}
+        )
+    }
+)
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
@@ -32,16 +40,24 @@ public class UserRoomAnswer extends BaseCreatedTimeEntity {
     @Column(name = "is_solved", nullable = false)
     private Boolean isSolved;
 
+    @Column(name = "is_correct")
+    private Boolean isCorrect;
+
     @Column(name = "user_answer", columnDefinition = "TEXT")
     private String userAnswer;
 
     // 정적 팩토리 메서드
-    public static UserRoomAnswer of(User user, RoomProblem roomProblem, String userAnswer) {
+    public static UserRoomAnswer of(User user, RoomProblem roomProblem, String userAnswer, Boolean isCorrect) {
         return UserRoomAnswer.builder()
             .user(user)
             .roomProblem(roomProblem)
             .userAnswer(userAnswer)
             .isSolved(userAnswer != null && !userAnswer.isBlank())
+            .isCorrect(isCorrect)
             .build();
+    }
+
+    public void grade(Boolean isCorrect) {
+        this.isCorrect = isCorrect;
     }
 }

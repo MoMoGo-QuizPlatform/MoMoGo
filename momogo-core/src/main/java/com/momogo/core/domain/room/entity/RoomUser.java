@@ -45,4 +45,9 @@ public class RoomUser extends BaseCreatedTimeEntity {
     public void attend() {
         this.isAttended = true;
     }
+
+    // 점수 갱신
+    public void updateScore(Integer score) {
+        this.score = score;
+    }
 }

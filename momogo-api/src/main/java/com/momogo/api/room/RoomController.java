@@ -3,13 +3,18 @@ package com.momogo.api.room;
 import com.momogo.core.domain.room.dto.request.RoomAnswerSubmitRequest;
 import com.momogo.core.domain.room.dto.request.RoomCreateRequest;
 import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
+import com.momogo.core.domain.room.dto.response.RoomReportResponse;
 import com.momogo.core.domain.room.dto.response.RoomResponse;
 import com.momogo.core.domain.room.service.RoomService;
 import jakarta.validation.Valid;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -89,5 +94,59 @@ public class RoomController {
   ) {
     roomService.submitRoomAnswer(userId, roomId, request);
     return ResponseEntity.ok().build();
+  }
+
+  /**
+   * 평가 시험 채점 최종 마감
+   * @param adminUserId 관리자 유저 아이디
+   * @param roomId 평가 시험 아이디
+   * @return 채점 최종 마감 성공 여부
+   */
+  @PostMapping("/rooms/{roomId}/finalize-grade")
+  public ResponseEntity<Void> finalizeGrade(
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID adminUserId,
+      @PathVariable UUID roomId
+  ) {
+    roomService.finalizeGrade(adminUserId, roomId);
+    return ResponseEntity.ok().build();
+  }
+
+  /**
+   * 평가 시험 리포트 조회
+   * @param adminUserId 관리자 유저 아이디
+   * @param roomId 평가 시험 아이디
+   * @return 리포트 정보
+   */
+  @GetMapping("/rooms/{roomId}/report")
+  public ResponseEntity<RoomReportResponse> getRoomReport(
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID adminUserId,
+      @PathVariable UUID roomId
+  ) {
+    RoomReportResponse response = roomService.getRoomReport(adminUserId, roomId);
+    return ResponseEntity.ok(response);
+  }
+
+  /**
+   * 평가 시험 리포트 PDF 다운로드
+   * @param adminUserId 관리자 유저 아이디
+   * @param roomId 평가 시험 아이디
+   * @return 리포트 PDF
+   */
+  @GetMapping("/rooms/{roomId}/report/download")
+  public ResponseEntity<byte[]> downloadRoomReportPdf(
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID adminUserId,
+      @PathVariable UUID roomId
+  ) {
+    byte[] pdfBytes = roomService.downloadRoomReportPdf(adminUserId, roomId);
+
+    HttpHeaders headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_PDF);
+
+    ContentDisposition contentDisposition = ContentDisposition.attachment()
+            .filename("room_" + roomId + "_report.pdf", StandardCharsets.UTF_8)
+                .build();
+    headers.setContentDisposition(contentDisposition);
+
+    return ResponseEntity.ok().headers(headers).body(pdfBytes);
   }
 }

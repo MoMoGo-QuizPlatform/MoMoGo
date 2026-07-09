@@ -103,6 +103,7 @@ CREATE TABLE "TBL_USER_ROOM_ANSWER" (
                                         "user_id"          UUID          NOT NULL,
                                         "room_problem_id"  UUID          NOT NULL, -- TBL_ROOM_PROBLEM 참조
                                         "is_solved"        BOOLEAN       NOT NULL,
+                                        "is_correct"       BOOLEAN       NULL,     -- 채점 마감 시 정오표 캐싱용 컬럼 추가
                                         "user_answer"      TEXT          NULL,
                                         "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL
 );
@@ -201,3 +202,6 @@ CREATE UNIQUE INDEX "UQ_USER_SUPER_ADMIN_ONLY" ON "TBL_USER" ("role") WHERE "rol
 
 -- 알림 커서 기반 페이지네이션 조회 성능 최적화를 위한 복합 인덱스
 CREATE INDEX "idx_notification_receiver_cursor" ON "TBL_NOTIFICATION" ("receiver_id", "created_at" DESC, "id" DESC);
+
+-- 한 유저가 동일한 평가 시험의 동일 문항에 중복 제출하는 것을 DB 단에서 원천 차단하는 복합 유니크 제약조건
+ALTER TABLE "TBL_USER_ROOM_ANSWER" ADD CONSTRAINT "UQ_USER_ROOM_ANSWER_USER_PROBLEM" UNIQUE ("user_id", "room_problem_id");
