@@ -126,7 +126,7 @@ public class RoomProblemServiceImpl implements RoomProblemService {
         request.questionCount()
     );
 
-    return roomProblemPersister.saveGeneratedProblems(room, generated);
+    return roomProblemPersister.saveGeneratedProblems(roomId, generated);
   }
 
 

@@ -11,6 +11,7 @@ import com.momogo.core.domain.room.repository.RoomProblemRepository;
 import com.momogo.core.domain.room.repository.RoomRepository;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,30 +31,32 @@ public class RoomProblemPersister {
    */
   @Transactional
   public List<RoomProblemResponse> saveGeneratedProblems(
-      Room room,
+      UUID roomId,
       List<GeneratedProblemData> generated) {
 
     // 같은 방에 대한 동시 채번 요청을 직렬화하기 위해 비관적 락으로 재조회
-    Room lockedRoom = roomRepository.findByIdForUpdate(room.getId())
+    Room lockedRoom = roomRepository.findByIdForUpdate(roomId)
         .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
 
     Integer nextOrder = roomProblemRepository.findMaxProblemOrderByRoomId(lockedRoom.getId())
         .map(o -> o + 1)
         .orElse(1);
 
-    List<RoomProblem> saved = new ArrayList<>();
+    List<RoomProblem> roomProblemsToSave = new ArrayList<>();
 
     for (GeneratedProblemData dto : generated) {
 
-      saved.add(roomProblemRepository.save(
+      roomProblemsToSave.add(
           RoomProblem.of(
               lockedRoom,
               nextOrder++,
               dto.name(),
               dto.content(),
               dto.explanation(),
-              dto.correctAnswer())));
+              dto.correctAnswer()));
     }
+
+    List<RoomProblem> saved = roomProblemRepository.saveAll(roomProblemsToSave);
 
     return saved.stream()
         .map(roomProblemMapper::toResponse)
