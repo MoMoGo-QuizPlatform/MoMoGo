@@ -187,6 +187,9 @@ CREATE UNIQUE INDEX "UQ_USER_EMAIL_ACTIVE" ON "TBL_USER" ("email") WHERE "delete
 -- 카테고리 이름 유니크 제약 (동시 요청 레이스 컨디션 방어)
 ALTER TABLE "TBL_PROBLEM_CATEGORY" ADD CONSTRAINT "UQ_PROBLEM_CATEGORY_NAME" UNIQUE ("name");
 
+-- 방별 문제 순번 유니크 제약 (동시 생성 요청의 채번 중복 방어)
+ALTER TABLE "TBL_ROOM_PROBLEM" ADD CONSTRAINT "UQ_ROOM_PROBLEM_ROOM_ORDER" UNIQUE ("room_id", "problem_order");
+
 -- 공간별 커서 페이지네이션 성능 인덱스 (space_id 동등 조건 + created_at/id 정렬)
 CREATE INDEX "IDX_TBL_PROBLEM_SPACE_CURSOR"
     ON "TBL_PROBLEM" ("space_id", "created_at" DESC, "id" DESC);

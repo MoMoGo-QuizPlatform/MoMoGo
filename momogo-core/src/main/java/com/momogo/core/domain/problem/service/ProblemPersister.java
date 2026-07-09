@@ -1,15 +1,20 @@
 package com.momogo.core.domain.problem.service;
 
+import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.problem.dto.response.GeneratedProblemData;
 import com.momogo.core.domain.problem.dto.response.ProblemResponse;
 import com.momogo.core.domain.problem.entity.Problem;
 import com.momogo.core.domain.problem.entity.ProblemCategory;
 import com.momogo.core.domain.problem.entity.ProblemCounters;
+import com.momogo.core.domain.problem.exception.ProblemErrorCode;
 import com.momogo.core.domain.problem.mapper.ProblemMapper;
+import com.momogo.core.domain.problem.repository.ProblemCategoryRepository;
 import com.momogo.core.domain.problem.repository.ProblemCountersRepository;
 import com.momogo.core.domain.problem.repository.ProblemRepository;
 import com.momogo.core.domain.space.entity.Space;
+import com.momogo.core.domain.space.repository.SpaceRepository;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,14 +29,24 @@ public class ProblemPersister {
   
   private final ProblemMapper problemMapper;
 
+  private final SpaceRepository spaceRepository;
+
+  private final ProblemCategoryRepository categoryRepository;
+
   /**
    * 문제 저장 + 통계 초기화만 수행 (LLM 호출 X)
    */
   @Transactional
   public List<ProblemResponse> saveGeneratedProblems(
-      Space space,
-      ProblemCategory category,
+      UUID spaceId,
+      UUID categoryId,
       List<GeneratedProblemData> generated) {
+
+    Space space = spaceRepository.findById(spaceId)
+        .orElseThrow(() -> new BusinessException(ProblemErrorCode.SPACE_NOT_FOUND));
+
+    ProblemCategory category = categoryRepository.findById(categoryId)
+        .orElseThrow(() -> new BusinessException(ProblemErrorCode.CATEGORY_NOT_FOUND));
 
     // 생성된 문제들 -> 엔티티로 변환해서 일괄 저장
     List<Problem> savedProblems = generated.stream()

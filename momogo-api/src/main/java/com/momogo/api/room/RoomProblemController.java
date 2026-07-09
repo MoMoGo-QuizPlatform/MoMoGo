@@ -1,11 +1,13 @@
 package com.momogo.api.room;
 
 import com.momogo.api.auth.details.MoMoGoUserDetails;
+import com.momogo.core.domain.room.dto.request.RoomProblemAiCreateRequest;
 import com.momogo.core.domain.room.dto.request.RoomProblemCreatedRequest;
 import com.momogo.core.domain.room.dto.request.RoomProblemUpdateRequest;
 import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
 import com.momogo.core.domain.room.service.RoomProblemService;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -77,5 +79,23 @@ public class RoomProblemController {
     return ResponseEntity
         .noContent()
         .build();
+  }
+
+  /**
+   * 방 문제 AI 자동 생성 (ADMIN 전용)
+   */
+  @PostMapping("/ai")
+  @PreAuthorize("hasRole('ADMIN')")
+  public ResponseEntity<List<RoomProblemResponse>> createRoomProblemsByAi(
+      @AuthenticationPrincipal MoMoGoUserDetails userDetails,
+      @PathVariable UUID roomId,
+      @Valid @RequestBody RoomProblemAiCreateRequest request) {
+
+    List<RoomProblemResponse> response = roomProblemService.
+        createRoomProblemsByAi(userDetails.getUserResponse().id(), roomId, request);
+
+    return ResponseEntity
+        .status(HttpStatus.CREATED)
+        .body(response);
   }
 }
