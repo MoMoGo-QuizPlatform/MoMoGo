@@ -21,6 +21,7 @@ import com.momogo.core.domain.room.entity.RoomUser;
 import com.momogo.core.domain.room.entity.RoomUserId;
 import com.momogo.core.domain.room.entity.UserRoomAnswer;
 import com.momogo.core.domain.room.event.RoomCreatedEvent;
+import com.momogo.core.domain.room.event.StartAiGradingEvent;
 import com.momogo.core.domain.room.exception.RoomErrorCode;
 import com.momogo.core.domain.room.mapper.RoomMapper;
 import com.momogo.core.domain.room.repository.RoomProblemRepository;
@@ -463,6 +464,25 @@ public class RoomServiceImpl implements RoomService{
       log.error("[RoomService] PDF 생성 중 입출력/문서 포맷팅 예외 발생 - roomId: {}", roomId, e);
       throw new BusinessException(RoomErrorCode.REPORT_GENERATION_FAILED);
     }
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public void startAiGrading(UUID adminUserId, UUID roomId) {
+
+    log.info("[RoomService] AI 선제 채점 비동기 요청 - adminUserId: {}, roomId: {}", adminUserId, roomId);
+
+    // 방 및 관리자 권한 검증
+    Room room = findRoomOrThrow(roomId);
+    validateSpaceAdmin(adminUserId,  room);
+
+    // 이미 성적 채점 및 마감이 완료된 시험방은 예외 처리
+    if (Boolean.TRUE.equals(room.getIsEnded())) {
+      throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
+    }
+
+    // Spring Event 발행
+    eventPublisher.publishEvent(new StartAiGradingEvent(roomId));
   }
 
   // 시험방 생성을 위한 유효성 검증 및 도메인 엔티티 일괄 조회 헬퍼 메서드

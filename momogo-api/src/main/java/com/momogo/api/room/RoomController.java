@@ -149,4 +149,21 @@ public class RoomController {
 
     return ResponseEntity.ok().headers(headers).body(pdfBytes);
   }
+
+  /**
+   * AI 선제 채점 시작 (비동기 루틴)
+   * @param adminUserId 관리자 유저 아이디
+   * @param roomId 평가 시험 아이디
+   * @return 채점 시작 성공 여부
+   */
+  @PostMapping("/rooms/{roomId}/ai-grade")
+  public ResponseEntity<Void> startAiGrading(
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID adminUserId,
+      @PathVariable UUID roomId
+  ) {
+    roomService.startAiGrading(adminUserId, roomId);
+
+    // 비동기 처리이므로 즉시 202 Accepted 반환
+    return ResponseEntity.accepted().build();
+  }
 }

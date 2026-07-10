@@ -2,7 +2,7 @@ package com.momogo.ai.config;
 
 import java.time.Duration;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
@@ -31,7 +31,7 @@ public class AiChatClientConfig {
             문제는 모호함이 없어야 하며 정답은 참고자료 안에서 명확히 근거를 찾을 수 있어야 합니다.
             """)
         // 생성은 다양성이 필요 -> temperature 조금 높게 설정
-        .defaultOptions(OpenAiChatOptions.builder().temperature(0.7).build())
+        .defaultOptions(GoogleGenAiChatOptions.builder().temperature(0.7).build())
         .build();
   }
 
@@ -50,7 +50,7 @@ public class AiChatClientConfig {
             핵심 내용이 빠지거나 틀린 경우에만 오답으로 판단합니다.
             """)
         // 채점은 일관성을 보장해야 하기에 조금 낮게 설정
-        .defaultOptions(OpenAiChatOptions.builder().temperature(0.2).build())
+        .defaultOptions(GoogleGenAiChatOptions.builder().temperature(0.2).build())
         .build();
   }
 

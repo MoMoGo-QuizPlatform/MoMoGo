@@ -23,4 +23,6 @@ public interface RoomService {
   RoomReportResponse getRoomReport(UUID adminUserId, UUID roomId);
 
   byte[] downloadRoomReportPdf(UUID adminUserId, UUID roomId);
+
+  void startAiGrading(UUID adminUserId, UUID roomId);
 }
