@@ -3,7 +3,9 @@ package com.momogo.api.user;
 import com.momogo.api.auth.details.MoMoGoUserDetails;
 import com.momogo.core.domain.user.dto.request.ProfileImageUploadRequest;
 import com.momogo.core.domain.user.dto.request.UserCreateRequest;
+import com.momogo.core.domain.user.dto.request.UserPageRequest;
 import com.momogo.core.domain.user.dto.request.UserUpdateRequest;
+import com.momogo.core.domain.user.dto.response.CursorResponse;
 import com.momogo.core.domain.user.dto.response.UserResponse;
 import com.momogo.core.domain.user.service.UserService;
 import jakarta.validation.Valid;
@@ -11,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -55,7 +58,7 @@ public class UserController {
     /**
      * 로그인된 현재 유저의 프로필(이름, 비밀번호, 프로필 이미지 등)을 수정합니다.
      *
-     * @param userId 인증 객체에서 추출한 유저 식별자
+     * @param userId  인증 객체에서 추출한 유저 식별자
      * @param request 수정할 프로필 정보 DTO
      * @param profile 업로드할 프로필 이미지 파일
      * @return 수정 완료된 회원 정보 DTO
@@ -96,5 +99,13 @@ public class UserController {
     ) {
         userService.softDeleteUser(userId);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<CursorResponse<UserResponse>> findAllUsers(
+            @ModelAttribute UserPageRequest request
+    ) {
+        return ResponseEntity.ok(userService.findAllUsers(request));
     }
 }
