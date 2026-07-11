@@ -104,7 +104,7 @@ public class UserController {
     @GetMapping
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<CursorResponse<UserResponse>> findAllUsers(
-            @ModelAttribute UserPageRequest request
+            @Valid @ModelAttribute UserPageRequest request
     ) {
         return ResponseEntity.ok(userService.findAllUsers(request));
     }

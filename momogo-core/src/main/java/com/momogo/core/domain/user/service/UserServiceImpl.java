@@ -256,11 +256,11 @@ public class UserServiceImpl implements UserService {
 
     /**
      * 커서 기반 페이지네이션을 사용하여 전체 가입 유저 목록을 조회합니다.
-     *
+     * <p>
      * 1차 정렬 조건(이름, 이메일, 생성 시간, 수정 시간, 삭제 시간)의 값이 완전히 일치하는 중복 데이터가 존재하는 경우,
      * 데이터 베이스 정렬 순서의 불일치로 인해 페이징 도중 데이터가 누락되거나 중복 노출되는 문제를 방지합니다.
      * 이를 위해 2차 정렬 기준으로 고유 식별자(id)를 결합하여 일관된 고유 순서를 보장합니다.
-     *
+     * <p>
      * 성능 최적화를 위해 첫 페이지 조회(cursor가 null인 경우) 시에만
      * 데이터베이스에서 전체 카운트 쿼리를 수행하며,
      * 두 번째 페이지부터는 불필요한 카운트 조회를 생략하기 위해 totalCount 값을 -1로 반환합니다.</p>
@@ -271,7 +271,6 @@ public class UserServiceImpl implements UserService {
     @Override
     public CursorResponse<UserResponse> findAllUsers(UserPageRequest request) {
         int limit = request.limit();
-        ;
         Pageable pageable = PageRequest.of(0, limit + 1);
 
         UserSearchCondition condition = new UserSearchCondition(
@@ -315,7 +314,8 @@ public class UserServiceImpl implements UserService {
         // 2페이지부터 백엔드가 -1을 보내도, 0이상이 아니므로
         // 기존 1페이지에서 저장했던 totalCount 값을 보여줌
         long totalCount = -1L;
-        if (request.cursor() == null || request.cursor().isBlank()) {
+        boolean isFirstPage = request.cursor() == null || request.cursor().isBlank() || request.idAfter() == null;
+        if (isFirstPage) {
             totalCount = userRepository.countByCondition(condition);
         }
 
