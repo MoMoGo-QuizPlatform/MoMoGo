@@ -496,10 +496,12 @@ public class RoomServiceImpl implements RoomService{
   @Override
   @Transactional
   public void saveGradingResults(Map<UUID, Boolean> gradingResults, UUID roomId) {
-    for (Map.Entry<UUID, Boolean> entry : gradingResults.entrySet()) {
-      userRoomAnswerRepository.findById(entry.getKey()).ifPresent(answer -> {
-        answer.grade(entry.getValue());
-      });
+    List<UserRoomAnswer> answers = userRoomAnswerRepository.findAllById(gradingResults.keySet());
+    for (UserRoomAnswer answer : answers) {
+      Boolean isCorrect = gradingResults.get(answer.getId());
+      if (isCorrect != null) {
+        answer.grade(isCorrect);
+      }
     }
     // 채점 완료 상태 해제
     roomRepository.findByIdForUpdate(roomId).ifPresent(Room::clearAiGradingInProgress);

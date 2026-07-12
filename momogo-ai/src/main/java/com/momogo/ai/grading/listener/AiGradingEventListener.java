@@ -13,10 +13,8 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -50,14 +48,19 @@ public class AiGradingEventListener {
     log.info("[AiGradingListener] 조회된 답안지 개수: {}", answers.size());
     if (answers.isEmpty()) {
       log.info("[AiGradingListener] 채점 대상 제출 답안지가 존재하지 않습니다. - roomId: {}", event.roomId());
+      try {
+        roomService.clearAiGradingStatus(event.roomId());
+      } catch (Exception ex) {
+        log.error("[AiGradingListener] AI 채점 상태 복구 중 오류 발생 - roomId: {}", event.roomId(), ex);
+      }
       return;
     }
 
-    // 주관식 채점 요청 프롬프트 텍스트 조립
-    String prompt = buildGradingPrompt(answers);
-    log.info("[AiGradingListener] Gemini API 호출용 프롬프트 생성 완료");
-
     try {
+      // 주관식 채점 요청 프롬프트 텍스트 조립
+      String prompt = buildGradingPrompt(answers);
+      log.info("[AiGradingListener] Gemini API 호출용 프롬프트 생성 완료");
+
       // Gemini 호출 및 Structured Output 자바 객체 매핑
       log.info("[AiGradingListener] Gemini API 호출을 시작합니다. (spring.ai.google.genai.api-key 확인됨)");
       
