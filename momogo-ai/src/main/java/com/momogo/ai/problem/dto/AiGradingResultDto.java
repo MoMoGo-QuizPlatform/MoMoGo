@@ -10,7 +10,7 @@ import java.util.UUID;
  */
 public record AiGradingResultDto(
     UUID answerId,
-    boolean isCorrect,
+    Boolean isCorrect,
     String feedback
 ) {
 

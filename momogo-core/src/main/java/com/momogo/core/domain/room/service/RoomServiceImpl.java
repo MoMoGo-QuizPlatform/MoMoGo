@@ -467,22 +467,48 @@ public class RoomServiceImpl implements RoomService{
   }
 
   @Override
-  @Transactional(readOnly = true)
+  @Transactional
   public void startAiGrading(UUID adminUserId, UUID roomId) {
 
     log.info("[RoomService] AI 선제 채점 비동기 요청 - adminUserId: {}, roomId: {}", adminUserId, roomId);
 
-    // 방 및 관리자 권한 검증
-    Room room = findRoomOrThrow(roomId);
-    validateSpaceAdmin(adminUserId,  room);
+    // 방 및 관리자 권한 검증 (동시 트리거 방지 비관적 락 조회)
+    Room room = roomRepository.findByIdForUpdate(roomId)
+        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+    validateSpaceAdmin(adminUserId, room);
 
     // 이미 성적 채점 및 마감이 완료된 시험방은 예외 처리
     if (Boolean.TRUE.equals(room.getIsEnded())) {
       throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
     }
 
+    // 이미 AI 채점이 진행 중이면 중복 트리거 차단
+    if (Boolean.TRUE.equals(room.getIsAiGradingInProgress())) {
+      throw new BusinessException(RoomErrorCode.AI_GRADING_IN_PROGRESS);
+    }
+
+    room.markAiGradingInProgress();
+
     // Spring Event 발행
     eventPublisher.publishEvent(new StartAiGradingEvent(roomId));
+  }
+
+  @Override
+  @Transactional
+  public void saveGradingResults(Map<UUID, Boolean> gradingResults, UUID roomId) {
+    for (Map.Entry<UUID, Boolean> entry : gradingResults.entrySet()) {
+      userRoomAnswerRepository.findById(entry.getKey()).ifPresent(answer -> {
+        answer.grade(entry.getValue());
+      });
+    }
+    // 채점 완료 상태 해제
+    roomRepository.findByIdForUpdate(roomId).ifPresent(Room::clearAiGradingInProgress);
+  }
+
+  @Override
+  @Transactional
+  public void clearAiGradingStatus(UUID roomId) {
+    roomRepository.findByIdForUpdate(roomId).ifPresent(Room::clearAiGradingInProgress);
   }
 
   // 시험방 생성을 위한 유효성 검증 및 도메인 엔티티 일괄 조회 헬퍼 메서드

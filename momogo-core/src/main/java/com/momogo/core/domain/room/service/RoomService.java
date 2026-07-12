@@ -6,6 +6,7 @@ import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
 import com.momogo.core.domain.room.dto.response.RoomReportResponse;
 import com.momogo.core.domain.room.dto.response.RoomResponse;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public interface RoomService {
@@ -25,4 +26,8 @@ public interface RoomService {
   byte[] downloadRoomReportPdf(UUID adminUserId, UUID roomId);
 
   void startAiGrading(UUID adminUserId, UUID roomId);
+
+  void saveGradingResults(Map<UUID, Boolean> gradingResults, UUID roomId);
+
+  void clearAiGradingStatus(UUID roomId);
 }
