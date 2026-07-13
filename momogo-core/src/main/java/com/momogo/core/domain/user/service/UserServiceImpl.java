@@ -4,9 +4,12 @@ import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
 import com.momogo.core.common.security.PasswordEncryptor;
 import com.momogo.core.common.storage.StorageService;
+import com.momogo.core.domain.user.dto.UserSearchCondition;
 import com.momogo.core.domain.user.dto.request.ProfileImageUploadRequest;
 import com.momogo.core.domain.user.dto.request.UserCreateRequest;
+import com.momogo.core.domain.user.dto.request.UserPageRequest;
 import com.momogo.core.domain.user.dto.request.UserUpdateRequest;
+import com.momogo.core.domain.user.dto.response.CursorResponse;
 import com.momogo.core.domain.user.dto.response.UserResponse;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.SocialType;
@@ -18,6 +21,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -26,6 +31,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -202,7 +208,7 @@ public class UserServiceImpl implements UserService {
 
     /**
      * 탈퇴 대기 기간(30일)이 만료된 회원들을 일괄 조회하여 물리 삭제(영구 탈퇴) 처리합니다.
-     *
+     * <p>
      * 개별 유저의 물리 삭제 처리는 독립된 트랜잭션 컴포넌트(UserHardDeleteProcessor)로
      * 위임하여 실행함으로써, 일괄 정리 작업 중 일부 실패가 전체 트랜잭션 롤백으로 이어지지 않도록 방지합니다.
      */
@@ -224,8 +230,8 @@ public class UserServiceImpl implements UserService {
     /**
      * 논리 삭제 상태인 회원 계정을 비밀번호 검증 후 30일 이내에 복구합니다.
      *
-     * @param restoreToken    복구를 위한 토큰
-     * @param password 본인 확인을 위한 비밀번호
+     * @param restoreToken 복구를 위한 토큰
+     * @param password     본인 확인을 위한 비밀번호
      */
     @Override
     @Transactional
@@ -246,6 +252,82 @@ public class UserServiceImpl implements UserService {
 
         // 복구 처리 (deletedAt = null)
         user.restore();
+    }
+
+    /**
+     * 커서 기반 페이지네이션을 사용하여 전체 가입 유저 목록을 조회합니다.
+     * <p>
+     * 1차 정렬 조건(이름, 이메일, 생성 시간, 수정 시간, 삭제 시간)의 값이 완전히 일치하는 중복 데이터가 존재하는 경우,
+     * 데이터 베이스 정렬 순서의 불일치로 인해 페이징 도중 데이터가 누락되거나 중복 노출되는 문제를 방지합니다.
+     * 이를 위해 2차 정렬 기준으로 고유 식별자(id)를 결합하여 일관된 고유 순서를 보장합니다.
+     * <p>
+     * 성능 최적화를 위해 첫 페이지 조회(cursor가 null인 경우) 시에만
+     * 데이터베이스에서 전체 카운트 쿼리를 수행하며,
+     * 두 번째 페이지부터는 불필요한 카운트 조회를 생략하기 위해 totalCount 값을 -1로 반환합니다.</p>
+     *
+     * @param request 검색 필터(이름/이메일 Like) 및 커서 정렬 기준(createdAt, updatedAt, deletedAt, name, email)을 담은 페이징 요청 DTO
+     * @return 회원 응답 DTO 리스트와 다음 페이지 이동을 위한 커서 메타데이터(nextCursor, nextIdAfter, hasNext)를 포함하는 공통 페이징 응답 객체
+     */
+    @Override
+    public CursorResponse<UserResponse> findAllUsers(UserPageRequest request) {
+        int limit = request.limit();
+        Pageable pageable = PageRequest.of(0, limit + 1);
+
+        UserSearchCondition condition = new UserSearchCondition(
+                request.nameLike(),
+                request.emailLike(),
+                request.cursor(),
+                request.idAfter(),
+                request.sortDirection(),
+                request.sortBy()
+        );
+
+        List<User> originalList = userRepository.findAllByCursor(condition, pageable);
+        List<User> userList = new ArrayList<>(originalList);
+
+        boolean hasNext = false;
+        if (userList.size() > limit) {
+            hasNext = true;
+            userList.removeLast();
+        }
+
+        String nextCursor = null;
+        UUID nextIdAfter = null;
+        if (!userList.isEmpty()) {
+            User lastUser = userList.getLast();
+
+            OffsetDateTime sortTime = switch (request.sortBy()) {
+                case "updatedAt" -> lastUser.getUpdatedAt();
+                case "deletedAt" -> lastUser.getDeletedAt();
+                default -> lastUser.getCreatedAt();
+            };
+
+            nextCursor = sortTime != null ? sortTime.toString() : null;
+            nextIdAfter = lastUser.getId();
+        }
+
+        List<UserResponse> data = userList.stream()
+                .map(userMapper::toResponse)
+                .toList();
+
+        // totalCount가 -1이 아닐 때만 (1페이지를 호출했을 때만) 세팅
+        // 2페이지부터 백엔드가 -1을 보내도, 0이상이 아니므로
+        // 기존 1페이지에서 저장했던 totalCount 값을 보여줌
+        long totalCount = -1L;
+        boolean isFirstPage = request.cursor() == null || request.cursor().isBlank() || request.idAfter() == null;
+        if (isFirstPage) {
+            totalCount = userRepository.countByCondition(condition);
+        }
+
+        return new CursorResponse<>(
+                data,
+                nextCursor,
+                nextIdAfter,
+                hasNext,
+                totalCount,
+                request.sortBy(),
+                request.sortDirection()
+        );
     }
 
     /**
