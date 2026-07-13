@@ -3,6 +3,7 @@ package com.momogo.api.user;
 import com.momogo.api.auth.details.MoMoGoUserDetails;
 import com.momogo.core.domain.user.dto.request.ProfileImageUploadRequest;
 import com.momogo.core.domain.user.dto.request.UserCreateRequest;
+import com.momogo.core.domain.user.dto.request.UserBannedRequest;
 import com.momogo.core.domain.user.dto.request.UserPageRequest;
 import com.momogo.core.domain.user.dto.request.UserUpdateRequest;
 import com.momogo.core.domain.user.dto.response.CursorResponse;
@@ -101,11 +102,33 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * 전체 유저 목록을 페이징(커서 기반) 조회합니다. (SUPER_ADMIN 전용)
+     *
+     * @param request 검색 조건 및 페이징 설정 DTO
+     * @return 커서 정보가 포함된 페이징된 유저 목록 응답 객체
+     */
     @GetMapping
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<CursorResponse<UserResponse>> findAllUsers(
             @Valid @ModelAttribute UserPageRequest request
     ) {
         return ResponseEntity.ok(userService.findAllUsers(request));
+    }
+
+    /**
+     * 특정 유저의 정지(밴) 상태를 업데이트합니다. (SUPER_ADMIN 전용)
+     *
+     * @param userId  정지 상태를 변경할 대상 유저 식별자
+     * @param request 정지 여부(banned) 설정 DTO
+     * @return 변경 완료된 회원 정보 DTO
+     */
+    @PatchMapping("/{userId}/banned")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<UserResponse> updateUserBannedStatus(
+            @PathVariable UUID userId,
+            @Valid @RequestBody UserBannedRequest request
+    ) {
+        return ResponseEntity.ok(userService.updateUserBannedStatus(userId, request.banned()));
     }
 }
