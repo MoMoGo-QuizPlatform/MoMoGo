@@ -21,6 +21,7 @@ import com.momogo.core.domain.room.entity.RoomUser;
 import com.momogo.core.domain.room.entity.RoomUserId;
 import com.momogo.core.domain.room.entity.UserRoomAnswer;
 import com.momogo.core.domain.room.event.RoomCreatedEvent;
+import com.momogo.core.domain.room.event.StartAiGradingEvent;
 import com.momogo.core.domain.room.exception.RoomErrorCode;
 import com.momogo.core.domain.room.mapper.RoomMapper;
 import com.momogo.core.domain.room.repository.RoomProblemRepository;
@@ -463,6 +464,53 @@ public class RoomServiceImpl implements RoomService{
       log.error("[RoomService] PDF 생성 중 입출력/문서 포맷팅 예외 발생 - roomId: {}", roomId, e);
       throw new BusinessException(RoomErrorCode.REPORT_GENERATION_FAILED);
     }
+  }
+
+  @Override
+  @Transactional
+  public void startAiGrading(UUID adminUserId, UUID roomId) {
+
+    log.info("[RoomService] AI 선제 채점 비동기 요청 - adminUserId: {}, roomId: {}", adminUserId, roomId);
+
+    // 방 및 관리자 권한 검증 (동시 트리거 방지 비관적 락 조회)
+    Room room = roomRepository.findByIdForUpdate(roomId)
+        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+    validateSpaceAdmin(adminUserId, room);
+
+    // 이미 성적 채점 및 마감이 완료된 시험방은 예외 처리
+    if (Boolean.TRUE.equals(room.getIsEnded())) {
+      throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
+    }
+
+    // 이미 AI 채점이 진행 중이면 중복 트리거 차단
+    if (Boolean.TRUE.equals(room.getIsAiGradingInProgress())) {
+      throw new BusinessException(RoomErrorCode.AI_GRADING_IN_PROGRESS);
+    }
+
+    room.markAiGradingInProgress();
+
+    // Spring Event 발행
+    eventPublisher.publishEvent(new StartAiGradingEvent(roomId));
+  }
+
+  @Override
+  @Transactional
+  public void saveGradingResults(Map<UUID, Boolean> gradingResults, UUID roomId) {
+    List<UserRoomAnswer> answers = userRoomAnswerRepository.findAllById(gradingResults.keySet());
+    for (UserRoomAnswer answer : answers) {
+      Boolean isCorrect = gradingResults.get(answer.getId());
+      if (isCorrect != null) {
+        answer.grade(isCorrect);
+      }
+    }
+    // 채점 완료 상태 해제
+    roomRepository.findByIdForUpdate(roomId).ifPresent(Room::clearAiGradingInProgress);
+  }
+
+  @Override
+  @Transactional
+  public void clearAiGradingStatus(UUID roomId) {
+    roomRepository.findByIdForUpdate(roomId).ifPresent(Room::clearAiGradingInProgress);
   }
 
   // 시험방 생성을 위한 유효성 검증 및 도메인 엔티티 일괄 조회 헬퍼 메서드
