@@ -18,7 +18,11 @@ public class UserBannedEventListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleUserBannedEvent(UserBannedEvent event) {
         log.info("[UserBannedEventListener] 유저 정지 이벤트 감지 - userId: {}", event.userId());
-        jwtRegistry.invalidateJwtInformationByUserId(event.userId());
-        log.info("[UserBannedEventListener] 정지된 유저의 모든 JWT 세션이 무효화되었습니다. userId: {}", event.userId());
+        try {
+            jwtRegistry.invalidateJwtInformationByUserId(event.userId());
+            log.info("[UserBannedEventListener] 정지된 유저의 모든 JWT 세션이 무효화되었습니다. userId: {}", event.userId());
+        } catch (Exception e) {
+            log.error("[UserBannedEventListener] JWT 세션 무효화 실패 - userId: {}", event.userId(), e);
+        }
     }
 }

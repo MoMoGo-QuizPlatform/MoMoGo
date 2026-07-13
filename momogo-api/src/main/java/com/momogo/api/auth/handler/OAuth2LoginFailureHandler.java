@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -41,13 +42,26 @@ public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
 
         // 에러 메시지를 프론트엔드가 알아볼 수 있게 인코딩하여 리다이렉트 주소에 포함
         String errorMessage = exception.getMessage() != null ? exception.getMessage() : "소셜 로그인 인증에 실패했습니다.";
+        String errorCode = null;
+
+        if (exception instanceof OAuth2AuthenticationException oAuth2Exception) {
+            String oauthErrorCode = oAuth2Exception.getError().getErrorCode();
+            if ("user_banned".equals(oauthErrorCode)) {
+                errorCode = "USER-BANNED_USER";
+            }
+        }
 
         // 커스텀 예외 메시지 포맷팅
-        String targetUrl = UriComponentsBuilder.fromUriString(failureRedirectUrl)
-                .queryParam("error", URLEncoder.encode(errorMessage, StandardCharsets.UTF_8))
-                .build().toUriString();
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(failureRedirectUrl)
+                .queryParam("error", URLEncoder.encode(errorMessage, StandardCharsets.UTF_8));
 
-        // 프론트엔드 로그인 페이지로 리다이렉트 (프론트엔드는 URL 파라미터의 error를 읽어 알림 출력 가능)
+        if (errorCode != null) {
+            builder.queryParam("code", errorCode);
+        }
+
+        String targetUrl = builder.build().toUriString();
+
+        // 프론트엔드 로그인 페이지로 리다이렉트 (프론트엔드는 URL 파라미터의 error 및 code를 읽어 알림 출력 가능)
         response.sendRedirect(targetUrl);
     }
 }
