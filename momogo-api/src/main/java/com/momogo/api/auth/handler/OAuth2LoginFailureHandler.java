@@ -1,5 +1,6 @@
 package com.momogo.api.auth.handler;
 
+import com.momogo.core.domain.user.exception.UserErrorCode;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -48,7 +49,7 @@ public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
             String oauthErrorCode = oAuth2Exception.getError().getErrorCode();
             switch (oauthErrorCode) {
                 case "user_banned" -> {
-                    errorCode = "USER-BANNED_USER";
+                    errorCode = UserErrorCode.BANNED_USER.getCode();
                     errorMessage = "정지된 계정입니다. 관리자에게 문의하세요.";
                 }
                 case "email_required" -> {
@@ -83,7 +84,7 @@ public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
             builder.queryParam("code", errorCode);
         }
 
-        String targetUrl = builder.build().toUriString();
+        String targetUrl = builder.build().encode().toUriString();
 
         // 프론트엔드 로그인 페이지로 리다이렉트 (프론트엔드는 URL 파라미터의 error 및 code를 읽어 알림 출력 가능)
         response.sendRedirect(targetUrl);
@@ -101,7 +102,7 @@ public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
         StringBuilder sb = new StringBuilder();
         while (matcher.find()) {
             String email = matcher.group();
-            matcher.appendReplacement(sb, EmailUtils.maskEmail(email));
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(EmailUtils.maskEmail(email)));
         }
         matcher.appendTail(sb);
         return sb.toString();

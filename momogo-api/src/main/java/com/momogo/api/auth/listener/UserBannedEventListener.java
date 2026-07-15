@@ -1,9 +1,11 @@
 package com.momogo.api.auth.listener;
 
 import com.momogo.api.auth.jwt.JwtRegistry;
+import com.momogo.core.common.config.AsyncConfig;
 import com.momogo.core.domain.user.event.UserBannedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -15,6 +17,7 @@ public class UserBannedEventListener {
 
     private final JwtRegistry jwtRegistry;
 
+    @Async(AsyncConfig.USER_EXECUTOR)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleUserBannedEvent(UserBannedEvent event) {
         log.info("[UserBannedEventListener] 유저 정지 이벤트 감지 - userId: {}", event.userId());

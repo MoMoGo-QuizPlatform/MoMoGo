@@ -123,7 +123,7 @@ public class UserController {
      * @param request 정지 여부(banned) 설정 DTO
      * @return 변경 완료된 회원 정보 DTO
      */
-    @PatchMapping("/{userId}/banned")
+    @PatchMapping("/{userId}/ban")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<UserResponse> updateUserBannedStatus(
             @PathVariable UUID userId,
