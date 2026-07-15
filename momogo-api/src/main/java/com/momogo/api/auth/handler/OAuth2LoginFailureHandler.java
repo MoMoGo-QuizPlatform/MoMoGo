@@ -1,6 +1,5 @@
 package com.momogo.api.auth.handler;
 
-import com.momogo.core.domain.user.exception.UserErrorCode;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -14,12 +13,16 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
 import com.momogo.api.auth.util.EmailUtils;
+import com.momogo.core.common.exception.AuthErrorCode;
+import com.momogo.core.domain.user.exception.UserErrorCode;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 
 @Slf4j
 @Component
 public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
+
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}");
 
     @Value("${app.oauth2.failure-redirect-url}")
     private String failureRedirectUrl;
@@ -40,7 +43,8 @@ public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
             HttpServletResponse response,
             AuthenticationException exception
     ) throws IOException, ServletException {
-        log.error("[OAuth2LoginFailureHandler] 소셜 로그인 실패: {}", exception.getMessage());
+        // PII(개인식별정보) 노출 방지를 위한 예외 메시지 이메일 마스킹 로그 출력
+        log.error("[OAuth2LoginFailureHandler] 소셜 로그인 실패: {}", maskEmailsInMessage(exception.getMessage()));
 
         String errorMessage = "소셜 로그인 인증에 실패했습니다.";
         String errorCode = null;
@@ -50,27 +54,27 @@ public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
             switch (oauthErrorCode) {
                 case "user_banned" -> {
                     errorCode = UserErrorCode.BANNED_USER.getCode();
-                    errorMessage = "정지된 계정입니다. 관리자에게 문의하세요.";
+                    errorMessage = UserErrorCode.BANNED_USER.getMessage();
                 }
                 case "email_required" -> {
-                    errorCode = "EMAIL_REQUIRED";
-                    errorMessage = "이메일 정보 제공 동의가 필수적입니다.";
+                    errorCode = AuthErrorCode.EMAIL_REQUIRED.getErrorKey();
+                    errorMessage = AuthErrorCode.EMAIL_REQUIRED.getMessage();
                 }
                 case "restore_expired" -> {
-                    errorCode = "RESTORE_EXPIRED";
-                    errorMessage = "탈퇴 후 30일이 경과하여 복구할 수 없습니다.";
+                    errorCode = AuthErrorCode.RESTORE_EXPIRED.getErrorKey();
+                    errorMessage = AuthErrorCode.RESTORE_EXPIRED.getMessage();
                 }
                 case "social_type_mismatch" -> {
-                    errorCode = "SOCIAL_TYPE_MISMATCH";
-                    errorMessage = exception.getMessage() != null ? exception.getMessage() : "이미 다른 로그인 방식으로 가입된 이메일 주소입니다. 기존 로그인 방식을 이용해 주세요.";
+                    errorCode = AuthErrorCode.SOCIAL_TYPE_MISMATCH.getErrorKey();
+                    errorMessage = exception.getMessage() != null ? exception.getMessage() : AuthErrorCode.SOCIAL_TYPE_MISMATCH.getMessage();
                 }
                 default -> {
-                    errorCode = "SOCIAL_LOGIN_FAILED";
-                    errorMessage = exception.getMessage() != null ? exception.getMessage() : "소셜 로그인 인증에 실패했습니다.";
+                    errorCode = AuthErrorCode.SOCIAL_LOGIN_FAILED.getErrorKey();
+                    errorMessage = exception.getMessage() != null ? exception.getMessage() : AuthErrorCode.SOCIAL_LOGIN_FAILED.getMessage();
                 }
             }
         } else {
-            errorMessage = exception.getMessage() != null ? exception.getMessage() : "소셜 로그인 인증에 실패했습니다.";
+            errorMessage = exception.getMessage() != null ? exception.getMessage() : AuthErrorCode.SOCIAL_LOGIN_FAILED.getMessage();
         }
 
         // PII(개인식별정보) 노출 방지를 위한 이메일 마스킹 처리
@@ -84,6 +88,7 @@ public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
             builder.queryParam("code", errorCode);
         }
 
+        // URL 쿼리 파라미터의 한글 및 공백 깨짐을 방지하기 위해 encode() 추가
         String targetUrl = builder.build().encode().toUriString();
 
         // 프론트엔드 로그인 페이지로 리다이렉트 (프론트엔드는 URL 파라미터의 error 및 code를 읽어 알림 출력 가능)
@@ -97,8 +102,7 @@ public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
         if (message == null) {
             return null;
         }
-        Pattern emailPattern = Pattern.compile("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}");
-        Matcher matcher = emailPattern.matcher(message);
+        Matcher matcher = EMAIL_PATTERN.matcher(message);
         StringBuilder sb = new StringBuilder();
         while (matcher.find()) {
             String email = matcher.group();

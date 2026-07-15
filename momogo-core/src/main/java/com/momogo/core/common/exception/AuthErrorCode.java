@@ -14,7 +14,13 @@ public enum AuthErrorCode implements ErrorCode {
   SIGNATURE_FAILED(6004, "SIGNATURE_FAILED", HttpStatus.UNAUTHORIZED, "토큰 서명 검증에 실패했습니다."),
   TOKEN_NOT_FOUND(6005, "TOKEN_NOT_FOUND", HttpStatus.UNAUTHORIZED, "토큰이 존재하지 않습니다."),
   INVALID_TOKEN_TYPE(6006, "INVALID_TOKEN_TYPE", HttpStatus.UNAUTHORIZED, "올바르지 않은 토큰 타입입니다."),
-  MISSING_TOKEN_CLAIM(6007, "MISSING_TOKEN_CLAIM", HttpStatus.UNAUTHORIZED, "토큰 내 필수 정보가 누락되었습니다.");
+  MISSING_TOKEN_CLAIM(6007, "MISSING_TOKEN_CLAIM", HttpStatus.UNAUTHORIZED, "토큰 내 필수 정보가 누락되었습니다."),
+
+  // 소셜 로그인 관련 에러 코드
+  EMAIL_REQUIRED(6008, "EMAIL_REQUIRED", HttpStatus.BAD_REQUEST, "이메일 정보 제공 동의가 필수적입니다."),
+  RESTORE_EXPIRED(6009, "RESTORE_EXPIRED", HttpStatus.BAD_REQUEST, "탈퇴 후 30일이 경과하여 복구할 수 없습니다."),
+  SOCIAL_TYPE_MISMATCH(6010, "SOCIAL_TYPE_MISMATCH", HttpStatus.BAD_REQUEST, "이미 다른 로그인 방식으로 가입된 이메일 주소입니다. 기존 로그인 방식을 이용해 주세요."),
+  SOCIAL_LOGIN_FAILED(6011, "SOCIAL_LOGIN_FAILED", HttpStatus.UNAUTHORIZED, "소셜 로그인 인증에 실패했습니다.");
 
   private final int numeric;
   private final String errorKey;
