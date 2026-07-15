@@ -67,8 +67,13 @@ public class LoginFailureHandler implements AuthenticationFailureHandler {
                     log.warn("[LoginFailureHandler] 로그인 실패 처리에 유효하지 않거나 중복된 username 파라미터가 들어왔습니다.");
                 }
             }
-        } else if (exception instanceof LockedException || exception instanceof DisabledException) {
+        } else if (exception instanceof LockedException) {
+            errorMessage = "정지된 계정입니다. 관리자에게 문의하세요.";
+            errorCode = "USER-BANNED_USER";
+            status = HttpServletResponse.SC_FORBIDDEN;
             log.warn("로그인 실패(제한된 계정): {}", exception.getClass().getSimpleName());
+        } else if (exception instanceof DisabledException) {
+            log.warn("로그인 실패(비활성화 계정): {}", exception.getClass().getSimpleName());
         } else {
             log.info("로그인 실패: {}", exception.getClass().getSimpleName());
         }

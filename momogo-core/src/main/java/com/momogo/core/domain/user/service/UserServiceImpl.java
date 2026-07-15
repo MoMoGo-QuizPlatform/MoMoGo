@@ -17,9 +17,11 @@ import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.exception.UserErrorCode;
 import com.momogo.core.domain.user.mapper.UserMapper;
 import com.momogo.core.domain.user.repository.UserRepository;
+import com.momogo.core.domain.user.event.UserBannedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -49,8 +51,8 @@ public class UserServiceImpl implements UserService {
     private final UserSessionService userSessionService;
     private final StorageService storageService;
     private final RestoreTokenValidator restoreTokenValidator;
-
     private final UserHardDeleteProcessor hardDeleteProcessor;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Value("${app.super-admin.email}")
     private String superAdminEmail;
@@ -319,7 +321,7 @@ public class UserServiceImpl implements UserService {
             totalCount = userRepository.countByCondition(condition);
         }
 
-        return new CursorResponse<>(
+        return CursorResponse.of(
                 data,
                 nextCursor,
                 nextIdAfter,
@@ -328,6 +330,27 @@ public class UserServiceImpl implements UserService {
                 request.sortBy(),
                 request.sortDirection()
         );
+    }
+
+    /**
+     * 유저의 정지(밴) 상태를 업데이트합니다.
+     * 유저를 정지 처리할 경우, 유저의 모든 활성 JWT 세션을 만료시키는 이벤트를 발행합니다.
+     *
+     * @param userId 대상 유저 식별자
+     * @param banned 정지 여부 (true: 정지 처리, false: 정지 해제)
+     * @return 변경된 유저 정보 DTO
+     */
+    @Override
+    @Transactional
+    public UserResponse updateUserBannedStatus(UUID userId, boolean banned) {
+        User user = findActiveUser(userId);
+        if (banned) {
+            user.ban();
+            eventPublisher.publishEvent(new UserBannedEvent(user.getId()));
+        } else {
+            user.unban();
+        }
+        return userMapper.toResponse(user);
     }
 
     /**

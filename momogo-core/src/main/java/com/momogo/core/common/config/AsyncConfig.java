@@ -17,6 +17,7 @@ import java.util.concurrent.Executor;
 public class AsyncConfig implements AsyncConfigurer {
 
     public static final String MAIL_EXECUTOR = "mailExecutor";
+    public static final String USER_EXECUTOR = "userExecutor";
 
     private final GlobalAsyncUncaughtExceptionHandler exceptionHandler;
 
@@ -36,4 +37,12 @@ public class AsyncConfig implements AsyncConfigurer {
         executor.setVirtualThreads(true);
         return executor;
     }
+
+    @Bean(name = USER_EXECUTOR)
+    public Executor userExecutor() {
+        SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("user-async-");
+        executor.setVirtualThreads(true);
+        return executor;
+    }
+
 }

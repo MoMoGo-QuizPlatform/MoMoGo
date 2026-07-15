@@ -22,4 +22,13 @@ public interface UserService {
     void restoreUser(String restoreToken, String password);
 
     CursorResponse<UserResponse> findAllUsers(UserPageRequest request);
+
+    /**
+     * 유저의 정지(밴) 상태를 업데이트합니다.
+     *
+     * @param userId 대상 유저 식별자
+     * @param banned 정지 여부
+     * @return 변경된 유저 정보 DTO
+     */
+    UserResponse updateUserBannedStatus(UUID userId, boolean banned);
 }

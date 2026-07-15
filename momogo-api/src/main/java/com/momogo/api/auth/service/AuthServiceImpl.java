@@ -48,6 +48,14 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException(GlobalErrorCode.UNAUTHORIZED, "만료되었거나 활성화되지 않은 토큰 세션입니다.");
         }
 
+        User user = userRepository.findById(current.user().id())
+                .orElseThrow(() -> new BusinessException(UserErrorCode.NOT_FOUND));
+
+        if (Boolean.TRUE.equals(user.getIsBanned())) {
+            jwtRegistry.invalidateJwtInformationByUserId(user.getId());
+            throw new BusinessException(UserErrorCode.BANNED_USER);
+        }
+
         try {
             MoMoGoUserDetails userDetails = jwtTokenProvider.parseAccessToken(refreshToken);
 
