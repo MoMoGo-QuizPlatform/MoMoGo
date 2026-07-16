@@ -5,8 +5,6 @@ import com.momogo.core.domain.problem.dto.request.CategoryUpdateRequest;
 import com.momogo.core.domain.problem.dto.response.CategoryResponse;
 import com.momogo.core.domain.problem.service.ProblemCategoryService;
 import com.momogo.core.domain.space.dto.response.SpaceResponse;
-import com.momogo.core.domain.space.entity.Space;
-import com.momogo.core.domain.space.mapper.SpaceMapper;
 import com.momogo.core.domain.space.service.SpaceService;
 import com.momogo.core.domain.user.dto.request.UserBannedRequest;
 import com.momogo.core.domain.user.dto.request.UserPageRequest;
