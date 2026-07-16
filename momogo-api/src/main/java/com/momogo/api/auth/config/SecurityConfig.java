@@ -76,6 +76,7 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/actuator/**").hasRole("SUPER_ADMIN")
+                        .requestMatchers("/api/super-admin/**").hasRole("SUPER_ADMIN")
 
                         // 로그인/아웃 관련
                         .requestMatchers("/api/auth/sign-in", "/api/auth/sign-out").permitAll()
@@ -88,7 +89,6 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/restore").permitAll()
 
                         .requestMatchers(HttpMethod.PATCH, "/api/users/*/role").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PATCH, "/api/users/*/banned").hasRole("SUPER_ADMIN")
 
                         .requestMatchers(HttpMethod.GET, "/api/users").authenticated()
 

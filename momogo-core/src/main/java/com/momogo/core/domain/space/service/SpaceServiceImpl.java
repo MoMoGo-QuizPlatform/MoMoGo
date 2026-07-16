@@ -7,10 +7,10 @@ import com.momogo.core.domain.space.dto.request.SpaceUpdateRequest;
 import com.momogo.core.domain.space.dto.response.SpaceCursorPaginationResponse;
 import com.momogo.core.domain.space.dto.response.SpaceResponse;
 import com.momogo.core.domain.space.entity.Space;
-import com.momogo.core.domain.space.exception.SpaceErrorCode;
-import com.momogo.core.domain.space.mapper.SpaceMapper;
 import com.momogo.core.domain.space.event.SpaceUserJoinedEvent;
 import com.momogo.core.domain.space.event.SpaceUserRoleChangedEvent;
+import com.momogo.core.domain.space.exception.SpaceErrorCode;
+import com.momogo.core.domain.space.mapper.SpaceMapper;
 import com.momogo.core.domain.space.repository.SpaceRepository;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.UserRole;
@@ -21,6 +21,8 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -191,6 +193,11 @@ public class SpaceServiceImpl implements SpaceService {
 
     // 권한이 변경된 유저에게 알림을 보내기 위한 이벤트 발행
     eventPublisher.publishEvent(new SpaceUserRoleChangedEvent(targetUserId, spaceId, role));
+  }
+
+  @Override
+  public Page<SpaceResponse> getAllSpaces(Pageable pageable) {
+    return spaceRepository.findAll(pageable).map(spaceMapper::toResponse);
   }
 
   // 공통 헬퍼 메소드: 사용자 조회 및 공간 관리자 권한 검증

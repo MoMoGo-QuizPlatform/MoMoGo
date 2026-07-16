@@ -73,11 +73,7 @@ export interface RequestOptions extends RequestInit {
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { params, headers, ...restOptions } = options;
   
-  // 1. URL 재매핑 (Super Admin User API)
   let resolvedPath = path;
-  if (path.startsWith('/api/super-admin/users')) {
-    resolvedPath = path.replace('/api/super-admin/users', '/api/users');
-  }
 
   // 2. 모의 응답 인터셉터 (Mock Interceptor)
   const lowerPath = resolvedPath.toLowerCase();
@@ -140,9 +136,6 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     }
 
     const method = options.method?.toUpperCase() || 'GET';
-    if (method === 'GET') {
-      return superSpaces as unknown as T;
-    }
 
     if (method === 'PUT' || method === 'PATCH') {
       const spaceId = resolvedPath.split('/').pop();
