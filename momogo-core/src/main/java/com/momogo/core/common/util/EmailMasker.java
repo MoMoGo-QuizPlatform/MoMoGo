@@ -1,8 +1,8 @@
-package com.momogo.api.auth.util;
+package com.momogo.core.common.util;
 
-public final class EmailUtils {
+public final class EmailMasker {
 
-    private EmailUtils() {
+    private EmailMasker() {
         throw new UnsupportedOperationException("Utility class");
     }
 
@@ -13,7 +13,7 @@ public final class EmailUtils {
      * @param email 마스킹할 이메일 주소
      * @return 마스킹된 이메일 주소
      */
-    public static String maskEmail(String email) {
+    public static String mask(String email) {
         if (email == null) {
             return "null";
         }

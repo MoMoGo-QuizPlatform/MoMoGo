@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
-import com.momogo.api.auth.util.EmailUtils;
+import com.momogo.core.common.util.EmailMasker;
 import com.momogo.core.common.exception.AuthErrorCode;
 import com.momogo.core.domain.user.exception.UserErrorCode;
 import java.util.regex.Pattern;
@@ -106,7 +106,7 @@ public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
         StringBuilder sb = new StringBuilder();
         while (matcher.find()) {
             String email = matcher.group();
-            matcher.appendReplacement(sb, Matcher.quoteReplacement(EmailUtils.maskEmail(email)));
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(EmailMasker.mask(email)));
         }
         matcher.appendTail(sb);
         return sb.toString();

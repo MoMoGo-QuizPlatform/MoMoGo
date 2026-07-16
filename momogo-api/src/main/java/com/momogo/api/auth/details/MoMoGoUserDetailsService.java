@@ -1,5 +1,7 @@
 package com.momogo.api.auth.details;
 
+import com.momogo.core.common.util.EmailNormalizer;
+import com.momogo.core.common.util.EmailMasker;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.user.dto.response.UserResponse;
 import com.momogo.core.domain.user.entity.User;
@@ -13,9 +15,8 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.momogo.api.auth.util.EmailUtils;
-
 import java.time.OffsetDateTime;
+import java.util.Locale;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -28,7 +29,7 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
     @Override
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String username) {
-        log.debug("[MoMoGoUserDetailsService] loadUserByUsername 호출됨, email: {}", EmailUtils.maskEmail(username));
+        log.debug("[MoMoGoUserDetailsService] loadUserByUsername 호출됨, email: {}", EmailMasker.mask(username));
         return loadUserDetails(username);
     }
 
@@ -37,7 +38,7 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
      * 유저 정보를 조회합니다.
      */
     public UserDetails loadUserByUsernameForToken(String username) {
-        log.debug("[MoMoGoUserDetailsService] loadUserByUsernameForToken 호출됨, email: {}", EmailUtils.maskEmail(username));
+        log.debug("[MoMoGoUserDetailsService] loadUserByUsernameForToken 호출됨, email: {}", EmailMasker.mask(username));
         return loadUserDetails(username);
     }
 
@@ -46,9 +47,11 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
      * 임시 패스워드가 존재하는 경우 로그인에 사용되는 비밀번호를 대체합니다.
      */
     private UserDetails loadUserDetails(String username) {
-        User user = userRepository.findByEmail(username)
+        String normalizedEmail = EmailNormalizer.normalize(username);
+
+        User user = userRepository.findByEmail(normalizedEmail)
                 .orElseThrow(() -> {
-                    log.warn("[MoMoGoUserDetailsService] 유저를 찾을 수 없습니다, email: {}", EmailUtils.maskEmail(username));
+                    log.warn("[MoMoGoUserDetailsService] 유저를 찾을 수 없습니다, email: {}", EmailMasker.mask(normalizedEmail));
                     return new BusinessException(UserErrorCode.NOT_FOUND);
                 });
 
