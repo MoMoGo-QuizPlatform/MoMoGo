@@ -9,6 +9,8 @@ import com.momogo.core.domain.user.entity.enums.UserRole;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface SpaceService {
 
@@ -32,4 +34,7 @@ public interface SpaceService {
 
   // 공간 내 유저 권한 변경
   void changeUserRole(UUID adminUserId, UUID spaceId, UUID targetUserId, UserRole role);
+
+  // 전체 공간 조회 (SUPER_ADMIN 권한 검증)
+  Page<SpaceResponse> getAllSpaces(Pageable pageable);
 }

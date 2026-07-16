@@ -108,8 +108,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
 
   const loadSuperAdminSpaces = async () => {
     try {
-      const data = await request<any[]>('/api/super-admin/spaces', { method: 'GET' });
-      if (data) setSuperSpaces(data);
+      const data = await request<any>('/api/super-admin/spaces', { method: 'GET' });
+      if (data && data.content) {
+        setSuperSpaces(data.content);
+      }
     } catch (err: any) {
       showToast(err.message || '공간 목록 로드 실패', 'error');
     }
@@ -293,7 +295,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
       if (cursor) {
         params.cursor = cursor;
       }
-      const data = await request<CursorResponse<UserResponse>>('/api/users', {
+      const data = await request<CursorResponse<UserResponse>>('/api/super-admin/users', {
         method: 'GET',
         params,
       });
@@ -332,7 +334,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
       `[${targetUser.name}] 님을 ${nextBannedState ? '정지' : '정지 해제'} 처리하시겠습니까?`,
       async () => {
         try {
-          await request<UserResponse>(`/api/users/${targetUser.id}/banned`, {
+          await request<UserResponse>(`/api/super-admin/users/${targetUser.id}/ban`, {
             method: 'PATCH',
             body: JSON.stringify({ banned: nextBannedState }),
           });
@@ -358,7 +360,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
     }
 
     try {
-      const created = await request<CategoryResponse>('/api/categories', {
+      const created = await request<CategoryResponse>('/api/super-admin/categories', {
         method: 'POST',
         body: JSON.stringify({ name: newCategoryName }),
       });
@@ -380,7 +382,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
     }
 
     try {
-      const updated = await request<CategoryResponse>(`/api/categories/${id}`, {
+      const updated = await request<CategoryResponse>(`/api/super-admin/categories/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ name: editingCategoryName }),
       });
