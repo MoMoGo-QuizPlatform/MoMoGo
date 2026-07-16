@@ -62,11 +62,12 @@ public interface ProblemService {
 
   /**
    * 문제 제출 및 채점
+   * @param spaceId   공간 ID
    * @param problemId 문제 ID
    * @param userId    유저 ID
    * @param request   문제 제출 요청 DTO
    */
-  ProblemSolveResponse solveProblem(UUID problemId, UUID userId, ProblemSolveRequest request);
+  ProblemSolveResponse solveProblem(UUID spaceId, UUID problemId, UUID userId, ProblemSolveRequest request);
 
   /**
    * AI 기반 문제 자동 생성 (ADMIN 전용)

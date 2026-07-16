@@ -36,6 +36,15 @@ interface ProblemDetailResponse {
   explanation: string;
 }
 
+// 문제 제출/채점 응답
+interface ProblemSolveResponse {
+  isSolved: boolean;
+  correctAnswer: string;
+  explanation: string;
+  tryCount: number;
+  solvedCount: number;
+}
+
 interface RoomResponse {
   id: string;
   name: string;
@@ -406,12 +415,13 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
     }
 
     try {
-      await request<any>(`/api/spaces/${space.id}/problems/${solvingProblem?.id}/solve`, {
-        method: 'POST',
-        body: JSON.stringify({ userAnswer: solveUserAnswer }),
-      });
-
-      const isCorrect = solveUserAnswer.trim() === solvingProblem?.correctAnswer.trim();
+      const result = await request<ProblemSolveResponse>(
+        `/api/spaces/${space.id}/problems/${solvingProblem?.id}/solve`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ userAnswer: solveUserAnswer }),
+        }
+      );
 
       // localStorage에 풀이 이력 저장 (오답 이력 및 통계용)
       const singleHistory = JSON.parse(localStorage.getItem('momogo_single_history') || '[]');
@@ -419,9 +429,9 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
         problemId: solvingProblem?.id,
         problemName: solvingProblem?.name,
         categoryName: solvingProblem?.category?.name || '미분류',
-        isSolved: isCorrect,
+        isSolved: result.isSolved,
         userAnswer: solveUserAnswer,
-        correctAnswer: solvingProblem?.correctAnswer,
+        correctAnswer: result.correctAnswer,
         solvedAt: new Date().toISOString()
       };
       // 중복 풀이 기록이 있을 시 이전 기록 제거하고 최신 풀이로 갱신
@@ -429,9 +439,9 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
       localStorage.setItem('momogo_single_history', JSON.stringify([newHistoryItem, ...filteredHistory]));
 
       setSolveResult({
-        correct: isCorrect,
-        answer: solvingProblem?.correctAnswer || '',
-        exp: solvingProblem?.explanation || '',
+        correct: result.isSolved,
+        answer: result.correctAnswer,
+        exp: result.explanation,
       });
       loadDashboardData();
     } catch (err: any) {
@@ -1480,7 +1490,6 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
           <div className="modal-content">
             <h3 style={styles.modalTitle}>
               연습 문제 풀기
-              <span style={styles.demoBadge}>제출 결과 데모 처리 (백엔드 미연동)</span>
             </h3>
             <div style={styles.solvingCard}>
               <span className="badge badge-info">{solvingProblem.category?.name || '미분류'}</span>
@@ -1498,7 +1507,7 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                     <input
                       type="text"
                       className="input-field"
-                      placeholder="단답형 해답 값을 기입하세요"
+                      placeholder="정답을 기입하세요."
                       value={solveUserAnswer}
                       onChange={(e) => {
                         setSolveUserAnswer(e.target.value);

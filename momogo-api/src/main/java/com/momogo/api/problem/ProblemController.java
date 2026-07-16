@@ -3,10 +3,12 @@ package com.momogo.api.problem;
 import com.momogo.core.domain.problem.dto.request.ProblemAiCreateRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemCreateRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemSearchRequest;
+import com.momogo.core.domain.problem.dto.request.ProblemSolveRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemUpdateRequest;
 import com.momogo.core.domain.problem.dto.response.ProblemCursorResponse;
 import com.momogo.core.domain.problem.dto.response.ProblemDetailResponse;
 import com.momogo.core.domain.problem.dto.response.ProblemResponse;
+import com.momogo.core.domain.problem.dto.response.ProblemSolveResponse;
 import com.momogo.core.domain.problem.service.ProblemService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -15,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -123,6 +126,17 @@ public class ProblemController {
         .body(response);
   }
 
-  // 문제 제출은 아직 서비스 미완 및 협의가 필요한 부분이라
-  // 추가적으로 팀원들과 회의를 통해서 추가 예정
+  /**
+   * 문제 제출 및 채점
+   */
+  @PostMapping("/{problemId}/solve")
+  public ResponseEntity<ProblemSolveResponse> solveProblem(
+      @PathVariable UUID spaceId,
+      @PathVariable UUID problemId,
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID userId,
+      @RequestBody @Valid ProblemSolveRequest request) {
+
+    return ResponseEntity
+        .ok(problemService.solveProblem(spaceId, problemId, userId, request));
+  }
 }

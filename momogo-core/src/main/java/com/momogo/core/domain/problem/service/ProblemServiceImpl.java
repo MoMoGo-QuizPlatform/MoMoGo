@@ -212,10 +212,36 @@ public class ProblemServiceImpl implements ProblemService {
    */
   @Override
   @Transactional
-  public ProblemSolveResponse solveProblem(UUID problemId, UUID userId,
+  public ProblemSolveResponse solveProblem(
+      UUID spaceId,
+      UUID problemId,
+      UUID userId,
       ProblemSolveRequest request) {
 
-    return null;
+    Problem problem = problemRepository.findById(problemId)
+        .orElseThrow(() -> new BusinessException(ProblemErrorCode.PROBLEM_NOT_FOUND));
+
+    if (!problem.getSpace().getId().equals(spaceId)) {
+      throw new BusinessException(ProblemErrorCode.PROBLEM_NOT_IN_SPACE);
+    }
+
+    String normalizedUserAnswer = request.userAnswer().replaceAll("\\s+", "").toLowerCase();
+
+    String normalizedCorrectAnswer = problem.getCorrectAnswer().replaceAll("\\s+", "").toLowerCase();
+
+    boolean isSolved = normalizedUserAnswer.contains(normalizedCorrectAnswer);
+
+    ProblemCounters counters = countersRepository.findById(problemId).orElseThrow();
+
+    counters.recordAttempt(isSolved);
+
+    return new ProblemSolveResponse(
+        isSolved,
+        problem.getCorrectAnswer(),
+        problem.getExplanation(),
+        counters.getTryCount(),
+        counters.getSolvedCount()
+    );
   }
 
   /**
