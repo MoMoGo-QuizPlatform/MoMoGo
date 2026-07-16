@@ -38,7 +38,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class SuperAdminController {
 
   private final SpaceService spaceService;
-  private final SpaceMapper spaceMapper;
   private final UserService userService;
   private final ProblemCategoryService problemCategoryService;
 
@@ -51,9 +50,7 @@ public class SuperAdminController {
   public ResponseEntity<Page<SpaceResponse>> getAllSpaces(
       @PageableDefault(size = 10) Pageable pageable
   ) {
-    Page<Space> spacePage = spaceService.getAllSpaces(pageable);
-    Page<SpaceResponse> response = spacePage.map(spaceMapper::toResponse);
-    return ResponseEntity.ok(response);
+    return ResponseEntity.ok(spaceService.getAllSpaces(pageable));
   }
 
 

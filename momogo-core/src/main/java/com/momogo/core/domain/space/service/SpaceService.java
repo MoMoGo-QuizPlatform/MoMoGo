@@ -36,5 +36,5 @@ public interface SpaceService {
   void changeUserRole(UUID adminUserId, UUID spaceId, UUID targetUserId, UserRole role);
 
   // 전체 공간 조회 (SUPER_ADMIN 권한 검증)
-  Page<Space> getAllSpaces(Pageable pageable);
+  Page<SpaceResponse> getAllSpaces(Pageable pageable);
 }

@@ -196,8 +196,8 @@ public class SpaceServiceImpl implements SpaceService {
   }
 
   @Override
-  public Page<Space> getAllSpaces(Pageable pageable) {
-    return spaceRepository.findAll(pageable);
+  public Page<SpaceResponse> getAllSpaces(Pageable pageable) {
+    return spaceRepository.findAll(pageable).map(spaceMapper::toResponse);
   }
 
   // 공통 헬퍼 메소드: 사용자 조회 및 공간 관리자 권한 검증
