@@ -3,24 +3,26 @@ package com.momogo.api.user;
 import com.momogo.api.auth.details.MoMoGoUserDetails;
 import com.momogo.core.domain.user.dto.request.ProfileImageUploadRequest;
 import com.momogo.core.domain.user.dto.request.UserCreateRequest;
-import com.momogo.core.domain.user.dto.request.UserBannedRequest;
-import com.momogo.core.domain.user.dto.request.UserPageRequest;
 import com.momogo.core.domain.user.dto.request.UserUpdateRequest;
-import com.momogo.core.domain.user.dto.response.CursorResponse;
 import com.momogo.core.domain.user.dto.response.UserResponse;
 import com.momogo.core.domain.user.service.UserService;
 import jakarta.validation.Valid;
+import java.io.IOException;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.io.IOException;
-import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
@@ -100,35 +102,5 @@ public class UserController {
     ) {
         userService.softDeleteUser(userId);
         return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * 전체 유저 목록을 페이징(커서 기반) 조회합니다. (SUPER_ADMIN 전용)
-     *
-     * @param request 검색 조건 및 페이징 설정 DTO
-     * @return 커서 정보가 포함된 페이징된 유저 목록 응답 객체
-     */
-    @GetMapping
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
-    public ResponseEntity<CursorResponse<UserResponse>> findAllUsers(
-            @Valid @ModelAttribute UserPageRequest request
-    ) {
-        return ResponseEntity.ok(userService.findAllUsers(request));
-    }
-
-    /**
-     * 특정 유저의 정지(밴) 상태를 업데이트합니다. (SUPER_ADMIN 전용)
-     *
-     * @param userId  정지 상태를 변경할 대상 유저 식별자
-     * @param request 정지 여부(banned) 설정 DTO
-     * @return 변경 완료된 회원 정보 DTO
-     */
-    @PatchMapping("/{userId}/ban")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
-    public ResponseEntity<UserResponse> updateUserBannedStatus(
-            @PathVariable UUID userId,
-            @Valid @RequestBody UserBannedRequest request
-    ) {
-        return ResponseEntity.ok(userService.updateUserBannedStatus(userId, request.banned()));
     }
 }
