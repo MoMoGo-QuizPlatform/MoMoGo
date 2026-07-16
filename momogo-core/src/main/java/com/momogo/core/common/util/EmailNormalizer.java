@@ -16,7 +16,7 @@ public final class EmailNormalizer {
      */
     public static String normalize(String email) {
         if (email == null) {
-            return "";
+            return null;
         }
         return email.trim().toLowerCase(Locale.ROOT);
     }
