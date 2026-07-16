@@ -5,6 +5,7 @@ import com.momogo.core.domain.problem.dto.request.ProblemCreateRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemSearchRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemUpdateRequest;
 import com.momogo.core.domain.problem.dto.response.ProblemCursorResponse;
+import com.momogo.core.domain.problem.dto.response.ProblemDetailResponse;
 import com.momogo.core.domain.problem.dto.response.ProblemResponse;
 import com.momogo.core.domain.problem.service.ProblemService;
 import jakarta.validation.Valid;
@@ -66,10 +67,11 @@ public class ProblemController {
   }
 
   /**
-   * 문제 단건 조회
+   * 문제 단건 조회 (편집용, 정답 포함)
    */
   @GetMapping("/{problemId}")
-  public ResponseEntity<ProblemResponse> getProblem(
+  @PreAuthorize("hasRole('ADMIN')")
+  public ResponseEntity<ProblemDetailResponse> getProblem(
       @PathVariable UUID spaceId,
       @PathVariable UUID problemId) {
 

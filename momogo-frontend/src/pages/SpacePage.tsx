@@ -24,6 +24,18 @@ interface ProblemResponse {
   category: CategoryResponse | null;
 }
 
+// 문제 편집용 단건 조회 응답 (정답 포함, ADMIN 전용 API)
+interface ProblemDetailResponse {
+  id: string;
+  spaceId: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  name: string;
+  content: string;
+  correctAnswer: string;
+  explanation: string;
+}
+
 interface RoomResponse {
   id: string;
   name: string;
@@ -351,6 +363,25 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
       showToast(err.message || 'AI 생성 도중 서버 내부 오류가 발생했습니다.', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 문제 편집 모달 열기 (정답은 목록 응답에 없어서 단건 조회로 별도 가져옴)
+  const handleOpenEditProblem = async (prob: ProblemResponse) => {
+    try {
+      const detail = await request<ProblemDetailResponse>(
+        `/api/spaces/${space.id}/problems/${prob.id}`,
+        { method: 'GET' }
+      );
+      setEditingProblem(prob);
+      setProbName(detail.name);
+      setProbContent(detail.content);
+      setProbAnswer(detail.correctAnswer);
+      setProbExplanation(detail.explanation);
+      setProbCategory(detail.categoryId || '');
+      setShowCreateProblemModal(true);
+    } catch (err: any) {
+      showToast(err.message || '문제 정보를 불러오지 못했습니다.', 'error');
     }
   };
 
@@ -924,15 +955,7 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                           <button
                             className="btn btn-secondary"
                             style={styles.smallIconBtn}
-                            onClick={() => {
-                              setEditingProblem(prob);
-                              setProbName(prob.name);
-                              setProbContent(prob.content);
-                              setProbAnswer(prob.correctAnswer);
-                              setProbExplanation(prob.explanation);
-                              setProbCategory(prob.category?.id || '');
-                              setShowCreateProblemModal(true);
-                            }}
+                            onClick={() => handleOpenEditProblem(prob)}
                           >
                             편집
                           </button>

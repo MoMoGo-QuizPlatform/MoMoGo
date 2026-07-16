@@ -5,6 +5,7 @@ import com.momogo.core.domain.problem.dto.request.ProblemCreateRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemSolveRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemUpdateRequest;
 import com.momogo.core.domain.problem.dto.response.ProblemCursorResponse;
+import com.momogo.core.domain.problem.dto.response.ProblemDetailResponse;
 import com.momogo.core.domain.problem.dto.response.ProblemResponse;
 import com.momogo.core.domain.problem.dto.response.ProblemSolveResponse;
 import java.time.OffsetDateTime;
@@ -44,7 +45,7 @@ public interface ProblemService {
    * 문제 단건 조회
    * @param problemId  문제 ID
    */
-  ProblemResponse getProblem(UUID spaceId, UUID problemId);
+  ProblemDetailResponse getProblem(UUID spaceId, UUID problemId);
 
   /**
    * 문제 수정 (ADMIN 전용)

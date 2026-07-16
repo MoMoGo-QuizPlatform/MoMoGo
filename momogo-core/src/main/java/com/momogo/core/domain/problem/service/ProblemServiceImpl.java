@@ -7,6 +7,7 @@ import com.momogo.core.domain.problem.dto.request.ProblemSolveRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemUpdateRequest;
 import com.momogo.core.domain.problem.dto.response.GeneratedProblemData;
 import com.momogo.core.domain.problem.dto.response.ProblemCursorResponse;
+import com.momogo.core.domain.problem.dto.response.ProblemDetailResponse;
 import com.momogo.core.domain.problem.dto.response.ProblemResponse;
 import com.momogo.core.domain.problem.dto.response.ProblemSolveResponse;
 import com.momogo.core.domain.problem.entity.Problem;
@@ -130,7 +131,7 @@ public class ProblemServiceImpl implements ProblemService {
    * @param problemId 문제 ID
    */
   @Override
-  public ProblemResponse getProblem(UUID spaceId, UUID problemId) {
+  public ProblemDetailResponse getProblem(UUID spaceId, UUID problemId) {
 
     Problem problem = problemRepository.findByIdWithCategory(problemId)
         .orElseThrow(() -> new BusinessException(ProblemErrorCode.PROBLEM_NOT_FOUND));
@@ -139,7 +140,7 @@ public class ProblemServiceImpl implements ProblemService {
       throw new BusinessException(ProblemErrorCode.PROBLEM_NOT_IN_SPACE);
     }
 
-    return problemMapper.toResponse(problem);
+    return problemMapper.toDetailResponse(problem);
   }
 
   /**
@@ -195,6 +196,10 @@ public class ProblemServiceImpl implements ProblemService {
       throw new BusinessException(ProblemErrorCode.PROBLEM_NOT_IN_SPACE);
     }
 
+    // 카운터 먼저 제거
+    countersRepository.deleteById(problemId);
+
+    // 문제 제거
     problemRepository.deleteById(problemId);
   }
 

@@ -27,8 +27,12 @@ public class AiChatClientConfig {
     return builder
         .defaultSystem("""
             당신은 교육 콘텐츠 제작 전문가입니다.
-            주어진 참고자료를 기반으로 명확하고, 정확한 문제를 출제합니다.
+            주어진 참고자료를 기반으로 명확하고 정확한 문제를 출제합니다.
             문제는 모호함이 없어야 하며 정답은 참고자료 안에서 명확히 근거를 찾을 수 있어야 합니다.
+            단, 문제의 답이 무조건 단답식으로 하나의 정답만 나올 수 있게 문제를 만들어 주셔야 합니다.
+            예를 들어 JPA의 장점인 기능들을 말해봐라 이런 식이면 더티 체킹, 쓰기 지연 등
+            복수 답이 나올 수 있으므로, JPA에서 변경이 발생했을 때 어떤 기능에 의해 자동으로 감지되는가?
+            와 같은 단답식 정답이 나와야 합니다.
             """)
         // 생성은 다양성이 필요 -> temperature 조금 높게 설정
         .defaultOptions(GoogleGenAiChatOptions.builder().temperature(0.7).build())
