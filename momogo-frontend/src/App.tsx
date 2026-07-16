@@ -3,6 +3,7 @@ import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { SpacePage } from './pages/SpacePage'; // SpacePage 임포트 추가
 import { refresh } from './services/auth';
+import { request, setSessionExpiredHandler } from './services/api';
 import type { UserResponse } from './types/user';
 
 export type ToastType = 'success' | 'error' | 'info';
@@ -26,9 +27,12 @@ const App: React.FC = () => {
 
   const checkSession = async () => {
     try {
+      // /api/auth/refresh는 accessToken만 내려주고 user는 항상 null이라(백엔드 응답 스펙),
+      // 재발급 성공 후 /api/users/me로 실제 유저 정보를 따로 받아온다.
       const response = await refresh();
-      if (response && response.user) {
-        setUser(response.user);
+      if (response && response.accessToken) {
+        const freshUser = await request<UserResponse>('/api/users/me', { method: 'GET' });
+        setUser(freshUser);
       }
     } catch {
       setUser(null);
@@ -44,6 +48,16 @@ const App: React.FC = () => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 3000);
   };
+
+  // 액세스 토큰 재발급까지 실패한 경우(=세션 만료) 강제 로그아웃 처리
+  useEffect(() => {
+    setSessionExpiredHandler(() => {
+      setUser(null);
+      setView({ type: 'dashboard' });
+      showToast('세션이 만료되었습니다. 다시 로그인해 주세요.', 'error');
+    });
+    return () => setSessionExpiredHandler(null);
+  }, []);
 
   if (checkingSession) {
     return (
@@ -74,11 +88,12 @@ const App: React.FC = () => {
           showToast={showToast} 
         />
       ) : view.type === 'dashboard' ? (
-        <DashboardPage 
-          user={user} 
-          onLogout={() => setUser(null)} 
-          showToast={showToast} 
+        <DashboardPage
+          user={user}
+          onLogout={() => setUser(null)}
+          showToast={showToast}
           onEnterSpace={(space) => setView({ type: 'space', space })}
+          onUserUpdate={(updatedUser) => setUser(updatedUser)}
         />
       ) : (
         <SpacePage

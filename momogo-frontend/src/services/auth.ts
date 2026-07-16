@@ -1,4 +1,4 @@
-import { request, setAccessToken } from './api';
+import { request, setAccessToken, refreshAccessToken } from './api';
 import type { UserCreateRequest, UserResponse } from '../types/user';
 
 export interface LoginResponse {
@@ -45,24 +45,23 @@ export async function signUp(data: UserCreateRequest): Promise<UserResponse> {
 }
 
 // 토큰 갱신 API
+// api.ts의 refreshAccessToken()은 동시 호출을 하나의 요청으로 묶어(single-flight) 처리한다.
+// (StrictMode의 useEffect 이중 실행 등으로 refresh가 동시에 여러 번 불려도 refresh token이
+// 1회용으로 회전되어 뒤에 도착한 요청이 실패하는 경쟁 상태를 방지하기 위함)
 export async function refresh(): Promise<LoginResponse> {
-  const response = await request<LoginResponse>('/api/auth/refresh', {
-    method: 'POST',
-  });
-
-  if (response && response.accessToken) {
-    setAccessToken(response.accessToken);
-  }
-
-  return response;
+  return refreshAccessToken() as Promise<LoginResponse>;
 }
 
 // 로그아웃 API
 export async function logout(): Promise<void> {
-  await request<void>('/api/auth/sign-out', {
-    method: 'POST',
-  });
-  setAccessToken(null);
+  try {
+    await request<void>('/api/auth/sign-out', {
+      method: 'POST',
+    });
+  } finally {
+    // 로그아웃 요청이 실패하더라도 클라이언트 측 토큰은 반드시 정리한다.
+    setAccessToken(null);
+  }
 }
 
 // 임시 비밀번호 찾기 API

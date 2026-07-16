@@ -65,14 +65,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, showToast 
         onLoginSuccess(response.user);
       }
     } catch (err: any) {
-      // 탈퇴 유예 계정 처리 (403 에러 또는 특정 에러 메시지 검출)
-      if (err.message && (
-        err.message.includes('복구') || 
-        err.message.includes('restore') || 
-        err.message.includes('403') || 
-        err.message.includes('삭제가 진행 중인') || 
-        err.message.includes('ALREADY_IN_PROGRESS_DELETE')
-      )) {
+      // 탈퇴 유예 계정 처리: 백엔드가 내려주는 구조화된 에러 코드(errorKey/code)로 판별
+      const code: string = err.code || '';
+      if (code.includes('ALREADY_IN_PROGRESS_DELETE')) {
         setValidationErrors({});
         setShowRestoreModal(true);
       } else {

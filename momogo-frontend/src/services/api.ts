@@ -10,6 +10,49 @@ export const getAccessToken = () => {
   return accessTokenMemory;
 };
 
+// 액세스 토큰이 만료되어 재발급도 실패했을 때(=재로그인 필요) 상위(App)에 알리기 위한 핸들러
+let sessionExpiredHandler: (() => void) | null = null;
+
+export const setSessionExpiredHandler = (fn: (() => void) | null) => {
+  sessionExpiredHandler = fn;
+};
+
+// 백엔드 ErrorResponse(errorKey/code) 또는 로그인 실패 핸들러(error) 구조를 함께 다루기 위한 에러 타입
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+
+  constructor(status: number, message: string, code?: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+// 액세스 토큰 재발급(refresh 쿠키 기반). 백엔드가 refresh token을 1회용으로 회전(rotate)시키기 때문에
+// 동시에 여러 번 호출되면(StrictMode 이중 마운트 등) 뒤에 도착한 요청은 이미 무효화된 토큰으로 실패한다.
+// 진행 중인 재발급 요청을 공유(single-flight)해서 이 경쟁 상태를 방지한다.
+let refreshInFlight: Promise<any> | null = null;
+
+export function refreshAccessToken(): Promise<any> {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        // request()를 재사용해야 CSRF(X-XSRF-TOKEN) 헤더가 함께 붙는다. 직접 fetch()를 호출하면
+        // CSRF 검증에 걸려 매번 403으로 실패한다(백엔드가 /api/auth/refresh도 CSRF 대상으로 취급).
+        const data = await request<any>('/api/auth/refresh', { method: 'POST' });
+        if (data && data.accessToken) {
+          accessTokenMemory = data.accessToken;
+        }
+        return data;
+      } finally {
+        refreshInFlight = null;
+      }
+    })();
+  }
+  return refreshInFlight;
+}
+
 // 브라우저 쿠키 조회 헬퍼 (JS에서 CSRF 토큰을 쿠키에서 읽어 헤더로 주입하기 위함)
 export function getCookie(name: string): string | null {
   const value = `; ${document.cookie}`;
@@ -195,11 +238,28 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   const mergedHeaders = { ...defaultHeaders, ...headers };
 
-  const response = await fetch(url, {
+  let response = await fetch(url, {
     ...restOptions,
     headers: mergedHeaders,
     credentials: 'include', // 세션 연장을 위한 Refresh Token 쿠키를 안전하게 포함시킵니다.
   });
+
+  // 액세스 토큰 만료(401) 시 재발급 후 원 요청 1회 재시도 (로그인/재발급 요청 자체는 대상에서 제외)
+  const isAuthEndpoint = resolvedPath.startsWith('/api/auth/sign-in') || resolvedPath.startsWith('/api/auth/refresh');
+  if (response.status === 401 && !isAuthEndpoint) {
+    try {
+      await refreshAccessToken();
+      const retryHeaders = { ...mergedHeaders, Authorization: `Bearer ${accessTokenMemory}` };
+      response = await fetch(url, {
+        ...restOptions,
+        headers: retryHeaders,
+        credentials: 'include',
+      });
+    } catch {
+      accessTokenMemory = null;
+      if (sessionExpiredHandler) sessionExpiredHandler();
+    }
+  }
 
   // 204 No Content인 경우 JSON 파싱을 배제하고 즉시 종료
   if (response.status === 204) {
@@ -208,14 +268,20 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   if (!response.ok) {
     // 백엔드의 BusinessException 구조 파싱 시도
-    let errorBody;
+    let errorBody: any;
     try {
       errorBody = await response.json();
     } catch {
       errorBody = { message: '알 수 없는 네트워크 오류가 발생했습니다.' };
     }
-    throw new Error(errorBody.message || '요청 처리에 실패했습니다.');
+    const code = errorBody.errorKey || errorBody.error || errorBody.code;
+    throw new ApiError(response.status, errorBody.message || '요청 처리에 실패했습니다.', code);
   }
 
-  return response.json();
+  // 응답 바디가 없는 200 OK(예: 공간 가입 API)도 있어 상태코드만으로 판단하지 않고 실제 바디 유무를 확인한다.
+  const rawBody = await response.text();
+  if (!rawBody) {
+    return null as unknown as T;
+  }
+  return JSON.parse(rawBody);
 }

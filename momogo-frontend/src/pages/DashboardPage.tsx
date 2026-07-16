@@ -9,6 +9,7 @@ interface DashboardPageProps {
   onLogout: () => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   onEnterSpace: (space: SpaceResponse) => void;
+  onUserUpdate: (user: UserResponse) => void;
 }
 
 interface NotificationItem {
@@ -29,7 +30,7 @@ interface CursorResponse<T> {
   nextCursor: string | null;
 }
 
-export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, showToast, onEnterSpace }) => {
+export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, showToast, onEnterSpace, onUserUpdate }) => {
   // 탭 관련 상태 ('dashboard' | 'superadmin' | 'mypage')
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'superadmin' | 'mypage'>('dashboard');
   
@@ -430,6 +431,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
       setShowCreateModal(false);
       resetCreateForm();
       loadInitialData();
+
+      // 공간 개설로 ADMIN으로 상향된 최신 권한을 즉시 반영 (새로고침 없이 ADMIN 전용 UI 노출)
+      try {
+        const freshUser = await request<UserResponse>('/api/users/me', { method: 'GET' });
+        onUserUpdate(freshUser);
+      } catch (err) {
+        console.error('최신 유저 정보 갱신 실패:', err);
+      }
     } catch (err: any) {
       showToast(err.message || '공간 개설에 실패했습니다.', 'error');
     }
@@ -839,7 +848,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
 
             {superadminSubTab === 'spaces' && (
               <div className="card" style={styles.adminContentCard}>
-                <h3 style={styles.adminContentTitle}>서비스 개설 공간 전체 목록</h3>
+                <h3 style={styles.adminContentTitle}>
+                  서비스 개설 공간 전체 목록
+                  <span style={styles.demoBadge}>데모 데이터 (백엔드 미연동)</span>
+                </h3>
                 <div style={styles.tableWrapper}>
                   <table style={styles.adminTable}>
                     <thead>
@@ -894,7 +906,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
 
             {superadminSubTab === 'problems' && (
               <div className="card" style={styles.adminContentCard}>
-                <h3 style={styles.adminContentTitle}>전체 출제 문제 목록</h3>
+                <h3 style={styles.adminContentTitle}>
+                  전체 출제 문제 목록
+                  <span style={styles.demoBadge}>데모 데이터 (백엔드 미연동)</span>
+                </h3>
                 <div style={styles.tableWrapper}>
                   <table style={styles.adminTable}>
                     <thead>
@@ -1665,6 +1680,17 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '1.125rem',
     fontWeight: 700,
     color: '#1d2939',
+  },
+  demoBadge: {
+    marginLeft: '0.5rem',
+    padding: '0.15rem 0.5rem',
+    borderRadius: '999px',
+    fontSize: '0.7rem',
+    fontWeight: 700,
+    color: '#b45309',
+    backgroundColor: '#fef3c7',
+    border: '1px solid #fde68a',
+    verticalAlign: 'middle',
   },
   tableWrapper: {
     width: '100%',
