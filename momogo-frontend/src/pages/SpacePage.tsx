@@ -217,8 +217,8 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
         method: 'GET',
         params,
       });
-      if (data && data.values) {
-        setProblems(data.values);
+      if (data && data.content) {
+        setProblems(data.content);
       }
     } catch (err: any) {
       console.error(err);
@@ -336,8 +336,8 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
         method: 'POST',
         body: JSON.stringify({
           categoryId: aiCategory,
-          referenceData: aiRefData,
-          numberOfProblems: aiCount,
+          referenceText: aiRefData,
+          questionCount: aiCount,
         }),
       });
 
@@ -1050,7 +1050,10 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
         {/* 성적 대시보드 탭 */}
         {activeTab === 'dashboard' && (
           <div>
-            <h2>내 학습 대시보드</h2>
+            <h2>
+              내 학습 대시보드
+              <span style={styles.demoBadge}>데모 데이터 (백엔드 미연동)</span>
+            </h2>
 
             {/* 카드 요약 정보 (규칙 3.6 개인 대시보드 반영) */}
             {summary && (
@@ -1078,6 +1081,7 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
             <div className="card" style={{ marginTop: '0.5rem', marginBottom: '2rem', padding: '1.5rem' }}>
               <h3 style={{ ...styles.dashboardSectionTitle, borderBottom: '2px solid var(--primary-border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
                 공간 랭킹 대시보드
+                <span style={styles.demoBadge}>데모 데이터 (백엔드 미연동)</span>
               </h3>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-sub)', marginBottom: '1.25rem' }}>
                 공간 내부에 등록되어 있는 문제를 푼 유저들의 실시간 랭킹입니다.
@@ -1234,6 +1238,11 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                 {validationErrors.probCategory && (
                   <span style={styles.errorText}>{validationErrors.probCategory}</span>
                 )}
+                {categories.length === 0 && (
+                  <span style={styles.hintText}>
+                    선택 가능한 카테고리가 없습니다. 슈퍼관리자에게 카테고리 생성을 요청해 주세요.
+                  </span>
+                )}
               </div>
 
               <div className="input-group">
@@ -1376,6 +1385,11 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                 {validationErrors.aiCategory && (
                   <span style={styles.errorText}>{validationErrors.aiCategory}</span>
                 )}
+                {categories.length === 0 && (
+                  <span style={styles.hintText}>
+                    선택 가능한 카테고리가 없습니다. 슈퍼관리자에게 카테고리 생성을 요청해 주세요.
+                  </span>
+                )}
               </div>
 
               <div className="input-group">
@@ -1441,7 +1455,10 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
       {showSolveModal && solvingProblem && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3 style={styles.modalTitle}>연습 문제 풀기</h3>
+            <h3 style={styles.modalTitle}>
+              연습 문제 풀기
+              <span style={styles.demoBadge}>제출 결과 데모 처리 (백엔드 미연동)</span>
+            </h3>
             <div style={styles.solvingCard}>
               <span className="badge badge-info">{solvingProblem.category?.name || '미분류'}</span>
               <h4 style={{ margin: '0.5rem 0', color: '#1d2939' }}>{solvingProblem.name}</h4>
@@ -1993,6 +2010,24 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: '0.25rem',
     textAlign: 'left',
     display: 'block',
+  },
+  hintText: {
+    color: '#6b7280',
+    fontSize: '0.75rem',
+    marginTop: '0.25rem',
+    textAlign: 'left',
+    display: 'block',
+  },
+  demoBadge: {
+    marginLeft: '0.5rem',
+    padding: '0.15rem 0.5rem',
+    borderRadius: '999px',
+    fontSize: '0.7rem',
+    fontWeight: 700,
+    color: '#b45309',
+    backgroundColor: '#fef3c7',
+    border: '1px solid #fde68a',
+    verticalAlign: 'middle',
   },
   modalTitle: {
     fontSize: '1.25rem',

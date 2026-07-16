@@ -81,7 +81,7 @@ public class SpaceController {
       @AuthenticationPrincipal MoMoGoUserDetails userDetails
   ) {
     return spaceService.getMySpace(userDetails.getUserResponse().id())
-        .map(space -> ResponseEntity.ok(spaceMapper.toResponse(space)))
+        .map(ResponseEntity::ok)
         .orElseGet(() -> ResponseEntity.noContent().build());
   }
 

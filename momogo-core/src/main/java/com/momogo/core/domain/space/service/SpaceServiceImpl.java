@@ -5,6 +5,7 @@ import com.momogo.core.common.security.PasswordEncryptor;
 import com.momogo.core.domain.space.dto.request.SpaceCreateRequest;
 import com.momogo.core.domain.space.dto.request.SpaceUpdateRequest;
 import com.momogo.core.domain.space.dto.response.SpaceCursorPaginationResponse;
+import com.momogo.core.domain.space.dto.response.SpaceResponse;
 import com.momogo.core.domain.space.entity.Space;
 import com.momogo.core.domain.space.exception.SpaceErrorCode;
 import com.momogo.core.domain.space.mapper.SpaceMapper;
@@ -90,11 +91,14 @@ public class SpaceServiceImpl implements SpaceService {
   }
 
   @Override
-  public Optional<Space> getMySpace(UUID userId) {
+  public Optional<SpaceResponse> getMySpace(UUID userId) {
     User user = userRepository.findById(userId)
         .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
 
-    return Optional.ofNullable(user.getSpace());
+    // 트랜잭션(세션)이 열려 있는 동안 lazy 프록시인 space를 매핑까지 끝내야 한다.
+    // open-in-view: false 설정 때문에, 매핑을 컨트롤러로 미루면 세션이 닫힌 뒤 접근하게 되어
+    // LazyInitializationException이 발생한다.
+    return Optional.ofNullable(user.getSpace()).map(spaceMapper::toResponse);
   }
 
   @Override
