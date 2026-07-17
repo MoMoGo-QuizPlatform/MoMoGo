@@ -1244,11 +1244,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
                         </div>
                       )}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                        <span style={{ fontSize: '1.125rem', fontWeight: '600', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                          ✉️ {user.email}
+                        <span style={{ fontSize: '1.125rem', fontWeight: '600', color: 'var(--text)', display: 'flex', alignItems: 'center' }}>
+                          <span style={{ display: 'inline-block', width: '1.5rem', textAlign: 'left' }}>📧</span>
+                          <span>{user.email}</span>
                         </span>
-                        <span style={{ fontSize: '0.875rem', color: 'var(--text-sub)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                          {user.role === 'SUPER_ADMIN' ? '👑 최고 관리자' : user.role === 'ADMIN' ? '🔑 공간 관리자' : '🎓 일반 학습 회원'}
+                        <span style={{ fontSize: '0.875rem', color: 'var(--text-sub)', display: 'flex', alignItems: 'center' }}>
+                          <span style={{ display: 'inline-block', width: '1.5rem', textAlign: 'left' }}>
+                            {user.role === 'SUPER_ADMIN' ? '👑' : user.role === 'ADMIN' ? '🔑' : '🎓'}
+                          </span>
+                          <span>
+                            {user.role === 'SUPER_ADMIN' ? '최고 관리자' : user.role === 'ADMIN' ? '공간 관리자' : '일반 학습 회원'}
+                          </span>
                         </span>
                       </div>
                     </div>
