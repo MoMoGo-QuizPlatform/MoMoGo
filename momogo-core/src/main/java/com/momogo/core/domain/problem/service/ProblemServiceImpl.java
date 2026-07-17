@@ -231,7 +231,7 @@ public class ProblemServiceImpl implements ProblemService {
 
     boolean isSolved = normalizedUserAnswer.contains(normalizedCorrectAnswer);
 
-    ProblemCounters counters = countersRepository.findByIdWithLock(problemId).orElseThrow();
+    ProblemCounters counters = countersRepository.findByProblemId(problemId).orElseThrow();
 
     counters.recordAttempt(isSolved);
 

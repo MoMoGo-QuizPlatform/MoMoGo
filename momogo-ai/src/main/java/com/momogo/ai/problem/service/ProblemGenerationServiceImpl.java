@@ -76,6 +76,9 @@ public class ProblemGenerationServiceImpl implements ProblemGenerationService {
           questionCount, e);
 
       throw new BusinessException(ProblemErrorCode.AI_GENERATION_FAILED);
+    } catch (BusinessException e) {
+
+      throw e;
     } catch (Exception e) {
 
       log.error("LLM 응답 파싱 실패. referenceText 길이={}, questionCount={}", referenceText.length(),
