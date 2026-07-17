@@ -129,6 +129,18 @@ CREATE TABLE "TBL_NOTIFICATION" (
                                     "updated_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL
 );
 
+-- 개인 일간/주간 리포트 테이블
+CREATE TABLE "TBL_PERSONAL_REPORT" (
+                                       "id"               UUID          NOT NULL,
+                                       "user_id"          UUID          NOT NULL,
+                                       "report_type"      VARCHAR(20)   NOT NULL, -- DAILY, WEEKLY
+                                       "report_date"      DATE          NOT NULL,
+                                       "attempted_count"  INTEGER       DEFAULT 0 NULL,
+                                       "solved_count"     INTEGER       DEFAULT 0 NULL,
+                                       "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
+                                       CONSTRAINT ck_report_type CHECK ("report_type" IN ('DAILY', 'WEEKLY'))
+);
+
 
 -- ====================================================
 -- 2. 기본키(PRIMARY KEY) 제약 조건 주입 단계
@@ -145,6 +157,7 @@ ALTER TABLE "TBL_ROOM_PROBLEM" ADD CONSTRAINT "PK_TBL_ROOM_PROBLEM" PRIMARY KEY 
 ALTER TABLE "TBL_USER_ROOM_ANSWER" ADD CONSTRAINT "PK_TBL_USER_ROOM_ANSWER" PRIMARY KEY ("id");
 ALTER TABLE "TBL_USER_PROBLEM" ADD CONSTRAINT "PK_TBL_USER_PROBLEM" PRIMARY KEY ("user_id", "problem_id");
 ALTER TABLE "TBL_NOTIFICATION" ADD CONSTRAINT "PK_TBL_NOTIFICATION" PRIMARY KEY ("id");
+ALTER TABLE "TBL_PERSONAL_REPORT" ADD CONSTRAINT "PK_TBL_PERSONAL_REPORT" PRIMARY KEY ("id");
 
 
 -- ====================================================
@@ -178,6 +191,9 @@ ALTER TABLE "TBL_USER_PROBLEM" ADD CONSTRAINT "FK_TBL_PROBLEM_TO_TBL_USER_PROBLE
 -- 알림 시스템 수신자
 ALTER TABLE "TBL_NOTIFICATION" ADD CONSTRAINT "FK_TBL_USER_TO_TBL_NOTIFICATION" FOREIGN KEY ("receiver_id") REFERENCES "TBL_USER" ("id");
 
+-- 개인 리포트 소유자
+ALTER TABLE "TBL_PERSONAL_REPORT" ADD CONSTRAINT "FK_TBL_USER_TO_TBL_PERSONAL_REPORT" FOREIGN KEY ("user_id") REFERENCES "TBL_USER" ("id");
+
 -- ====================================================
 -- 4. 인덱스(INDEX) 정의 단계
 -- ====================================================
@@ -205,3 +221,6 @@ CREATE INDEX "idx_notification_receiver_cursor" ON "TBL_NOTIFICATION" ("receiver
 
 -- 한 유저가 동일한 평가 시험의 동일 문항에 중복 제출하는 것을 DB 단에서 원천 차단하는 복합 유니크 제약조건
 ALTER TABLE "TBL_USER_ROOM_ANSWER" ADD CONSTRAINT "UQ_USER_ROOM_ANSWER_USER_PROBLEM" UNIQUE ("user_id", "room_problem_id");
+
+-- 동일 유저의 동일 종류(일간/주간) 리포트가 같은 기준일에 중복 생성되는 것 방지 (배치 재실행 대비), 조회 인덱스로도 사용
+ALTER TABLE "TBL_PERSONAL_REPORT" ADD CONSTRAINT "UQ_PERSONAL_REPORT_USER_TYPE_DATE" UNIQUE ("user_id", "report_type", "report_date");
