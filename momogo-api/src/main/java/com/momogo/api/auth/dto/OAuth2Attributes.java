@@ -3,7 +3,7 @@ package com.momogo.api.auth.dto;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.SocialType;
 import com.momogo.core.domain.user.entity.enums.UserRole;
-import com.momogo.core.common.util.EmailNormalizer;
+import com.momogo.core.common.util.EmailFormatter;
 
 import java.util.Map;
 
@@ -22,7 +22,7 @@ public record OAuth2Attributes(
     // 예상치 못한 소셜 플랫폼의 이메일 대문자 변환 에러를 원천 차단하기 위함
     public OAuth2Attributes {
         if (email != null) {
-            email = EmailNormalizer.normalize(email);
+            email = EmailFormatter.normalize(email);
         }
     }
 

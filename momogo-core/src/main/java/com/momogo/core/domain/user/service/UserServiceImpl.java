@@ -1,7 +1,7 @@
 package com.momogo.core.domain.user.service;
 
 import com.momogo.core.common.exception.BusinessException;
-import com.momogo.core.common.util.EmailNormalizer;
+import com.momogo.core.common.util.EmailFormatter;
 import com.momogo.core.common.exception.GlobalErrorCode;
 import com.momogo.core.common.security.PasswordEncryptor;
 import com.momogo.core.common.storage.StorageService;
@@ -70,7 +70,7 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public UserResponse createUser(UserCreateRequest request) {
         // Locale.ROOT는 서버의 언어 설정과 상관 없이 국제 표준 규칙에 맞춰 대소문자 변환
-        String normalizedEmail = EmailNormalizer.normalize(request.email());
+        String normalizedEmail = EmailFormatter.normalize(request.email());
 
         // 일반 유저가 이미 선점된 Email 주소로 회원가입하는 것을 방지
         if (normalizedEmail.equalsIgnoreCase(superAdminEmail)) {
@@ -362,7 +362,7 @@ public class UserServiceImpl implements UserService {
      * 존재하는 이메일인지 확인
      */
     private User findUserByEmail(String email) {
-        return userRepository.findByEmail(EmailNormalizer.normalize(email))
+        return userRepository.findByEmail(EmailFormatter.normalize(email))
                 .orElseThrow(() -> new BusinessException(UserErrorCode.NOT_FOUND));
     }
 
@@ -374,7 +374,7 @@ public class UserServiceImpl implements UserService {
      * - 삭제 시간이 null인 경우 'ALREADY_EXISTS' 에러
      */
     private void validateEmailAvailability(String email) {
-        userRepository.findByEmail(EmailNormalizer.normalize(email))
+        userRepository.findByEmail(EmailFormatter.normalize(email))
                 .ifPresent(existingUser -> {
                     if (existingUser.getDeletedAt() != null) {
                         throw new BusinessException(UserErrorCode.ALREADY_IN_PROGRESS_DELETE);

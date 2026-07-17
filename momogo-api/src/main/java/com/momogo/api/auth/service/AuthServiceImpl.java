@@ -14,7 +14,7 @@ import com.momogo.core.domain.user.entity.enums.SocialType;
 import com.momogo.core.domain.user.event.TemporaryPasswordGeneratedEvent;
 import com.momogo.core.domain.user.exception.UserErrorCode;
 import com.momogo.core.domain.user.repository.UserRepository;
-import com.momogo.core.common.util.EmailNormalizer;
+import com.momogo.core.common.util.EmailFormatter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -94,7 +94,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void sendTemporaryPassword(PasswordFindRequest request) {
-        String normalizedEmail = EmailNormalizer.normalize(request.email());
+        String normalizedEmail = EmailFormatter.normalize(request.email());
         User user = userRepository.findByEmail(normalizedEmail).orElse(null);
         if (user == null || user.getSocial() != SocialType.NONE) {
             log.info("[AuthService] 임시 비밀번호 발급 조건 미충족 (미가입/소셜 계정)");
