@@ -204,7 +204,7 @@ public class ProblemServiceImpl implements ProblemService {
   }
 
   /**
-   * 문제 제출 (채점) - AI 채점 연동 필요, ai 모듈 채점 서비스 구현 후 연결 예정
+   * 문제 제출 (채점)
    *
    * @param problemId 문제 ID
    * @param userId    유저 ID
@@ -231,7 +231,7 @@ public class ProblemServiceImpl implements ProblemService {
 
     boolean isSolved = normalizedUserAnswer.contains(normalizedCorrectAnswer);
 
-    ProblemCounters counters = countersRepository.findById(problemId).orElseThrow();
+    ProblemCounters counters = countersRepository.findByIdWithLock(problemId).orElseThrow();
 
     counters.recordAttempt(isSolved);
 

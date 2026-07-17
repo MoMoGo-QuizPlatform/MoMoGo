@@ -40,6 +40,26 @@ public class AiChatClientConfig {
   }
 
   /**
+   * 단답식 정답 검증 전용 ChatClient
+   */
+  @Bean
+  @Qualifier("answerValidationChatClient")
+  public ChatClient answerValidationChatClient(ChatClient.Builder builder) {
+
+    return builder
+        .defaultSystem("""
+            당신은 문제와 정답을 검토하는 검수자입니다.
+            주어진 문제와 정답이 하나의 명확한 개념/용어만 가리키는 단일 정답인지 판단합니다.
+            정답에 쉼표, 슬래시, "및", "또는", "그리고" 등으로 나열된 복수 개념이 포함되어 있거나
+            서술형으로 풀어썼지만 실질적으로 두 가지 이상의 답이 될 수 있다면 단일 정답이 아닙니다.
+            판단 근거를 먼저 설명한 뒤, 결론을 내려주세요.
+            """)
+        // 판단 작업은 일관성이 중요 -> temperature 낮게 설정
+        .defaultOptions(GoogleGenAiChatOptions.builder().temperature(0.1).build())
+        .build();
+  }
+
+  /**
    * 문제 채점 전용 ChatClient
    */
   @Bean
