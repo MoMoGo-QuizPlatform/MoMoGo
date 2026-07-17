@@ -1,8 +1,10 @@
-package com.momogo.api.auth.util;
+package com.momogo.core.common.util;
 
-public final class EmailUtils {
+import java.util.Locale;
 
-    private EmailUtils() {
+public final class EmailFormatter {
+
+    private EmailFormatter() {
         throw new UnsupportedOperationException("Utility class");
     }
 
@@ -13,7 +15,7 @@ public final class EmailUtils {
      * @param email 마스킹할 이메일 주소
      * @return 마스킹된 이메일 주소
      */
-    public static String maskEmail(String email) {
+    public static String mask(String email) {
         if (email == null) {
             return "null";
         }
@@ -30,5 +32,18 @@ public final class EmailUtils {
             return "*".repeat(local.length()) + domain;
         }
         return local.substring(0, 2) + "***" + domain;
+    }
+
+    /**
+     * 이메일 주소를 정규화합니다 (공백 제거 및 소문자 변환).
+     *
+     * @param email 정규화할 이메일 주소
+     * @return 정규화된 이메일 주소
+     */
+    public static String normalize(String email) {
+        if (email == null) {
+            return null;
+        }
+        return email.trim().toLowerCase(Locale.ROOT);
     }
 }
