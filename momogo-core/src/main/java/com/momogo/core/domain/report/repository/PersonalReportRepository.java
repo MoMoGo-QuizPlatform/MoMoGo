@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -16,6 +18,10 @@ public interface PersonalReportRepository extends JpaRepository<PersonalReport, 
   Optional<PersonalReport> findByUserIdAndReportTypeAndReportDate(
       UUID userId, ReportType reportType, LocalDate reportDate);
 
-  // 특정 기준일에 이미 생성된 리포트 전체 조회 (배치 재실행 시 중복 생성 방지용)
-  List<PersonalReport> findAllByReportTypeAndReportDate(ReportType reportType, LocalDate reportDate);
+  // 특정 기준일에 이미 리포트가 있는 유저 ID만 조회 (배치 재실행 시 중복 생성 방지용)
+  // 엔티티 전체를 로드하지 않고 ID만 뽑아 메모리 사용을 줄임
+  @Query("SELECT p.user.id FROM PersonalReport p "
+      + "WHERE p.reportType = :reportType AND p.reportDate = :reportDate")
+  List<UUID> findUserIdsByReportTypeAndReportDate(
+      @Param("reportType") ReportType reportType, @Param("reportDate") LocalDate reportDate);
 }

@@ -21,7 +21,7 @@ public interface ReportMapper {
     Integer attempted = personalReport.getAttemptedCount();
     Integer solved = personalReport.getSolvedCount();
 
-    if (attempted == null || attempted == 0) {
+    if (attempted == null || attempted == 0 || solved == null) {
       return 0.0;
     }
     return (double) solved / attempted * 100;

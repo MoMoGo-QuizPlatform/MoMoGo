@@ -224,3 +224,6 @@ ALTER TABLE "TBL_USER_ROOM_ANSWER" ADD CONSTRAINT "UQ_USER_ROOM_ANSWER_USER_PROB
 
 -- 동일 유저의 동일 종류(일간/주간) 리포트가 같은 기준일에 중복 생성되는 것 방지 (배치 재실행 대비), 조회 인덱스로도 사용
 ALTER TABLE "TBL_PERSONAL_REPORT" ADD CONSTRAINT "UQ_PERSONAL_REPORT_USER_TYPE_DATE" UNIQUE ("user_id", "report_type", "report_date");
+
+-- 배치 작업 시 중복 검증 조회를 위한 인덱스
+CREATE INDEX "IDX_PERSONAL_REPORT_TYPE_DATE" ON "TBL_PERSONAL_REPORT" ("report_type", "report_date");

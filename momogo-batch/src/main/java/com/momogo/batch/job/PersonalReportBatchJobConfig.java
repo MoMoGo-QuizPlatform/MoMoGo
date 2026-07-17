@@ -6,13 +6,15 @@ import com.momogo.core.domain.report.entity.ReportType;
 import com.momogo.core.domain.report.repository.PersonalReportRepository;
 import com.momogo.core.domain.report.repository.UserActivityRepository;
 import com.momogo.core.domain.user.repository.UserRepository;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.temporal.TemporalAdjusters;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.Job;
@@ -49,8 +51,11 @@ public class PersonalReportBatchJobConfig {
   public Step dailyReportStep() {
     return new StepBuilder("dailyReportStep", jobRepository)
         .tasklet((contribution, chunkContext) -> {
-          // 매일 자정 직후에 실행되므로, 집계 대상은 어제 하루 (어제 00:00 이상 ~ 오늘 00:00 미만)
-          LocalDate yesterday = LocalDate.now().minusDays(1);
+          // JobParameter에서 기준일(runDate)을 읽어와서 집계 대상으로 사용
+          String runDateStr = (String) chunkContext.getStepContext().getJobParameters()
+              .get("runDate");
+          LocalDate runDate = runDateStr != null ? LocalDate.parse(runDateStr) : LocalDate.now();
+          LocalDate yesterday = runDate.minusDays(1);
           createReports(ReportType.DAILY, yesterday, yesterday, yesterday.plusDays(1));
           return RepeatStatus.FINISHED; // 이 Tasklet은 한 번 실행으로 끝이라는 뜻
         }, transactionManager)
@@ -69,9 +74,12 @@ public class PersonalReportBatchJobConfig {
   public Step weeklyReportStep() {
     return new StepBuilder("weeklyReportStep", jobRepository)
         .tasklet((contribution, chunkContext) -> {
-          // 매주 월요일 자정 직후에 실행되므로, 집계 대상은 "지난주" (지난주 월요일 ~ 이번주 월요일 미만)
-          // reportDate(기준일)는 지난주 월요일로 저장 -> 조회할 때도 "그 주의 월요일"로 찾으면 됨
-          LocalDate lastMonday = LocalDate.now().minusWeeks(1);
+          // JobParameter에서 기준일(runDate)을 읽어와서 집계 대상으로 사용
+          String runDateStr = (String) chunkContext.getStepContext().getJobParameters()
+              .get("runDate");
+          LocalDate runDate = runDateStr != null ? LocalDate.parse(runDateStr) : LocalDate.now();
+          LocalDate lastMonday = runDate.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+              .minusWeeks(1);
           createReports(ReportType.WEEKLY, lastMonday, lastMonday, lastMonday.plusWeeks(1));
           return RepeatStatus.FINISHED;
         }, transactionManager)
@@ -89,7 +97,7 @@ public class PersonalReportBatchJobConfig {
    * @param periodEnd   집계 종료일 (미만)
    */
   private void createReports(ReportType reportType, LocalDate reportDate,
-                             LocalDate periodStart, LocalDate periodEnd) {
+      LocalDate periodStart, LocalDate periodEnd) {
 
     //LocalDate(날짜) -> OffsetDateTime(시각) 변환. created_at 컬럼이 TIMESTAMPTZ라서
     //그날 00:00 (서버 시간대 기준)으로 맞춰서 비교해야 함
@@ -102,10 +110,9 @@ public class PersonalReportBatchJobConfig {
 
     //같은 기준일 리포트가 이미 있으면 건너뛰기 위한 준비 (배치가 실수로 두 번 돌아도 중복 생성 방지)
     //유저별로 매번 존재 여부를 쿼리하면 N+1이 되므로, 이미 있는 유저 ID들을 한 번에 가져와 Set으로 만듦
-    Set<UUID> alreadyReported = personalReportRepository
-        .findAllByReportTypeAndReportDate(reportType, reportDate).stream()
-        .map(report -> report.getUser().getId())
-        .collect(Collectors.toSet());
+    //(엔티티 전체가 아니라 유저 ID만 뽑는 쿼리라서 리포트가 많이 쌓여도 메모리 부담이 적음)
+    Set<UUID> alreadyReported = new HashSet<>(
+        personalReportRepository.findUserIdsByReportTypeAndReportDate(reportType, reportDate));
 
     //집계 결과를 리포트 엔티티로 변환해서 저장
     List<PersonalReport> reports = counts.stream()
