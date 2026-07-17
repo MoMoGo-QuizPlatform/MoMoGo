@@ -73,9 +73,9 @@ export async function findPassword(email: string): Promise<void> {
 }
 
 // 유예 계정 복구 API
-export async function restoreUser(password: string): Promise<void> {
+export async function restoreUser(email: string, password: string): Promise<void> {
   await request<void>('/api/auth/restore', {
     method: 'POST',
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ email, password }),
   });
 }

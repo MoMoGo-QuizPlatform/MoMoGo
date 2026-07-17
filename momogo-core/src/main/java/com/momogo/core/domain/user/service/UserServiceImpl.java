@@ -1,10 +1,10 @@
 package com.momogo.core.domain.user.service;
 
 import com.momogo.core.common.exception.BusinessException;
-import com.momogo.core.common.util.EmailFormatter;
 import com.momogo.core.common.exception.GlobalErrorCode;
 import com.momogo.core.common.security.PasswordEncryptor;
 import com.momogo.core.common.storage.StorageService;
+import com.momogo.core.common.util.EmailFormatter;
 import com.momogo.core.domain.user.dto.UserSearchCondition;
 import com.momogo.core.domain.user.dto.request.ProfileImageUploadRequest;
 import com.momogo.core.domain.user.dto.request.UserCreateRequest;
@@ -15,10 +15,10 @@ import com.momogo.core.domain.user.dto.response.UserResponse;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.SocialType;
 import com.momogo.core.domain.user.entity.enums.UserRole;
+import com.momogo.core.domain.user.event.UserBannedEvent;
 import com.momogo.core.domain.user.exception.UserErrorCode;
 import com.momogo.core.domain.user.mapper.UserMapper;
 import com.momogo.core.domain.user.repository.UserRepository;
-import com.momogo.core.domain.user.event.UserBannedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,7 +36,6 @@ import java.io.InputStream;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 
 @Slf4j
@@ -52,7 +51,6 @@ public class UserServiceImpl implements UserService {
     private final UserMapper userMapper;
     private final UserSessionService userSessionService;
     private final StorageService storageService;
-    private final RestoreTokenValidator restoreTokenValidator;
     private final UserHardDeleteProcessor hardDeleteProcessor;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -206,6 +204,11 @@ public class UserServiceImpl implements UserService {
             user.leaveSpace();
         }
 
+        // 임시 비밀번호를 사용 중이고 아직 변경하지 않은 경우 탈퇴를 거부합니다.
+        if (user.getTempPassword() != null) {
+            throw new BusinessException(UserErrorCode.TEMPORARY_PASSWORD_MUST_BE_CHANGED);
+        }
+
         // 유저 논리 삭제
         user.delete();
 
@@ -237,14 +240,12 @@ public class UserServiceImpl implements UserService {
     /**
      * 논리 삭제 상태인 회원 계정을 비밀번호 검증 후 30일 이내에 복구합니다.
      *
-     * @param restoreToken 복구를 위한 토큰
-     * @param password     본인 확인을 위한 비밀번호
+     * @param email    복구할 회원 이메일
+     * @param password 본인 확인을 위한 비밀번호
      */
     @Override
     @Transactional
-    public void restoreUser(String restoreToken, String password) {
-        String email = restoreTokenValidator.getEmailFromRestoreToken(restoreToken);
-
+    public void restoreUser(String email, String password) {
         User user = findUserByEmail(email);
 
         // 탈퇴 상태가 아니거나 이미 30일이 지난 경우 복구할 수 없음.
