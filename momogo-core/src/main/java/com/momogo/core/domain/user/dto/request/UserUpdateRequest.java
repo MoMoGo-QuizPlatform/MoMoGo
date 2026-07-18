@@ -2,7 +2,7 @@ package com.momogo.core.domain.user.dto.request;
 
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
-import com.momogo.core.common.util.ValidationConstants;
+import com.momogo.core.common.util.PasswordValidationConstants;
 
 public record UserUpdateRequest(
 
@@ -12,8 +12,8 @@ public record UserUpdateRequest(
         String currentPassword,
 
         @Pattern(
-                regexp = ValidationConstants.PASSWORD_REGEX,
-                message = ValidationConstants.PASSWORD_INVALID_MESSAGE
+                regexp = PasswordValidationConstants.PASSWORD_REGEX,
+                message = PasswordValidationConstants.PASSWORD_INVALID_MESSAGE
         )
         String newPassword,
 

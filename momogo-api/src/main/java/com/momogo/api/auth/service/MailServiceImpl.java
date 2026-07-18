@@ -7,6 +7,7 @@ import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
@@ -39,7 +40,7 @@ public class MailServiceImpl implements MailService {
 
             helper.setText(htmlContent, true);
             mailSender.send(mimeMessage);
-        } catch (MessagingException e) {
+        } catch (MessagingException | MailException e) {
             log.error("임시 비밀번호 이메일 발송 실패: toEmail: {}", EmailFormatter.mask(toEmail), e);
             throw new BusinessException(GlobalErrorCode.MAIL_SEND_FAILED, "이메일 발송 중 오류가 발생하였습니다.");
         }

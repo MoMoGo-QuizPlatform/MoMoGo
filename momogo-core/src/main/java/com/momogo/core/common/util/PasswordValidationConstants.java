@@ -1,7 +1,7 @@
 package com.momogo.core.common.util;
 
-public final class ValidationConstants {
-    private ValidationConstants() {
+public final class PasswordValidationConstants {
+    private PasswordValidationConstants() {
         // 인스턴스화 방지
     }
 
