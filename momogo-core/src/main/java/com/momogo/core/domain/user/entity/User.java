@@ -122,6 +122,12 @@ public class User extends BaseTimeEntity {
         this.tempPasswordExpiredAt = null;
     }
 
+    public boolean isTemporaryPasswordActive() {
+        return tempPassword != null &&
+                tempPasswordExpiredAt != null &&
+                OffsetDateTime.now().isBefore(tempPasswordExpiredAt);
+    }
+
     public void ban() {
         this.isBanned = true;
     }

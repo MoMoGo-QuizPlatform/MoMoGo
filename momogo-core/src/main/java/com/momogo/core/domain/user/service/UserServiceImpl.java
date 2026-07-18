@@ -15,7 +15,9 @@ import com.momogo.core.domain.user.dto.response.UserResponse;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.SocialType;
 import com.momogo.core.domain.user.entity.enums.UserRole;
+import com.momogo.core.domain.user.event.PasswordChangedEvent;
 import com.momogo.core.domain.user.event.UserBannedEvent;
+import com.momogo.core.domain.user.event.UserDeletedEvent;
 import com.momogo.core.domain.user.exception.UserErrorCode;
 import com.momogo.core.domain.user.mapper.UserMapper;
 import com.momogo.core.domain.user.repository.UserRepository;
@@ -49,7 +51,6 @@ public class UserServiceImpl implements UserService {
     private final UserRepository userRepository;
     private final PasswordEncryptor passwordEncryptor;
     private final UserMapper userMapper;
-    private final UserSessionService userSessionService;
     private final StorageService storageService;
     private final UserHardDeleteProcessor hardDeleteProcessor;
     private final ApplicationEventPublisher eventPublisher;
@@ -156,6 +157,22 @@ public class UserServiceImpl implements UserService {
                         "파일 저장 중 시스템 오류가 발생했습니다."
                 );
             }
+        } else if (request != null && Boolean.TRUE.equals(request.removeProfileImage())) {
+            String oldProfileImageUrl = user.getProfileImageUrl();
+            user.updateProfileImage(null);
+
+            if (oldProfileImageUrl != null && !oldProfileImageUrl.isBlank()) {
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronization() {
+                            @Override
+                            public void afterCompletion(int status) {
+                                if (status == STATUS_COMMITTED) {
+                                    storageService.delete(PROFILE_IMAGE_DIR + "/" + oldProfileImageUrl);
+                                }
+                            }
+                        }
+                );
+            }
         }
 
         if (request != null && request.newPassword() != null && !request.newPassword().isBlank()) {
@@ -183,7 +200,7 @@ public class UserServiceImpl implements UserService {
 
             user.clearTemporaryPassword();
 
-            userSessionService.invalidateUserSessions(userId);
+            eventPublisher.publishEvent(new PasswordChangedEvent(userId));
         }
 
         return userMapper.toResponse(user);
@@ -204,8 +221,8 @@ public class UserServiceImpl implements UserService {
             user.leaveSpace();
         }
 
-        // 임시 비밀번호를 사용 중이고 아직 변경하지 않은 경우 탈퇴를 거부합니다.
-        if (user.getTempPassword() != null) {
+        // 유효한 임시 비밀번호 상태인 경우 탈퇴를 거부
+        if (user.isTemporaryPasswordActive()) {
             throw new BusinessException(UserErrorCode.TEMPORARY_PASSWORD_MUST_BE_CHANGED);
         }
 
@@ -213,7 +230,7 @@ public class UserServiceImpl implements UserService {
         user.delete();
 
         // 탈퇴한 유저 세션 만료
-        userSessionService.invalidateUserSessions(userId);
+        eventPublisher.publishEvent(new UserDeletedEvent(user.getId()));
     }
 
     /**
@@ -402,14 +419,10 @@ public class UserServiceImpl implements UserService {
     }
 
     /**
-     * 임시 비밀번호가 존재하고, 10분 유효시간 이내이며, 입력받은 평문 비밀번호와 일치하는지 판단합니다.
+     * 임시 비밀번호가 존재하고, 3분 유효시간 이내이며, 입력받은 평문 비밀번호와 일치하는지 판단합니다.
      */
     private boolean isValidTemporaryPassword(User user, String rawPassword) {
-        // 임시 비밀번호가 비어 있는지 확인
-        if (user.getTempPassword() == null || user.getTempPasswordExpiredAt() == null) {
-            return false;
-        }
-        if (OffsetDateTime.now().isAfter(user.getTempPasswordExpiredAt())) {
+        if (!user.isTemporaryPasswordActive()) {
             return false;
         }
         return passwordEncryptor.matches(rawPassword, user.getTempPassword());

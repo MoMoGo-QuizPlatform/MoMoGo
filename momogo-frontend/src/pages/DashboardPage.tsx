@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { UserResponse } from '../types/user';
+import { PASSWORD_REGEX, PASSWORD_INVALID_MESSAGE } from '../types/user';
 import type { SpaceResponse, SpaceCreateRequest } from '../types/space';
 import { request, getAccessToken } from '../services/api';
 import { logout } from '../services/auth';
@@ -90,6 +91,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [removeProfileImage, setRemoveProfileImage] = useState<boolean>(false);
 
   // 프로필 이미지가 원격 URL일 경우, 인증 헤더를 추가해서 Blob으로 가져와 로컬 Object URL로 반환합니다.
   const loadAuthorizedImage = async (url: string) => {
@@ -98,11 +100,35 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
       setSavedProfilePreview('');
       return;
     }
-    if (url.startsWith('blob:') || !url.includes('/uploads/')) {
+
+    // 동일 출처(window.location.origin) 혹은 허용된 로컬 백엔드 출처(http://localhost:8080)이면서
+    // /uploads/ 경로가 포함된 요청에만 인증 정보를 첨부하도록 검사합니다. (토큰 유출 방지)
+    const isTargetSecure = (() => {
+      try {
+        if (url.startsWith('blob:')) return false;
+
+        // 상대 경로인 경우 안전함
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          return url.includes('/uploads/');
+        }
+
+        const parsedUrl = new URL(url);
+        const isAllowedOrigin =
+          parsedUrl.origin === window.location.origin ||
+          parsedUrl.origin === 'http://localhost:8080';
+
+        return isAllowedOrigin && parsedUrl.pathname.includes('/uploads/');
+      } catch {
+        return false;
+      }
+    })();
+
+    if (!isTargetSecure) {
       setProfilePreview(url);
       setSavedProfilePreview(url);
       return;
     }
+
     try {
       const token = getAccessToken();
       const headers: Record<string, string> = {};
@@ -112,15 +138,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
       const response = await fetch(url, { headers, credentials: 'include' });
       if (response.ok) {
         const blob = await response.blob();
-        // 1x1 투명 더미 이미지(삭제 상태) 판별: 파일 크기가 200바이트 이하인 경우 프로필이 없는 것으로 간주
-        if (blob.size < 200) {
-          setProfilePreview('');
-          setSavedProfilePreview('');
-        } else {
-          const blobUrl = URL.createObjectURL(blob);
-          setProfilePreview(blobUrl);
-          setSavedProfilePreview(blobUrl);
-        }
+        const blobUrl = URL.createObjectURL(blob);
+        setProfilePreview(blobUrl);
+        setSavedProfilePreview(blobUrl);
       } else {
         setProfilePreview('');
         setSavedProfilePreview('');
@@ -132,24 +152,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
     }
   };
 
-  // 프로필 이미지 가상 삭제 처리 함수 (1x1 투명 PNG 업로드)
-  const handleDeleteProfileImage = async () => {
-    const dummyPngBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
-    try {
-      const res = await fetch(dummyPngBase64);
-      const blob = await res.blob();
-      const dummyFile = new File([blob], 'clear_profile.png', { type: 'image/png' });
-      
-      setProfileFile(dummyFile);
-      setProfilePreview(''); // 편집 미리보기 비우기 (기본 아바타 노출)
+  // 프로필 이미지 삭제 처리 함수 (명시적 삭제 플래그 사용)
+  const handleDeleteProfileImage = () => {
+    setProfileFile(null);
+    setRemoveProfileImage(true);
+    setProfilePreview(''); // 편집 미리보기 비우기 (기본 아바타 노출)
 
-      // 파일 input 엘리먼트 값도 리셋
-      const fileInput = document.getElementById('profile-file-input') as HTMLInputElement;
-      if (fileInput) {
-        fileInput.value = '';
-      }
-    } catch (e) {
-      console.error('Failed to clear profile image:', e);
+    // 파일 input 엘리먼트 값도 리셋
+    const fileInput = document.getElementById('profile-file-input') as HTMLInputElement;
+    if (fileInput) {
+      fileInput.value = '';
     }
   };
 
@@ -159,6 +171,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
+    setRemoveProfileImage(false);
     if (user.profileImageUrl) {
       loadAuthorizedImage(user.profileImageUrl);
     } else {
@@ -271,6 +284,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
       const file = e.target.files[0];
       setProfileFile(file);
       setProfilePreview(URL.createObjectURL(file));
+      setRemoveProfileImage(false);
     }
   };
 
@@ -290,9 +304,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
         showToast('새 비밀번호와 비밀번호 확인이 일치하지 않습니다.', 'error');
         return;
       }
-      const passwordRegex = /^(?=.*[a-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,20}$/;
-      if (!passwordRegex.test(newPassword)) {
-        showToast('새 비밀번호는 8~20자이며, 영문, 숫자, 특수문자를 적어도 하나씩 포함해야 합니다.', 'error');
+      if (!PASSWORD_REGEX.test(newPassword)) {
+        showToast(PASSWORD_INVALID_MESSAGE, 'error');
         return;
       }
     }
@@ -303,7 +316,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
       const updateData = {
         name: profileName,
         currentPassword: currentPassword || null,
-        newPassword: newPassword || null
+        newPassword: newPassword || null,
+        removeProfileImage: removeProfileImage
       };
 
       const jsonBlob = new Blob([JSON.stringify(updateData)], { type: 'application/json' });
@@ -319,6 +333,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
       });
 
       showToast('개인 정보가 수정되었습니다.', 'success');
+      setRemoveProfileImage(false);
 
       // 부모 상태 동기화 및 폼 초기화
       if (onUserUpdate) {
@@ -354,6 +369,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
+    setRemoveProfileImage(false);
     if (user.profileImageUrl) {
       loadAuthorizedImage(user.profileImageUrl);
     } else {
@@ -1337,7 +1353,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
                             <input
                                 type="password"
                                 className="input-field"
-                                placeholder="새 비밀번호 (8~20자, 영문/숫자/특수문자 포함)"
+                                placeholder="새 비밀번호 (8~20자, 영문/숫자/특수문자 @$!%*#?& 포함)"
                                 value={newPassword}
                                 onChange={(e) => setNewPassword(e.target.value)}
                             />

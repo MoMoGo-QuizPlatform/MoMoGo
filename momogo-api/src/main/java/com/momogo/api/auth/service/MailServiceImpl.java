@@ -1,12 +1,17 @@
 package com.momogo.api.auth.service;
 
+import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.common.exception.GlobalErrorCode;
+import com.momogo.core.common.util.EmailFormatter;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @RequiredArgsConstructor
 @Service
 public class MailServiceImpl implements MailService {
@@ -35,7 +40,8 @@ public class MailServiceImpl implements MailService {
             helper.setText(htmlContent, true);
             mailSender.send(mimeMessage);
         } catch (MessagingException e) {
-            throw new RuntimeException("이메일 발송 중 오류가 발생했습니다.", e);
+            log.error("임시 비밀번호 이메일 발송 실패: toEmail: {}", EmailFormatter.mask(toEmail), e);
+            throw new BusinessException(GlobalErrorCode.MAIL_SEND_FAILED, "이메일 발송 중 오류가 발생하였습니다.");
         }
     }
 }

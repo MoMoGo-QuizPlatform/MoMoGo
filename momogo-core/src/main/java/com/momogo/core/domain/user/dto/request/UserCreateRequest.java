@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import com.momogo.core.common.util.ValidationConstants;
 
 public record UserCreateRequest(
 
@@ -18,8 +19,8 @@ public record UserCreateRequest(
         @NotBlank(message = "비밀번호는 필수로 입력해야 합니다.")
         @Size(min = 8, max = 20, message = "비밀번호는 8~20자 사이여야 합니다.")
         @Pattern(
-                regexp = "^(?=.*[a-z])(?=.*\\d)(?=.*[@$!%*#?&])[A-Za-z\\d@$!%*#?&]{8,20}$",
-                message = "비밀번호는 8~20자이며, 영문, 숫자, 특수문자를 적어도 하나씩 포함해야 합니다."
+                regexp = ValidationConstants.PASSWORD_REGEX,
+                message = ValidationConstants.PASSWORD_INVALID_MESSAGE
         )
         String password
 ) {
