@@ -72,8 +72,12 @@ export interface RequestOptions extends RequestInit {
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { params, headers, ...restOptions } = options;
-  
+
+  // 1. URL 재매핑 (Super Admin User API)
   let resolvedPath = path;
+  if (path.startsWith('/api/super-admin/users')) {
+    resolvedPath = path.replace('/api/super-admin/users', '/api/users');
+  }
 
   // 2. 모의 응답 인터셉터 (Mock Interceptor)
   const lowerPath = resolvedPath.toLowerCase();
@@ -136,6 +140,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     }
 
     const method = options.method?.toUpperCase() || 'GET';
+    if (method === 'GET') {
+      return superSpaces as unknown as T;
+    }
 
     if (method === 'PUT' || method === 'PATCH') {
       const spaceId = resolvedPath.split('/').pop();
@@ -232,8 +239,8 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     credentials: 'include', // 세션 연장을 위한 Refresh Token 쿠키를 안전하게 포함시킵니다.
   });
 
-  // 액세스 토큰 만료(401) 시 재발급 후 원 요청 1회 재시도 (로그인/재발급 요청 자체는 대상에서 제외)
-  const isAuthEndpoint = resolvedPath.startsWith('/api/auth/sign-in') || resolvedPath.startsWith('/api/auth/refresh');
+  // 액세스 토큰 만료(401) 시 재발급 후 원 요청 1회 재시도 (인증 관련 요청 자체는 대상에서 제외)
+  const isAuthEndpoint = resolvedPath.startsWith('/api/auth/');
   if (response.status === 401 && !isAuthEndpoint) {
     try {
       await refreshAccessToken();

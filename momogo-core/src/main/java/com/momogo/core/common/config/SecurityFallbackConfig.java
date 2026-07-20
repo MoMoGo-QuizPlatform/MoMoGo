@@ -1,7 +1,6 @@
 package com.momogo.core.common.config;
 
 import com.momogo.core.common.security.PasswordEncryptor;
-import com.momogo.core.domain.user.service.UserSessionService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -35,21 +34,6 @@ public class SecurityFallbackConfig {
             @Override
             public boolean matches(String rawPassword, String encryptedPassword) {
                 throw new UnsupportedOperationException("현재 컨텍스트에서 사용할 수 있는 PasswordEncryptor 빈이 존재하지 않습니다.");
-            }
-        };
-    }
-
-    /**
-     * 현재 컨텍스트에 등록된 UserSessionService 빈이 없을 경우 기본 대체 빈을 등록합니다.
-     * 세션 만료 기능이 필요 없는 모듈에서 예외 없이 로딩되도록 돕습니다.
-     * 실제 메서드가 호출되더라도 아무런 동작을 수행하지 않습니다 (No-op).
-     */
-    @Bean
-    @ConditionalOnMissingBean(UserSessionService.class)
-    public UserSessionService userSessionService() {
-        return new UserSessionService() {
-            @Override
-            public void invalidateUserSessions(UUID userId) {
             }
         };
     }

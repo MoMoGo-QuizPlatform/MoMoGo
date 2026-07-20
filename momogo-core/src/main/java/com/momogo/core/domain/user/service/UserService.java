@@ -19,7 +19,7 @@ public interface UserService {
 
     void deleteExpiredUsers();
 
-    void restoreUser(String restoreToken, String password);
+    void restoreUser(String email, String password);
 
     CursorResponse<UserResponse> findAllUsers(UserPageRequest request);
 

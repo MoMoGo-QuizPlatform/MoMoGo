@@ -2,10 +2,12 @@ package com.momogo.core.domain.user.service;
 
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.storage.StorageService;
+import com.momogo.core.common.util.UrlUtils;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.exception.UserErrorCode;
 import com.momogo.core.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +23,7 @@ import java.util.UUID;
  * 한 회원의 삭제 실패(예: 외래 키 제약 예외)가 다른 회원의 일괄 물리 삭제(배치 작업)
  * 전체 롤백으로 전파되는 것을 차단합니다.
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class UserHardDeleteProcessor {
@@ -35,14 +38,19 @@ public class UserHardDeleteProcessor {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(UserErrorCode.NOT_FOUND));
 
-        if (user.getProfileImageUrl() != null && !user.getProfileImageUrl().isBlank()) {
-            String profileImageUrl = user.getProfileImageUrl();
+        String profileImageUrl = user.getProfileImageUrl();
+        if (profileImageUrl != null && !profileImageUrl.isBlank()
+                && !UrlUtils.isExternalUrl(user.getProfileImageUrl())) {
             TransactionSynchronizationManager.registerSynchronization(
                     new TransactionSynchronization() {
                         @Override
                         public void afterCompletion(int status) {
                             if (status == STATUS_COMMITTED) {
-                                storageService.delete(PROFILE_IMAGE_DIR + "/" + profileImageUrl);
+                                try {
+                                    storageService.delete(PROFILE_IMAGE_DIR + "/" + profileImageUrl);
+                                } catch (Exception e) {
+                                    log.error("[UserHardDeleteProcessor] 회원 탈퇴 프로필 이미지 삭제 실패 - userId: {}, file: {}", userId, profileImageUrl, e);
+                                }
                             }
                         }
                     }

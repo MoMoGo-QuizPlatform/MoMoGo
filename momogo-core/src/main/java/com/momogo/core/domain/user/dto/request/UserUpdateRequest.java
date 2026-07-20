@@ -2,6 +2,7 @@ package com.momogo.core.domain.user.dto.request;
 
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import com.momogo.core.common.util.PasswordValidationConstants;
 
 public record UserUpdateRequest(
 
@@ -11,9 +12,11 @@ public record UserUpdateRequest(
         String currentPassword,
 
         @Pattern(
-                regexp = "^(?=.*[a-z])(?=.*\\d)(?=.*[@$!%*#?&])[A-Za-z\\d@$!%*#?&]{8,20}$",
-                message = "비밀번호는 8~20자이며, 영문, 숫자, 특수문자를 적어도 하나씩 포함해야 합니다."
+                regexp = PasswordValidationConstants.PASSWORD_REGEX,
+                message = PasswordValidationConstants.PASSWORD_INVALID_MESSAGE
         )
-        String newPassword
+        String newPassword,
+
+        Boolean removeProfileImage
 ) {
 }

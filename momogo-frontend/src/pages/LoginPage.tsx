@@ -96,8 +96,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, showToast 
     setLoading(true);
 
     try {
-      await restoreUser(restorePassword);
-      showToast('계정이 성공적으로 복구되었습니다. 다시 로그인을 시도해 주세요.', 'success');
+      await restoreUser(email, restorePassword);
+      const loginRes = await login(email, restorePassword);
+      onLoginSuccess(loginRes.user);
+      showToast('계정이 복구되었으며 성공적으로 로그인되었습니다.', 'success');
       setShowRestoreModal(false);
       setRestorePassword('');
       setValidationErrors({});

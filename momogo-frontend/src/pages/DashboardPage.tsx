@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import type { UserResponse } from '../types/user';
+import { PASSWORD_REGEX, PASSWORD_INVALID_MESSAGE } from '../types/user';
 import type { SpaceResponse, SpaceCreateRequest } from '../types/space';
-import { request } from '../services/api';
+import { request, getAccessToken } from '../services/api';
 import { logout } from '../services/auth';
 
 interface DashboardPageProps {
@@ -33,7 +34,7 @@ interface CursorResponse<T> {
 export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, showToast, onEnterSpace, onUserUpdate }) => {
   // 탭 관련 상태 ('dashboard' | 'superadmin' | 'mypage')
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'superadmin' | 'mypage'>('dashboard');
-  
+
   // 슈퍼관리자 서브 탭 관련 상태 ('users' | 'spaces' | 'problems' | 'categories')
   const [superadminSubTab, setSuperadminSubTab] = useState<'users' | 'spaces' | 'problems' | 'categories'>('users');
 
@@ -59,7 +60,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
   const [userCursor, setUserCursor] = useState<string | null>(null);
   const [userHasNext, setUserHasNext] = useState(false);
   const [categories, setCategories] = useState<CategoryResponse[]>([]);
-  
+
   // 신규 카테고리 상태
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
@@ -83,11 +84,100 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
 
   // 마이페이지용 상태
   const [profileName, setProfileName] = useState(user.name);
-  const [profileImage, setProfileImage] = useState(user.profileImageUrl || '');
+  const [profileFile, setProfileFile] = useState<File | null>(null);
+  const [profilePreview, setProfilePreview] = useState('');
+  // 실제로 저장 완료된 프로필 이미지의 프리뷰 상태 (제출 완료 전에는 상단에 변경 사항이 보이지 않게 함)
+  const [savedProfilePreview, setSavedProfilePreview] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [removeProfileImage, setRemoveProfileImage] = useState<boolean>(false);
+
+  // 프로필 이미지가 원격 URL일 경우, 인증 헤더를 추가해서 Blob으로 가져와 로컬 Object URL로 반환합니다.
+  const loadAuthorizedImage = async (url: string) => {
+    if (!url) {
+      setProfilePreview('');
+      setSavedProfilePreview('');
+      return;
+    }
+
+    // 동일 출처(window.location.origin) 혹은 허용된 로컬 백엔드 출처(http://localhost:8080)이면서
+    // /uploads/ 경로가 포함된 요청에만 인증 정보를 첨부하도록 검사합니다. (토큰 유출 방지)
+    const isTargetSecure = (() => {
+      try {
+        if (url.startsWith('blob:')) return false;
+
+        // 상대 경로인 경우 안전함
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          return url.includes('/uploads/');
+        }
+
+        const parsedUrl = new URL(url);
+        const isAllowedOrigin =
+          parsedUrl.origin === window.location.origin ||
+          parsedUrl.origin === 'http://localhost:8080';
+
+        return isAllowedOrigin && parsedUrl.pathname.includes('/uploads/');
+      } catch {
+        return false;
+      }
+    })();
+
+    if (!isTargetSecure) {
+      setProfilePreview(url);
+      setSavedProfilePreview(url);
+      return;
+    }
+
+    try {
+      const token = getAccessToken();
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const response = await fetch(url, { headers, credentials: 'include' });
+      if (response.ok) {
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        setProfilePreview(blobUrl);
+        setSavedProfilePreview(blobUrl);
+      } else {
+        setProfilePreview('');
+        setSavedProfilePreview('');
+      }
+    } catch (e) {
+      console.error('Failed to load authorized image:', e);
+      setProfilePreview('');
+      setSavedProfilePreview('');
+    }
+  };
+
+  // 프로필 이미지 삭제 처리 함수 (명시적 삭제 플래그 사용)
+  const handleDeleteProfileImage = () => {
+    setProfileFile(null);
+    setRemoveProfileImage(true);
+    setProfilePreview(''); // 편집 미리보기 비우기 (기본 아바타 노출)
+
+    // 파일 input 엘리먼트 값도 리셋
+    const fileInput = document.getElementById('profile-file-input') as HTMLInputElement;
+    if (fileInput) {
+      fileInput.value = '';
+    }
+  };
 
   useEffect(() => {
     setProfileName(user.name);
-    setProfileImage(user.profileImageUrl || '');
+    setProfileFile(null);
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setRemoveProfileImage(false);
+    if (user.profileImageUrl) {
+      loadAuthorizedImage(user.profileImageUrl);
+    } else {
+      setProfilePreview('');
+      setSavedProfilePreview('');
+    }
   }, [user]);
 
   // 폼 검증 에러 상태
@@ -108,10 +198,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
 
   const loadSuperAdminSpaces = async () => {
     try {
-      const data = await request<any>('/api/super-admin/spaces', { method: 'GET' });
-      if (data && data.content) {
-        setSuperSpaces(data.content);
-      }
+      const data = await request<any[]>('/api/super-admin/spaces', { method: 'GET' });
+      if (data) setSuperSpaces(data);
     } catch (err: any) {
       showToast(err.message || '공간 목록 로드 실패', 'error');
     }
@@ -191,22 +279,75 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
     }
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setProfileFile(file);
+      setProfilePreview(URL.createObjectURL(file));
+      setRemoveProfileImage(false);
+    }
+  };
+
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profileName.trim()) {
       showToast('이름을 입력해 주세요.', 'error');
       return;
     }
+
+    if (newPassword) {
+      if (!currentPassword) {
+        showToast('비밀번호를 변경하려면 현재 비밀번호를 입력해 주세요.', 'error');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        showToast('새 비밀번호와 비밀번호 확인이 일치하지 않습니다.', 'error');
+        return;
+      }
+      if (!PASSWORD_REGEX.test(newPassword)) {
+        showToast(PASSWORD_INVALID_MESSAGE, 'error');
+        return;
+      }
+    }
+
     try {
-      await request<any>('/api/users/me', {
-        method: 'PUT',
-        body: JSON.stringify({ name: profileName, profileImageUrl: profileImage }),
+      const formData = new FormData();
+
+      const updateData = {
+        name: profileName,
+        currentPassword: currentPassword || null,
+        newPassword: newPassword || null,
+        removeProfileImage: removeProfileImage
+      };
+
+      const jsonBlob = new Blob([JSON.stringify(updateData)], { type: 'application/json' });
+      formData.append('data', jsonBlob);
+
+      if (profileFile) {
+        formData.append('file', profileFile);
+      }
+
+      const updatedUser = await request<any>('/api/users/me', {
+        method: 'PATCH',
+        body: formData,
       });
-      showToast('프로필 정보가 수정되었습니다.', 'success');
-      user.name = profileName;
-      user.profileImageUrl = profileImage;
+
+      showToast('개인 정보가 수정되었습니다.', 'success');
+      setRemoveProfileImage(false);
+
+      // 부모 상태 동기화 및 폼 초기화
+      if (onUserUpdate) {
+        onUserUpdate(updatedUser);
+      }
+
+      if (newPassword) {
+        showToast('비밀번호가 변경되어 다시 로그인해 주세요.', 'info');
+        setTimeout(() => {
+          onLogout();
+        }, 1500);
+      }
     } catch (err: any) {
-      showToast(err.message || '프로필 수정에 실패했습니다.', 'error');
+      showToast(err.message || '개인 정보 수정에 실패했습니다.', 'error');
     }
   };
 
@@ -219,6 +360,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
     } catch (err: any) {
       showToast(err.message || '회원 탈퇴 처리 중 오류 발생', 'error');
     }
+  };
+
+  const handleCancel = () => {
+    // 폼 입력 및 파일 프리뷰 상태 초기화
+    setProfileName(user.name);
+    setProfileFile(null);
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setRemoveProfileImage(false);
+    if (user.profileImageUrl) {
+      loadAuthorizedImage(user.profileImageUrl);
+    } else {
+      setProfilePreview('');
+      setSavedProfilePreview('');
+    }
+    // 대시보드 홈 탭으로 복귀
+    setCurrentTab('dashboard');
   };
 
   useEffect(() => {
@@ -243,9 +402,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
           const mockNotifications: NotificationItem[] = [
             {
               id: 'noti-1',
-              content: user.role === 'ADMIN' 
-                ? '관리하는 공간에 새로운 유저(김철수)가 새로 유입되었습니다.' 
-                : '학습 공간의 어드민이 회원님의 권한을 ADMIN으로 상향조정했습니다.',
+              content: user.role === 'ADMIN'
+                  ? '관리하는 공간에 새로운 유저(김철수)가 새로 유입되었습니다.'
+                  : '학습 공간의 어드민이 회원님의 권한을 ADMIN으로 상향조정했습니다.',
               status: 'UNCONFIRMED',
               createdAt: new Date().toISOString()
             },
@@ -295,7 +454,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
       if (cursor) {
         params.cursor = cursor;
       }
-      const data = await request<CursorResponse<UserResponse>>('/api/super-admin/users', {
+      const data = await request<CursorResponse<UserResponse>>('/api/users', {
         method: 'GET',
         params,
       });
@@ -330,24 +489,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
   const handleToggleUserBan = (targetUser: UserResponse) => {
     const nextBannedState = !targetUser.banned;
     openConfirm(
-      '회원 상태 변경',
-      `[${targetUser.name}] 님을 ${nextBannedState ? '정지' : '정지 해제'} 처리하시겠습니까?`,
-      async () => {
-        try {
-          await request<UserResponse>(`/api/super-admin/users/${targetUser.id}/ban`, {
-            method: 'PATCH',
-            body: JSON.stringify({ banned: nextBannedState }),
-          });
+        '회원 상태 변경',
+        `[${targetUser.name}] 님을 ${nextBannedState ? '정지' : '정지 해제'} 처리하시겠습니까?`,
+        async () => {
+          try {
+            await request<UserResponse>(`/api/users/${targetUser.id}/banned`, {
+              method: 'PATCH',
+              body: JSON.stringify({ banned: nextBannedState }),
+            });
 
-          showToast('상태가 정상적으로 변경되었습니다.', 'success');
-          // 화면 상태 동기화
-          setAllUsers(prev =>
-            prev.map(u => (u.id === targetUser.id ? { ...u, banned: nextBannedState } : u))
-          );
-        } catch (err: any) {
-          showToast(err.message || '상태 변경 처리에 실패했습니다.', 'error');
+            showToast('상태가 정상적으로 변경되었습니다.', 'success');
+            // 화면 상태 동기화
+            setAllUsers(prev =>
+                prev.map(u => (u.id === targetUser.id ? { ...u, banned: nextBannedState } : u))
+            );
+          } catch (err: any) {
+            showToast(err.message || '상태 변경 처리에 실패했습니다.', 'error');
+          }
         }
-      }
     );
   };
 
@@ -360,7 +519,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
     }
 
     try {
-      const created = await request<CategoryResponse>('/api/super-admin/categories', {
+      const created = await request<CategoryResponse>('/api/categories', {
         method: 'POST',
         body: JSON.stringify({ name: newCategoryName }),
       });
@@ -382,7 +541,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
     }
 
     try {
-      const updated = await request<CategoryResponse>(`/api/super-admin/categories/${id}`, {
+      const updated = await request<CategoryResponse>(`/api/categories/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ name: editingCategoryName }),
       });
@@ -508,907 +667,1003 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
   }
 
   return (
-    <div className="app-container">
-      {/* 고정 사이드바 */}
-      <aside className="sidebar-layout">
-        <h2 style={styles.sidebarLogo}>MoMoGo</h2>
-        <div style={styles.sidebarMenu}>
-          <button
-            style={{
-              ...styles.menuBtn,
-              ...(currentTab === 'dashboard' ? styles.menuActive : {}),
-            }}
-            className="btn"
-            onClick={() => setCurrentTab('dashboard')}
-          >
-            대시보드 홈
-          </button>
-          
-          {/* SUPER_ADMIN인 경우에만 활성화되는 전용 메뉴 탭 */}
-          {user.role === 'SUPER_ADMIN' && (
+      <div className="app-container">
+        {/* 고정 사이드바 */}
+        <aside className="sidebar-layout">
+          <h2 style={styles.sidebarLogo}>MoMoGo</h2>
+          <div style={styles.sidebarMenu}>
             <button
-              style={{
-                ...styles.menuBtn,
-                ...(currentTab === 'superadmin' ? styles.menuActive : {}),
-              }}
-              className="btn"
-              onClick={() => setCurrentTab('superadmin')}
+                style={{
+                  ...styles.menuBtn,
+                  ...(currentTab === 'dashboard' ? styles.menuActive : {}),
+                }}
+                className="btn"
+                onClick={() => setCurrentTab('dashboard')}
             >
-              슈퍼관리자 콘솔
+              대시보드 홈
             </button>
-          )}
 
-          <button
-            style={styles.menuBtn}
-            className="btn"
-            onClick={() => {
-              if (space) {
-                onEnterSpace(space);
-              } else {
-                setCurrentTab('dashboard');
-                showToast('공간에 먼저 입장하거나 생성해야 합니다.', 'info');
-              }
-            }}
-          >
-            학습 공간 퀴즈
-          </button>
-          <button
-            style={styles.menuBtn}
-            className="btn"
-            onClick={() => {
-              if (space) {
-                onEnterSpace(space);
-              } else {
-                setCurrentTab('dashboard');
-                showToast('공간에 먼저 입장하거나 생성해야 합니다.', 'info');
-              }
-            }}
-          >
-            분석 리포트
-          </button>
-          <button
-            style={{
-              ...styles.menuBtn,
-              ...(currentTab === 'mypage' ? styles.menuActive : {}),
-            }}
-            className="btn"
-            onClick={() => setCurrentTab('mypage')}
-          >
-            마이페이지
-          </button>
-        </div>
-        <button className="btn btn-secondary" style={styles.logoutBtn} onClick={handleLogout}>
-          로그아웃
-        </button>
-      </aside>
+            {/* SUPER_ADMIN인 경우에만 활성화되는 전용 메뉴 탭 */}
+            {user.role === 'SUPER_ADMIN' && (
+                <button
+                    style={{
+                      ...styles.menuBtn,
+                      ...(currentTab === 'superadmin' ? styles.menuActive : {}),
+                    }}
+                    className="btn"
+                    onClick={() => setCurrentTab('superadmin')}
+                >
+                  슈퍼관리자 콘솔
+                </button>
+            )}
 
-      {/* 메인 레이아웃 영역 */}
-      <main className="main-layout">
-        {/* 상단바 */}
-        <header style={styles.header}>
-          <div>
-            <h1 style={styles.welcomeTitle}>
-              {currentTab === 'superadmin' 
-                ? '슈퍼관리자 제어 콘솔' 
-                : currentTab === 'mypage' 
-                  ? '마이페이지' 
-                  : `${user.name} 님, 안녕하세요!`}
-            </h1>
-            <p style={styles.welcomeSub}>
-              {currentTab === 'superadmin' 
-                ? '가입된 전체 회원 계정과 문제 카테고리를 통제하고 제재합니다.' 
-                : currentTab === 'mypage' 
-                  ? '회원 정보 조회, 수정 및 탈퇴(유예 처리)를 진행할 수 있습니다.' 
-                  : '오늘도 MoMoGo 퀴즈와 함께 스마트하게 학습해 볼까요?'}
-            </p>
-          </div>
-          <div style={styles.headerActions}>
             <button
-              className="btn btn-secondary"
-              style={styles.notiTriggerBtn}
-              onClick={() => setShowNotifications(!showNotifications)}
+                style={styles.menuBtn}
+                className="btn"
+                onClick={() => {
+                  if (space) {
+                    onEnterSpace(space);
+                  } else {
+                    setCurrentTab('dashboard');
+                    showToast('공간에 먼저 입장하거나 생성해야 합니다.', 'info');
+                  }
+                }}
             >
-              알림
-              {unreadNotiCount > 0 && <span style={styles.notiCountBadge}>{unreadNotiCount}</span>}
+              학습 공간 퀴즈
+            </button>
+            <button
+                style={styles.menuBtn}
+                className="btn"
+                onClick={() => {
+                  if (space) {
+                    onEnterSpace(space);
+                  } else {
+                    setCurrentTab('dashboard');
+                    showToast('공간에 먼저 입장하거나 생성해야 합니다.', 'info');
+                  }
+                }}
+            >
+              분석 리포트
+            </button>
+            <button
+                style={{
+                  ...styles.menuBtn,
+                  ...(currentTab === 'mypage' ? styles.menuActive : {}),
+                }}
+                className="btn"
+                onClick={() => setCurrentTab('mypage')}
+            >
+              마이페이지
             </button>
           </div>
-        </header>
+          <button className="btn btn-secondary" style={styles.logoutBtn} onClick={handleLogout}>
+            로그아웃
+          </button>
+        </aside>
 
-        {/* 실시간 알림 팝오버 */}
-        {showNotifications && (
-          <div style={styles.notiPopover} className="card">
-            <h4 style={styles.notiPopoverTitle}>수신된 최근 알림</h4>
-            {notifications.length === 0 ? (
-              <p style={styles.notiEmpty}>수신된 새 알림이 없습니다.</p>
-            ) : (
-              <div style={styles.notiList}>
-                {notifications.map(noti => (
-                  <div key={noti.id} style={styles.notiItem}>
-                    <p style={styles.notiText}>{noti.content}</p>
-                    <button
-                      className="btn"
-                      style={styles.notiConfirmBtn}
-                      onClick={() => handleConfirmNotification(noti.id)}
-                    >
-                      확인
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 탭 분기 렌더링 */}
-        {currentTab === 'dashboard' && (
-          <>
-            {/* 퀴즈 대시보드 통계 카드 그리드 */}
-            <section style={styles.statsGrid}>
-              <div className="card" style={styles.statCard}>
-                <span className="badge badge-info">싱글 모드</span>
-                <h3 style={styles.statTitle}>오늘 완료한 퀴즈</h3>
-                <div style={styles.statNumber}>4개</div>
-                <p style={styles.statDesc}>어제보다 2개 더 많이 학습했습니다.</p>
-              </div>
-              <div className="card" style={styles.statCard}>
-                <span className="badge badge-success">종합 성과</span>
-                <h3 style={styles.statTitle}>이번 주 평균 정답률</h3>
-                <div style={styles.statNumber}>82%</div>
-                <p style={styles.statDesc}>전주 대비 4% 상승하였습니다.</p>
-              </div>
-              <div className="card" style={styles.statCard}>
-                <span className="badge badge-danger">참여 시험</span>
-                <h3 style={styles.statTitle}>참가 완료 시험방</h3>
-                <div style={styles.statNumber}>1개</div>
-                <p style={styles.statDesc}>완료된 모든 시험은 채점 중입니다.</p>
-              </div>
-            </section>
-
-            {/* 내가 소속된 공간 카드 영역 */}
-            <section style={styles.sectionContainer}>
-              <h2 style={styles.sectionTitle}>나의 소속 공간</h2>
-              {space ? (
-                <div className="card" style={styles.spaceDetailCard}>
-                  <div style={styles.spaceCardInfo}>
-                    <h3 style={styles.spaceName}>{space.name}</h3>
-                    <p style={styles.spaceDesc}>{space.description}</p>
-                    <div style={styles.spaceMeta}>
-                      <span className="badge badge-info">개설일: {new Date(space.createdAt).toLocaleDateString()}</span>
-                    </div>
-                  </div>
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => onEnterSpace(space)}
-                  >
-                    학습 공간 입장하기
-                  </button>
-                </div>
-              ) : (
-                <div className="card" style={styles.spaceEmptyCard}>
-                  <p style={styles.spaceEmptyText}>현재 소속되거나 가입하신 퀴즈 공간이 존재하지 않습니다.</p>
-                  <div style={styles.spaceEmptyActions}>
-                    <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
-                      새 학습 공간 만들기
-                    </button>
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => {
-                        if (unjoinedSpaces.length === 0) {
-                          showToast('현재 탐색 가능한 다른 공간이 없습니다.', 'info');
-                          return;
-                        }
-                        setShowJoinModal(true);
-                      }}
-                    >
-                      다른 공간 검색 후 가입하기
-                    </button>
-                  </div>
-                </div>
-              )}
-            </section>
-
-            {/* 추천 공간 가입 리스트 */}
-            {!space && unjoinedSpaces.length > 0 && (
-              <section style={styles.sectionContainer}>
-                <h2 style={styles.sectionTitle}>추천 학습 공간 목록</h2>
-                <div style={styles.unjoinedListGrid}>
-                  {unjoinedSpaces.map(sp => (
-                    <div key={sp.id} className="card" style={styles.unjoinedCard}>
-                      <h4 style={styles.unjoinedName}>{sp.name}</h4>
-                      <p style={styles.unjoinedDesc}>{sp.description}</p>
-                      <button
-                        className="btn btn-secondary"
-                        style={styles.unjoinedJoinBtn}
-                        onClick={() => {
-                          setTargetSpaceId(sp.id);
-                          setShowJoinModal(true);
-                        }}
-                      >
-                        가입 신청
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-          </>
-        )}
-
-        {currentTab === 'superadmin' && (
-          /* 슈퍼관리자 제어 콘솔 뷰 */
-          <section style={styles.adminConsoleContainer}>
-            {/* 서브 탭 셀렉터 */}
-            {/* 서브 탭 셀렉터 (규칙 3.1.3 슈퍼어드민 제어 보완) */}
-            <div style={styles.adminSubTabHeader}>
+        {/* 메인 레이아웃 영역 */}
+        <main className="main-layout">
+          {/* 상단바 */}
+          <header style={styles.header}>
+            <div>
+              <h1 style={styles.welcomeTitle}>
+                {currentTab === 'superadmin'
+                    ? '슈퍼관리자 제어 콘솔'
+                    : currentTab === 'mypage'
+                        ? '마이페이지'
+                        : `${user.name} 님, 안녕하세요!`}
+              </h1>
+              <p style={styles.welcomeSub}>
+                {currentTab === 'superadmin'
+                    ? '가입된 전체 회원 계정과 문제 카테고리를 통제하고 제재합니다.'
+                    : currentTab === 'mypage'
+                        ? '회원 정보 조회, 수정 및 탈퇴(유예 처리)를 진행할 수 있습니다.'
+                        : '오늘도 MoMoGo 퀴즈와 함께 스마트하게 학습해 볼까요?'}
+              </p>
+            </div>
+            <div style={styles.headerActions}>
               <button
-                className="btn"
-                style={{
-                  ...styles.adminSubTabBtn,
-                  ...(superadminSubTab === 'users' ? styles.adminSubTabActive : {}),
-                }}
-                onClick={() => setSuperadminSubTab('users')}
+                  className="btn btn-secondary"
+                  style={styles.notiTriggerBtn}
+                  onClick={() => setShowNotifications(!showNotifications)}
               >
-                가입 회원 통제
-              </button>
-              <button
-                className="btn"
-                style={{
-                  ...styles.adminSubTabBtn,
-                  ...(superadminSubTab === 'spaces' ? styles.adminSubTabActive : {}),
-                }}
-                onClick={() => {
-                  setSuperadminSubTab('spaces');
-                  loadSuperAdminSpaces();
-                }}
-              >
-                전체 공간 관리
-              </button>
-              <button
-                className="btn"
-                style={{
-                  ...styles.adminSubTabBtn,
-                  ...(superadminSubTab === 'problems' ? styles.adminSubTabActive : {}),
-                }}
-                onClick={() => {
-                  setSuperadminSubTab('problems');
-                  loadSuperAdminProblems();
-                }}
-              >
-                전체 문제 제어
-              </button>
-              <button
-                className="btn"
-                style={{
-                  ...styles.adminSubTabBtn,
-                  ...(superadminSubTab === 'categories' ? styles.adminSubTabActive : {}),
-                }}
-                onClick={() => setSuperadminSubTab('categories')}
-              >
-                문제 카테고리 제어
+                알림
+                {unreadNotiCount > 0 && <span style={styles.notiCountBadge}>{unreadNotiCount}</span>}
               </button>
             </div>
+          </header>
 
-            {superadminSubTab === 'users' && (
-              <div className="card" style={styles.adminContentCard}>
-                <h3 style={styles.adminContentTitle}>서비스 전체 가입 계정 목록</h3>
-                <div style={styles.tableWrapper}>
-                  <table style={styles.adminTable}>
-                    <thead>
-                      <tr>
-                        <th style={styles.th}>이름</th>
-                        <th style={styles.th}>이메일</th>
-                        <th style={styles.th}>역할 권한</th>
-                        <th style={styles.th}>정지 상태</th>
-                        <th style={styles.th}>제재 명령</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {allUsers.map(u => (
-                        <tr key={u.id} style={styles.tr}>
-                          <td style={styles.td}>{u.name}</td>
-                          <td style={styles.td}>{u.email}</td>
-                          <td style={styles.td}>
-                            <span className="badge badge-info">{u.role}</span>
-                          </td>
-                          <td style={styles.td}>
-                            {u.banned ? (
-                              <span className="badge badge-danger">정지 상태</span>
-                            ) : (
-                              <span className="badge badge-success">정상 이용</span>
-                            )}
-                          </td>
-                          <td style={styles.td}>
-                            {u.role === 'SUPER_ADMIN' ? (
-                              <span style={styles.disabledText}>명령 금지</span>
-                            ) : (
-                              <button
-                                className={`btn ${u.banned ? 'btn-secondary' : 'btn-danger'}`}
-                                style={styles.banBtn}
-                                onClick={() => handleToggleUserBan(u)}
-                              >
-                                {u.banned ? '정지 해제' : '영구 정지'}
-                              </button>
-                            )}
-                          </td>
-                        </tr>
+          {/* 실시간 알림 팝오버 */}
+          {showNotifications && (
+              <div style={styles.notiPopover} className="card">
+                <h4 style={styles.notiPopoverTitle}>수신된 최근 알림</h4>
+                {notifications.length === 0 ? (
+                    <p style={styles.notiEmpty}>수신된 새 알림이 없습니다.</p>
+                ) : (
+                    <div style={styles.notiList}>
+                      {notifications.map(noti => (
+                          <div key={noti.id} style={styles.notiItem}>
+                            <p style={styles.notiText}>{noti.content}</p>
+                            <button
+                                className="btn"
+                                style={styles.notiConfirmBtn}
+                                onClick={() => handleConfirmNotification(noti.id)}
+                            >
+                              확인
+                            </button>
+                          </div>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {userHasNext && (
-                  <button
-                    className="btn btn-secondary"
-                    style={styles.moreLoadBtn}
-                    onClick={() => loadSuperAdminUsers(userCursor)}
-                  >
-                    가입 회원 목록 더 불러오기
-                  </button>
+                    </div>
                 )}
               </div>
-            )}
+          )}
 
-            {superadminSubTab === 'spaces' && (
-              <div className="card" style={styles.adminContentCard}>
-                <h3 style={styles.adminContentTitle}>
-                  서비스 개설 공간 전체 목록
-                  <span style={styles.demoBadge}>데모 데이터 (백엔드 미연동)</span>
-                </h3>
-                <div style={styles.tableWrapper}>
-                  <table style={styles.adminTable}>
-                    <thead>
-                      <tr>
-                        <th style={styles.th}>공간명</th>
-                        <th style={styles.th}>공간 설명</th>
-                        <th style={styles.th}>개설일자</th>
-                        <th style={styles.th}>관리명령</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {superSpaces.map((s: any) => (
-                        <tr key={s.id} style={styles.tr}>
-                          <td style={styles.td}>{s.name}</td>
-                          <td style={styles.td}>{s.description}</td>
-                          <td style={styles.td}>{new Date(s.createdAt).toLocaleDateString()}</td>
-                          <td style={styles.td}>
-                            <button
-                              className="btn btn-secondary"
-                              style={{ marginRight: '0.5rem', padding: '0.4rem 0.8rem', fontSize: '0.825rem' }}
-                              onClick={() => {
-                                setEditingSpace(s);
-                                setEditSpaceName(s.name);
-                                setEditSpaceDesc(s.description);
-                                setShowEditSpaceModal(true);
-                              }}
-                            >
-                              수정
-                            </button>
-                            <button
-                              className="btn btn-danger"
-                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.825rem' }}
-                              onClick={() => handleDeleteSpace(s.id)}
-                            >
-                              강제 폐쇄
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {superSpaces.length === 0 && (
-                        <tr>
-                          <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
-                            등록된 공간이 존재하지 않습니다.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {superadminSubTab === 'problems' && (
-              <div className="card" style={styles.adminContentCard}>
-                <h3 style={styles.adminContentTitle}>
-                  전체 출제 문제 목록
-                  <span style={styles.demoBadge}>데모 데이터 (백엔드 미연동)</span>
-                </h3>
-                <div style={styles.tableWrapper}>
-                  <table style={styles.adminTable}>
-                    <thead>
-                      <tr>
-                        <th style={styles.th}>문제명</th>
-                        <th style={styles.th}>분류</th>
-                        <th style={styles.th}>공식정답</th>
-                        <th style={styles.th}>지문내용</th>
-                        <th style={styles.th}>관리명령</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {superProblems.map((p: any) => (
-                        <tr key={p.id} style={styles.tr}>
-                          <td style={styles.td}>{p.name}</td>
-                          <td style={styles.td}>
-                            <span className="badge badge-info">{p.category?.name || '미분류'}</span>
-                          </td>
-                          <td style={styles.td}>{p.correctAnswer}</td>
-                          <td style={styles.td}>{p.content}</td>
-                          <td style={styles.td}>
-                            <button
-                              className="btn btn-secondary"
-                              style={{ marginRight: '0.5rem', padding: '0.4rem 0.8rem', fontSize: '0.825rem' }}
-                              onClick={() => {
-                                setEditingProblem(p);
-                                setEditProblemName(p.name);
-                                setEditProblemContent(p.content);
-                                setEditProblemAnswer(p.correctAnswer);
-                                setEditProblemExplanation(p.explanation);
-                                setShowEditProblemModal(true);
-                              }}
-                            >
-                              수정
-                            </button>
-                            <button
-                              className="btn btn-danger"
-                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.825rem' }}
-                              onClick={() => handleDeleteProblem(p.id)}
-                            >
-                              삭제
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {superProblems.length === 0 && (
-                        <tr>
-                          <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
-                            출제 완료된 문제 목록이 비어 있습니다.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {superadminSubTab === 'categories' && (
-              <div className="card" style={styles.adminContentCard}>
-                <h3 style={styles.adminContentTitle}>문제 카테고리 목록</h3>
-                
-                {/* 신규 등록 폼 */}
-                <form onSubmit={handleCreateCategory} style={styles.categoryInputForm} noValidate>
-                  <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                    <input
-                      type="text"
-                      className="input-field"
-                      style={{
-                        ...styles.categoryInput,
-                        borderColor: validationErrors.newCategoryName ? '#ef4444' : undefined,
-                        boxShadow: validationErrors.newCategoryName ? '0 0 0 3px rgba(239, 68, 68, 0.1)' : undefined
-                      }}
-                      placeholder="신규 등록할 카테고리명 입력"
-                      value={newCategoryName}
-                      onChange={(e) => {
-                        setNewCategoryName(e.target.value);
-                        if (validationErrors.newCategoryName) {
-                          setValidationErrors(prev => ({ ...prev, newCategoryName: '' }));
-                        }
-                      }}
-                    />
-                    {validationErrors.newCategoryName && (
-                      <span style={styles.errorText}>{validationErrors.newCategoryName}</span>
-                    )}
+          {/* 탭 분기 렌더링 */}
+          {currentTab === 'dashboard' && (
+              <>
+                {/* 퀴즈 대시보드 통계 카드 그리드 */}
+                <section style={styles.statsGrid}>
+                  <div className="card" style={styles.statCard}>
+                    <span className="badge badge-info">싱글 모드</span>
+                    <h3 style={styles.statTitle}>오늘 완료한 퀴즈</h3>
+                    <div style={styles.statNumber}>4개</div>
+                    <p style={styles.statDesc}>어제보다 2개 더 많이 학습했습니다.</p>
                   </div>
-                  <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>
-                    카테고리 추가
-                  </button>
-                </form>
+                  <div className="card" style={styles.statCard}>
+                    <span className="badge badge-success">종합 성과</span>
+                    <h3 style={styles.statTitle}>이번 주 평균 정답률</h3>
+                    <div style={styles.statNumber}>82%</div>
+                    <p style={styles.statDesc}>전주 대비 4% 상승하였습니다.</p>
+                  </div>
+                  <div className="card" style={styles.statCard}>
+                    <span className="badge badge-danger">참여 시험</span>
+                    <h3 style={styles.statTitle}>참가 완료 시험방</h3>
+                    <div style={styles.statNumber}>1개</div>
+                    <p style={styles.statDesc}>완료된 모든 시험은 채점 중입니다.</p>
+                  </div>
+                </section>
 
-                {/* 카테고리 리스트 */}
-                <div style={styles.categoryList}>
-                  {categories.map(cat => (
-                    <div key={cat.id} style={styles.categoryItem}>
-                      {editingCategoryId === cat.id ? (
-                        <>
-                          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, marginRight: '0.75rem' }}>
-                            <input
+                {/* 내가 소속된 공간 카드 영역 */}
+                <section style={styles.sectionContainer}>
+                  <h2 style={styles.sectionTitle}>나의 소속 공간</h2>
+                  {space ? (
+                      <div className="card" style={styles.spaceDetailCard}>
+                        <div style={styles.spaceCardInfo}>
+                          <h3 style={styles.spaceName}>{space.name}</h3>
+                          <p style={styles.spaceDesc}>{space.description}</p>
+                          <div style={styles.spaceMeta}>
+                            <span className="badge badge-info">개설일: {new Date(space.createdAt).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                        <button
+                            className="btn btn-primary"
+                            onClick={() => onEnterSpace(space)}
+                        >
+                          학습 공간 입장하기
+                        </button>
+                      </div>
+                  ) : (
+                      <div className="card" style={styles.spaceEmptyCard}>
+                        <p style={styles.spaceEmptyText}>현재 소속되거나 가입하신 퀴즈 공간이 존재하지 않습니다.</p>
+                        <div style={styles.spaceEmptyActions}>
+                          <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
+                            새 학습 공간 만들기
+                          </button>
+                          <button
+                              className="btn btn-secondary"
+                              onClick={() => {
+                                if (unjoinedSpaces.length === 0) {
+                                  showToast('현재 탐색 가능한 다른 공간이 없습니다.', 'info');
+                                  return;
+                                }
+                                setShowJoinModal(true);
+                              }}
+                          >
+                            다른 공간 검색 후 가입하기
+                          </button>
+                        </div>
+                      </div>
+                  )}
+                </section>
+
+                {/* 추천 공간 가입 리스트 */}
+                {!space && unjoinedSpaces.length > 0 && (
+                    <section style={styles.sectionContainer}>
+                      <h2 style={styles.sectionTitle}>추천 학습 공간 목록</h2>
+                      <div style={styles.unjoinedListGrid}>
+                        {unjoinedSpaces.map(sp => (
+                            <div key={sp.id} className="card" style={styles.unjoinedCard}>
+                              <h4 style={styles.unjoinedName}>{sp.name}</h4>
+                              <p style={styles.unjoinedDesc}>{sp.description}</p>
+                              <button
+                                  className="btn btn-secondary"
+                                  style={styles.unjoinedJoinBtn}
+                                  onClick={() => {
+                                    setTargetSpaceId(sp.id);
+                                    setShowJoinModal(true);
+                                  }}
+                              >
+                                가입 신청
+                              </button>
+                            </div>
+                        ))}
+                      </div>
+                    </section>
+                )}
+              </>
+          )}
+
+          {currentTab === 'superadmin' && (
+              /* 슈퍼관리자 제어 콘솔 뷰 */
+              <section style={styles.adminConsoleContainer}>
+                {/* 서브 탭 셀렉터 */}
+                {/* 서브 탭 셀렉터 (규칙 3.1.3 슈퍼어드민 제어 보완) */}
+                <div style={styles.adminSubTabHeader}>
+                  <button
+                      className="btn"
+                      style={{
+                        ...styles.adminSubTabBtn,
+                        ...(superadminSubTab === 'users' ? styles.adminSubTabActive : {}),
+                      }}
+                      onClick={() => setSuperadminSubTab('users')}
+                  >
+                    가입 회원 통제
+                  </button>
+                  <button
+                      className="btn"
+                      style={{
+                        ...styles.adminSubTabBtn,
+                        ...(superadminSubTab === 'spaces' ? styles.adminSubTabActive : {}),
+                      }}
+                      onClick={() => {
+                        setSuperadminSubTab('spaces');
+                        loadSuperAdminSpaces();
+                      }}
+                  >
+                    전체 공간 관리
+                  </button>
+                  <button
+                      className="btn"
+                      style={{
+                        ...styles.adminSubTabBtn,
+                        ...(superadminSubTab === 'problems' ? styles.adminSubTabActive : {}),
+                      }}
+                      onClick={() => {
+                        setSuperadminSubTab('problems');
+                        loadSuperAdminProblems();
+                      }}
+                  >
+                    전체 문제 제어
+                  </button>
+                  <button
+                      className="btn"
+                      style={{
+                        ...styles.adminSubTabBtn,
+                        ...(superadminSubTab === 'categories' ? styles.adminSubTabActive : {}),
+                      }}
+                      onClick={() => setSuperadminSubTab('categories')}
+                  >
+                    문제 카테고리 제어
+                  </button>
+                </div>
+
+                {superadminSubTab === 'users' && (
+                    <div className="card" style={styles.adminContentCard}>
+                      <h3 style={styles.adminContentTitle}>서비스 전체 가입 계정 목록</h3>
+                      <div style={styles.tableWrapper}>
+                        <table style={styles.adminTable}>
+                          <thead>
+                          <tr>
+                            <th style={styles.th}>이름</th>
+                            <th style={styles.th}>이메일</th>
+                            <th style={styles.th}>역할 권한</th>
+                            <th style={styles.th}>정지 상태</th>
+                            <th style={styles.th}>제재 명령</th>
+                          </tr>
+                          </thead>
+                          <tbody>
+                          {allUsers.map(u => (
+                              <tr key={u.id} style={styles.tr}>
+                                <td style={styles.td}>{u.name}</td>
+                                <td style={styles.td}>{u.email}</td>
+                                <td style={styles.td}>
+                                  <span className="badge badge-info">{u.role}</span>
+                                </td>
+                                <td style={styles.td}>
+                                  {u.banned ? (
+                                      <span className="badge badge-danger">정지 상태</span>
+                                  ) : (
+                                      <span className="badge badge-success">정상 이용</span>
+                                  )}
+                                </td>
+                                <td style={styles.td}>
+                                  {u.role === 'SUPER_ADMIN' ? (
+                                      <span style={styles.disabledText}>명령 금지</span>
+                                  ) : (
+                                      <button
+                                          className={`btn ${u.banned ? 'btn-secondary' : 'btn-danger'}`}
+                                          style={styles.banBtn}
+                                          onClick={() => handleToggleUserBan(u)}
+                                      >
+                                        {u.banned ? '정지 해제' : '영구 정지'}
+                                      </button>
+                                  )}
+                                </td>
+                              </tr>
+                          ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {userHasNext && (
+                          <button
+                              className="btn btn-secondary"
+                              style={styles.moreLoadBtn}
+                              onClick={() => loadSuperAdminUsers(userCursor)}
+                          >
+                            가입 회원 목록 더 불러오기
+                          </button>
+                      )}
+                    </div>
+                )}
+
+                {superadminSubTab === 'spaces' && (
+                    <div className="card" style={styles.adminContentCard}>
+                      <h3 style={styles.adminContentTitle}>
+                        서비스 개설 공간 전체 목록
+                        <span style={styles.demoBadge}>데모 데이터 (백엔드 미연동)</span>
+                      </h3>
+                      <div style={styles.tableWrapper}>
+                        <table style={styles.adminTable}>
+                          <thead>
+                          <tr>
+                            <th style={styles.th}>공간명</th>
+                            <th style={styles.th}>공간 설명</th>
+                            <th style={styles.th}>개설일자</th>
+                            <th style={styles.th}>관리명령</th>
+                          </tr>
+                          </thead>
+                          <tbody>
+                          {superSpaces.map((s: any) => (
+                              <tr key={s.id} style={styles.tr}>
+                                <td style={styles.td}>{s.name}</td>
+                                <td style={styles.td}>{s.description}</td>
+                                <td style={styles.td}>{new Date(s.createdAt).toLocaleDateString()}</td>
+                                <td style={styles.td}>
+                                  <button
+                                      className="btn btn-secondary"
+                                      style={{ marginRight: '0.5rem', padding: '0.4rem 0.8rem', fontSize: '0.825rem' }}
+                                      onClick={() => {
+                                        setEditingSpace(s);
+                                        setEditSpaceName(s.name);
+                                        setEditSpaceDesc(s.description);
+                                        setShowEditSpaceModal(true);
+                                      }}
+                                  >
+                                    수정
+                                  </button>
+                                  <button
+                                      className="btn btn-danger"
+                                      style={{ padding: '0.4rem 0.8rem', fontSize: '0.825rem' }}
+                                      onClick={() => handleDeleteSpace(s.id)}
+                                  >
+                                    강제 폐쇄
+                                  </button>
+                                </td>
+                              </tr>
+                          ))}
+                          {superSpaces.length === 0 && (
+                              <tr>
+                                <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+                                  등록된 공간이 존재하지 않습니다.
+                                </td>
+                              </tr>
+                          )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                )}
+
+                {superadminSubTab === 'problems' && (
+                    <div className="card" style={styles.adminContentCard}>
+                      <h3 style={styles.adminContentTitle}>
+                        전체 출제 문제 목록
+                        <span style={styles.demoBadge}>데모 데이터 (백엔드 미연동)</span>
+                      </h3>
+                      <div style={styles.tableWrapper}>
+                        <table style={styles.adminTable}>
+                          <thead>
+                          <tr>
+                            <th style={styles.th}>문제명</th>
+                            <th style={styles.th}>분류</th>
+                            <th style={styles.th}>공식정답</th>
+                            <th style={styles.th}>지문내용</th>
+                            <th style={styles.th}>관리명령</th>
+                          </tr>
+                          </thead>
+                          <tbody>
+                          {superProblems.map((p: any) => (
+                              <tr key={p.id} style={styles.tr}>
+                                <td style={styles.td}>{p.name}</td>
+                                <td style={styles.td}>
+                                  <span className="badge badge-info">{p.category?.name || '미분류'}</span>
+                                </td>
+                                <td style={styles.td}>{p.correctAnswer}</td>
+                                <td style={styles.td}>{p.content}</td>
+                                <td style={styles.td}>
+                                  <button
+                                      className="btn btn-secondary"
+                                      style={{ marginRight: '0.5rem', padding: '0.4rem 0.8rem', fontSize: '0.825rem' }}
+                                      onClick={() => {
+                                        setEditingProblem(p);
+                                        setEditProblemName(p.name);
+                                        setEditProblemContent(p.content);
+                                        setEditProblemAnswer(p.correctAnswer);
+                                        setEditProblemExplanation(p.explanation);
+                                        setShowEditProblemModal(true);
+                                      }}
+                                  >
+                                    수정
+                                  </button>
+                                  <button
+                                      className="btn btn-danger"
+                                      style={{ padding: '0.4rem 0.8rem', fontSize: '0.825rem' }}
+                                      onClick={() => handleDeleteProblem(p.id)}
+                                  >
+                                    삭제
+                                  </button>
+                                </td>
+                              </tr>
+                          ))}
+                          {superProblems.length === 0 && (
+                              <tr>
+                                <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+                                  출제 완료된 문제 목록이 비어 있습니다.
+                                </td>
+                              </tr>
+                          )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                )}
+
+                {superadminSubTab === 'categories' && (
+                    <div className="card" style={styles.adminContentCard}>
+                      <h3 style={styles.adminContentTitle}>문제 카테고리 목록</h3>
+
+                      {/* 신규 등록 폼 */}
+                      <form onSubmit={handleCreateCategory} style={styles.categoryInputForm} noValidate>
+                        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                          <input
                               type="text"
                               className="input-field"
                               style={{
-                                ...styles.categoryEditInput,
-                                marginRight: 0,
-                                borderColor: validationErrors[`editingCategory_${cat.id}`] ? '#ef4444' : undefined,
-                                boxShadow: validationErrors[`editingCategory_${cat.id}`] ? '0 0 0 3px rgba(239, 68, 68, 0.1)' : undefined
+                                ...styles.categoryInput,
+                                borderColor: validationErrors.newCategoryName ? '#ef4444' : undefined,
+                                boxShadow: validationErrors.newCategoryName ? '0 0 0 3px rgba(239, 68, 68, 0.1)' : undefined
                               }}
-                              value={editingCategoryName}
+                              placeholder="신규 등록할 카테고리명 입력"
+                              value={newCategoryName}
                               onChange={(e) => {
-                                setEditingCategoryName(e.target.value);
-                                if (validationErrors[`editingCategory_${cat.id}`]) {
-                                  setValidationErrors(prev => ({ ...prev, [`editingCategory_${cat.id}`]: '' }));
+                                setNewCategoryName(e.target.value);
+                                if (validationErrors.newCategoryName) {
+                                  setValidationErrors(prev => ({ ...prev, newCategoryName: '' }));
                                 }
                               }}
-                            />
-                            {validationErrors[`editingCategory_${cat.id}`] && (
-                              <span style={styles.errorText}>{validationErrors[`editingCategory_${cat.id}`]}</span>
-                            )}
-                          </div>
-                          <div style={styles.categoryItemActions}>
-                            <button
-                              className="btn btn-primary"
-                              style={styles.categorySmallBtn}
-                              onClick={() => handleUpdateCategory(cat.id)}
-                            >
-                              저장
-                            </button>
-                            <button
-                              className="btn btn-secondary"
-                              style={styles.categorySmallBtn}
-                              onClick={() => {
-                                setEditingCategoryId(null);
-                                setEditingCategoryName('');
-                                setValidationErrors(prev => ({ ...prev, [`editingCategory_${cat.id}`]: '' }));
-                              }}
-                            >
-                              취소
-                            </button>
-                          </div>
-                        </>
+                          />
+                          {validationErrors.newCategoryName && (
+                              <span style={styles.errorText}>{validationErrors.newCategoryName}</span>
+                          )}
+                        </div>
+                        <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>
+                          카테고리 추가
+                        </button>
+                      </form>
+
+                      {/* 카테고리 리스트 */}
+                      <div style={styles.categoryList}>
+                        {categories.map(cat => (
+                            <div key={cat.id} style={styles.categoryItem}>
+                              {editingCategoryId === cat.id ? (
+                                  <>
+                                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, marginRight: '0.75rem' }}>
+                                      <input
+                                          type="text"
+                                          className="input-field"
+                                          style={{
+                                            ...styles.categoryEditInput,
+                                            marginRight: 0,
+                                            borderColor: validationErrors[`editingCategory_${cat.id}`] ? '#ef4444' : undefined,
+                                            boxShadow: validationErrors[`editingCategory_${cat.id}`] ? '0 0 0 3px rgba(239, 68, 68, 0.1)' : undefined
+                                          }}
+                                          value={editingCategoryName}
+                                          onChange={(e) => {
+                                            setEditingCategoryName(e.target.value);
+                                            if (validationErrors[`editingCategory_${cat.id}`]) {
+                                              setValidationErrors(prev => ({ ...prev, [`editingCategory_${cat.id}`]: '' }));
+                                            }
+                                          }}
+                                      />
+                                      {validationErrors[`editingCategory_${cat.id}`] && (
+                                          <span style={styles.errorText}>{validationErrors[`editingCategory_${cat.id}`]}</span>
+                                      )}
+                                    </div>
+                                    <div style={styles.categoryItemActions}>
+                                      <button
+                                          className="btn btn-primary"
+                                          style={styles.categorySmallBtn}
+                                          onClick={() => handleUpdateCategory(cat.id)}
+                                      >
+                                        저장
+                                      </button>
+                                      <button
+                                          className="btn btn-secondary"
+                                          style={styles.categorySmallBtn}
+                                          onClick={() => {
+                                            setEditingCategoryId(null);
+                                            setEditingCategoryName('');
+                                            setValidationErrors(prev => ({ ...prev, [`editingCategory_${cat.id}`]: '' }));
+                                          }}
+                                      >
+                                        취소
+                                      </button>
+                                    </div>
+                                  </>
+                              ) : (
+                                  <>
+                                    <span style={styles.categoryNameText}>{cat.name}</span>
+                                    <button
+                                        className="btn btn-secondary"
+                                        style={styles.categorySmallBtn}
+                                        onClick={() => {
+                                          setEditingCategoryId(cat.id);
+                                          setEditingCategoryName(cat.name);
+                                        }}
+                                    >
+                                      수정
+                                    </button>
+                                  </>
+                              )}
+                            </div>
+                        ))}
+                      </div>
+                    </div>
+                )}
+              </section>
+          )}
+
+          {currentTab === 'mypage' && (
+              <section style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto' }}>
+                <div className="card" style={{ padding: '2.5rem', display: 'flex', flexDirection: 'column', gap: '2rem', borderRadius: '16px', boxShadow: '0 8px 30px rgba(0, 0, 0, 0.08)' }}>
+                  {/* 카드 내부 최상단에 배치된 타이틀 영역 */}
+                  <div style={{ borderLeft: '4px solid var(--primary)', paddingLeft: '0.875rem', marginBottom: '0.5rem' }}>
+                    <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text)', margin: '0 0 0.375rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', lineHeight: 1.2 }}>
+                      👤 개인 정보 수정
+                    </h2>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--text-sub)', margin: 0 }}>
+                      회원님의 프로필 이미지, 이메일 정보, 비밀번호 등의 계정 설정을 관리합니다.
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #eaecf0', paddingBottom: '1.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                      {savedProfilePreview ? (
+                        <img
+                          src={savedProfilePreview}
+                          alt="Profile"
+                          style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #eaecf0' }}
+                        />
                       ) : (
-                        <>
-                          <span style={styles.categoryNameText}>{cat.name}</span>
-                          <button
+                        <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#f0f2ff', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 'bold' }}>
+                          {user.name.charAt(0)}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                        <span style={{ fontSize: '1.125rem', fontWeight: '600', color: 'var(--text)', display: 'flex', alignItems: 'center' }}>
+                          <span style={{ display: 'inline-block', width: '1.5rem', textAlign: 'left' }}>📧</span>
+                          <span>{user.email}</span>
+                        </span>
+                        <span style={{ fontSize: '0.875rem', color: 'var(--text-sub)', display: 'flex', alignItems: 'center' }}>
+                          <span style={{ display: 'inline-block', width: '1.5rem', textAlign: 'left' }}>
+                            {user.role === 'SUPER_ADMIN' ? '👑' : user.role === 'ADMIN' ? '🔑' : '🎓'}
+                          </span>
+                          <span>
+                            {user.role === 'SUPER_ADMIN' ? '최고 관리자' : user.role === 'ADMIN' ? '공간 관리자' : '일반 학습 회원'}
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                        type="button"
+                        className="btn btn-danger"
+                        style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', backgroundColor: '#fee4e2', color: '#d92d20', border: '1px solid #fda29b', cursor: 'pointer' }}
+                        onClick={handleWithdrawal}
+                    >
+                      회원 탈퇴
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleUpdateProfile} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }} noValidate>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <label className="input-label">사용자 이름</label>
+                      <input
+                          type="text"
+                          className="input-field"
+                          placeholder="이름을 입력해 주세요"
+                          value={profileName}
+                          onChange={(e) => setProfileName(e.target.value)}
+                      />
+                    </div>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <label className="input-label">프로필 이미지 업로드</label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
+                        <input
+                            type="file"
+                            accept="image/*"
+                            id="profile-file-input"
+                            style={{ display: 'none' }}
+                            onChange={handleFileChange}
+                        />
+                        <label
+                            htmlFor="profile-file-input"
                             className="btn btn-secondary"
-                            style={styles.categorySmallBtn}
-                            onClick={() => {
-                              setEditingCategoryId(cat.id);
-                              setEditingCategoryName(cat.name);
-                            }}
+                            style={{ cursor: 'pointer', margin: 0, padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                        >
+                          이미지 선택
+                        </label>
+                        <span style={{ fontSize: '0.875rem', color: 'var(--text-sub)' }}>
+                          {profileFile && profileFile.name !== 'clear_profile.png' ? profileFile.name : '선택된 파일 없음'}
+                        </span>
+                        {profilePreview && (
+                          <button
+                              type="button"
+                              className="btn btn-danger"
+                              style={{ cursor: 'pointer', margin: '0 0 0 auto', padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                              onClick={handleDeleteProfileImage}
                           >
-                            수정
+                            이미지 삭제
                           </button>
-                        </>
+                        )}
+                      </div>
+                      {profilePreview && (
+                          <div style={{ marginTop: '0.75rem' }}>
+                            <p style={{ fontSize: '0.8rem', color: 'var(--text-sub)', marginBottom: '0.375rem' }}>프로필 이미지 미리보기:</p>
+                            <img src={profilePreview} alt="Profile Preview" style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #d0d5dd' }} />
+                          </div>
                       )}
                     </div>
-                  ))}
+
+                    {/* 비밀번호 변경 영역 (소셜 가입 유저는 비밀번호 변경 불가) */}
+                    {user.social === 'NONE' && (
+                        <div style={{ borderTop: '1px solid #eaecf0', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          <h3 style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--text)', margin: '0 0 0.5rem 0' }}>비밀번호 변경</h3>
+                          <div className="input-group" style={{ marginBottom: 0 }}>
+                            <label className="input-label">현재 비밀번호</label>
+                            <input
+                                type="password"
+                                className="input-field"
+                                placeholder="현재 비밀번호를 입력해 주세요"
+                                value={currentPassword}
+                                onChange={(e) => setCurrentPassword(e.target.value)}
+                            />
+                          </div>
+                          <div className="input-group" style={{ marginBottom: 0 }}>
+                            <label className="input-label">새 비밀번호</label>
+                            <input
+                                type="password"
+                                className="input-field"
+                                placeholder="새 비밀번호 (8~20자, 영문/숫자/특수문자 @$!%*#?& 포함)"
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                            />
+                          </div>
+                          <div className="input-group" style={{ marginBottom: 0 }}>
+                            <label className="input-label">새 비밀번호 확인</label>
+                            <input
+                                type="password"
+                                className="input-field"
+                                placeholder="새 비밀번호를 한번 더 입력해 주세요"
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                      <button type="submit" className="btn btn-primary" style={{ flex: 1, padding: '0.75rem' }}>
+                        프로필 수정 저장
+                      </button>
+                      <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ flex: 1, padding: '0.75rem' }}
+                          onClick={handleCancel}
+                      >
+                        취소
+                      </button>
+                    </div>
+                  </form>
                 </div>
+              </section>
+          )}
+        </main>
+
+        {/* 공간 개설 모달 */}
+        {showCreateModal && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <h3 style={styles.modalTitle}>새 학습 공간 만들기</h3>
+                <form onSubmit={handleCreateSpace} style={styles.form} noValidate>
+                  <div className="input-group">
+                    <label className="input-label">공간 이름</label>
+                    <input
+                        type="text"
+                        className="input-field"
+                        placeholder="예: 마포고 3학년 2반 수학 공부방"
+                        value={spaceName}
+                        onChange={(e) => {
+                          setSpaceName(e.target.value);
+                          if (validationErrors.spaceName) {
+                            setValidationErrors(prev => ({ ...prev, spaceName: '' }));
+                          }
+                        }}
+                        style={{
+                          borderColor: validationErrors.spaceName ? '#ef4444' : undefined,
+                          boxShadow: validationErrors.spaceName ? '0 0 0 3px rgba(239, 68, 68, 0.1)' : undefined
+                        }}
+                    />
+                    {validationErrors.spaceName && (
+                        <span style={styles.errorText}>{validationErrors.spaceName}</span>
+                    )}
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label">공간 설명</label>
+                    <input
+                        type="text"
+                        className="input-field"
+                        placeholder="공간에 대한 상세 설명을 기입해 주세요"
+                        value={spaceDesc}
+                        onChange={(e) => {
+                          setSpaceDesc(e.target.value);
+                          if (validationErrors.spaceDesc) {
+                            setValidationErrors(prev => ({ ...prev, spaceDesc: '' }));
+                          }
+                        }}
+                        style={{
+                          borderColor: validationErrors.spaceDesc ? '#ef4444' : undefined,
+                          boxShadow: validationErrors.spaceDesc ? '0 0 0 3px rgba(239, 68, 68, 0.1)' : undefined
+                        }}
+                    />
+                    {validationErrors.spaceDesc && (
+                        <span style={styles.errorText}>{validationErrors.spaceDesc}</span>
+                    )}
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label">공간 비밀번호 (필수)</label>
+                    <input
+                        type="password"
+                        className="input-field"
+                        placeholder="멤버 가입 시 제한할 비밀번호"
+                        value={spacePwd}
+                        onChange={(e) => {
+                          setSpacePwd(e.target.value);
+                          if (validationErrors.spacePwd) {
+                            setValidationErrors(prev => ({ ...prev, spacePwd: '' }));
+                          }
+                        }}
+                        style={{
+                          borderColor: validationErrors.spacePwd ? '#ef4444' : undefined,
+                          boxShadow: validationErrors.spacePwd ? '0 0 0 3px rgba(239, 68, 68, 0.1)' : undefined
+                        }}
+                    />
+                    {validationErrors.spacePwd && (
+                        <span style={styles.errorText}>{validationErrors.spacePwd}</span>
+                    )}
+                  </div>
+                  <div style={styles.modalActions}>
+                    <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setShowCreateModal(false)}
+                    >
+                      취소
+                    </button>
+                    <button type="submit" className="btn btn-primary">
+                      공간 생성 완료
+                    </button>
+                  </div>
+                </form>
               </div>
-            )}
-          </section>
+            </div>
         )}
 
-        {currentTab === 'mypage' && (
-          <section style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto' }}>
-            <div className="card" style={{ padding: '2.5rem', display: 'flex', flexDirection: 'column', gap: '2rem', borderRadius: '16px', boxShadow: '0 8px 30px rgba(0, 0, 0, 0.08)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', borderBottom: '1px solid #eaecf0', paddingBottom: '1.5rem' }}>
-                <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#f0f2ff', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 'bold' }}>
-                  {user.name.charAt(0)}
-                </div>
-                <div>
-                  <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text)' }}>개인 정보 확인 및 수정</h2>
-                  <p style={{ fontSize: '0.875rem', color: 'var(--text-sub)' }}>{user.email} &middot; {user.role === 'SUPER_ADMIN' ? '최고 관리자' : user.role === 'ADMIN' ? '공간 관리자' : '일반 학습 회원'}</p>
-                </div>
+        {/* 공간 가입 비밀번호 입력 모달 */}
+        {showJoinModal && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <h3 style={styles.modalTitle}>공간 가입 비밀번호 확인</h3>
+                <p style={styles.modalDesc}>선택하신 공간에 참여하려면 해당 공간에 설정된 비밀번호를 입력해 주셔야 합니다.</p>
+                <form onSubmit={handleJoinSpace} style={styles.form} noValidate>
+                  <div className="input-group">
+                    <label className="input-label">공간 패스워드</label>
+                    <input
+                        type="password"
+                        className="input-field"
+                        placeholder="비밀번호 입력"
+                        value={joinPwd}
+                        onChange={(e) => {
+                          setJoinPwd(e.target.value);
+                          if (validationErrors.joinPwd) {
+                            setValidationErrors(prev => ({ ...prev, joinPwd: '' }));
+                          }
+                        }}
+                        style={{
+                          borderColor: validationErrors.joinPwd ? '#ef4444' : undefined,
+                          boxShadow: validationErrors.joinPwd ? '0 0 0 3px rgba(239, 68, 68, 0.1)' : undefined
+                        }}
+                    />
+                    {validationErrors.joinPwd && (
+                        <span style={styles.errorText}>{validationErrors.joinPwd}</span>
+                    )}
+                  </div>
+                  <div style={styles.modalActions}>
+                    <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          setShowJoinModal(false);
+                          setJoinPwd('');
+                        }}
+                    >
+                      취소
+                    </button>
+                    <button type="submit" className="btn btn-primary">
+                      가입 완료
+                    </button>
+                  </div>
+                </form>
               </div>
+            </div>
+        )}
 
-              <form onSubmit={handleUpdateProfile} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }} noValidate>
-                <div className="input-group" style={{ marginBottom: 0 }}>
-                  <label className="input-label">사용자 이름</label>
-                  <input
-                    type="text"
-                    className="input-field"
-                    placeholder="이름을 입력해 주세요"
-                    value={profileName}
-                    onChange={(e) => setProfileName(e.target.value)}
-                  />
-                </div>
-                <div className="input-group" style={{ marginBottom: 0 }}>
-                  <label className="input-label">프로필 이미지 URL</label>
-                  <input
-                    type="text"
-                    className="input-field"
-                    placeholder="https://example.com/profile-image.png"
-                    value={profileImage}
-                    onChange={(e) => setProfileImage(e.target.value)}
-                  />
-                  {profileImage && (
-                    <div style={{ marginTop: '0.75rem' }}>
-                      <p style={{ fontSize: '0.8rem', color: 'var(--text-sub)', marginBottom: '0.375rem' }}>프로필 이미지 미리보기:</p>
-                      <img src={profileImage} alt="Profile Preview" style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #d0d5dd' }} />
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                  <button type="submit" className="btn btn-primary" style={{ flex: 1, padding: '0.75rem' }}>
-                    프로필 수정 저장
+        {/* 커스텀 컨펌 모달 */}
+        {showConfirmModal && confirmModalData && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <h3 style={styles.modalTitle}>{confirmModalData.title}</h3>
+                <p style={styles.modalDesc}>{confirmModalData.message}</p>
+                <div style={styles.modalActions}>
+                  <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setShowConfirmModal(false);
+                        setConfirmModalData(null);
+                      }}
+                  >
+                    취소
                   </button>
                   <button
-                    type="button"
-                    className="btn btn-danger"
-                    style={{ flex: 1, padding: '0.75rem', backgroundColor: '#fee4e2', color: '#d92d20', border: '1px solid #fda29b' }}
-                    onClick={handleWithdrawal}
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => {
+                        confirmModalData.onConfirm();
+                        setShowConfirmModal(false);
+                        setConfirmModalData(null);
+                      }}
                   >
-                    회원 탈퇴 (계정 삭제)
+                    확인
                   </button>
                 </div>
-              </form>
+              </div>
             </div>
-          </section>
         )}
-      </main>
 
-      {/* 공간 개설 모달 */}
-      {showCreateModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3 style={styles.modalTitle}>새 학습 공간 만들기</h3>
-            <form onSubmit={handleCreateSpace} style={styles.form} noValidate>
-              <div className="input-group">
-                <label className="input-label">공간 이름</label>
-                <input
-                  type="text"
-                  className="input-field"
-                  placeholder="예: 마포고 3학년 2반 수학 공부방"
-                  value={spaceName}
-                  onChange={(e) => {
-                    setSpaceName(e.target.value);
-                    if (validationErrors.spaceName) {
-                      setValidationErrors(prev => ({ ...prev, spaceName: '' }));
-                    }
-                  }}
-                  style={{
-                    borderColor: validationErrors.spaceName ? '#ef4444' : undefined,
-                    boxShadow: validationErrors.spaceName ? '0 0 0 3px rgba(239, 68, 68, 0.1)' : undefined
-                  }}
-                />
-                {validationErrors.spaceName && (
-                  <span style={styles.errorText}>{validationErrors.spaceName}</span>
-                )}
+        {/* 슈퍼어드민 공간 수정 모달 */}
+        {showEditSpaceModal && editingSpace && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <h3 style={styles.modalTitle}>공간 정보 수정 (슈퍼관리자)</h3>
+                <form onSubmit={handleUpdateSpace} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }} noValidate>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label">공간 이름</label>
+                    <input
+                        type="text"
+                        className="input-field"
+                        value={editSpaceName}
+                        onChange={(e) => setEditSpaceName(e.target.value)}
+                    />
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label">공간 설명</label>
+                    <textarea
+                        className="input-field"
+                        rows={3}
+                        value={editSpaceDesc}
+                        onChange={(e) => setEditSpaceDesc(e.target.value)}
+                        style={{ height: '80px' }}
+                    />
+                  </div>
+                  <div style={styles.modalActions}>
+                    <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setShowEditSpaceModal(false)}
+                    >
+                      취소
+                    </button>
+                    <button type="submit" className="btn btn-primary">
+                      수정 완료
+                    </button>
+                  </div>
+                </form>
               </div>
-              <div className="input-group">
-                <label className="input-label">공간 설명</label>
-                <input
-                  type="text"
-                  className="input-field"
-                  placeholder="공간에 대한 상세 설명을 기입해 주세요"
-                  value={spaceDesc}
-                  onChange={(e) => {
-                    setSpaceDesc(e.target.value);
-                    if (validationErrors.spaceDesc) {
-                      setValidationErrors(prev => ({ ...prev, spaceDesc: '' }));
-                    }
-                  }}
-                  style={{
-                    borderColor: validationErrors.spaceDesc ? '#ef4444' : undefined,
-                    boxShadow: validationErrors.spaceDesc ? '0 0 0 3px rgba(239, 68, 68, 0.1)' : undefined
-                  }}
-                />
-                {validationErrors.spaceDesc && (
-                  <span style={styles.errorText}>{validationErrors.spaceDesc}</span>
-                )}
-              </div>
-              <div className="input-group">
-                <label className="input-label">공간 비밀번호 (필수)</label>
-                <input
-                  type="password"
-                  className="input-field"
-                  placeholder="멤버 가입 시 제한할 비밀번호"
-                  value={spacePwd}
-                  onChange={(e) => {
-                    setSpacePwd(e.target.value);
-                    if (validationErrors.spacePwd) {
-                      setValidationErrors(prev => ({ ...prev, spacePwd: '' }));
-                    }
-                  }}
-                  style={{
-                    borderColor: validationErrors.spacePwd ? '#ef4444' : undefined,
-                    boxShadow: validationErrors.spacePwd ? '0 0 0 3px rgba(239, 68, 68, 0.1)' : undefined
-                  }}
-                />
-                {validationErrors.spacePwd && (
-                  <span style={styles.errorText}>{validationErrors.spacePwd}</span>
-                )}
-              </div>
-              <div style={styles.modalActions}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowCreateModal(false)}
-                >
-                  취소
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  공간 생성 완료
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 공간 가입 비밀번호 입력 모달 */}
-      {showJoinModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3 style={styles.modalTitle}>공간 가입 비밀번호 확인</h3>
-            <p style={styles.modalDesc}>선택하신 공간에 참여하려면 해당 공간에 설정된 비밀번호를 입력해 주셔야 합니다.</p>
-            <form onSubmit={handleJoinSpace} style={styles.form} noValidate>
-              <div className="input-group">
-                <label className="input-label">공간 패스워드</label>
-                <input
-                  type="password"
-                  className="input-field"
-                  placeholder="비밀번호 입력"
-                  value={joinPwd}
-                  onChange={(e) => {
-                    setJoinPwd(e.target.value);
-                    if (validationErrors.joinPwd) {
-                      setValidationErrors(prev => ({ ...prev, joinPwd: '' }));
-                    }
-                  }}
-                  style={{
-                    borderColor: validationErrors.joinPwd ? '#ef4444' : undefined,
-                    boxShadow: validationErrors.joinPwd ? '0 0 0 3px rgba(239, 68, 68, 0.1)' : undefined
-                  }}
-                />
-                {validationErrors.joinPwd && (
-                  <span style={styles.errorText}>{validationErrors.joinPwd}</span>
-                )}
-              </div>
-              <div style={styles.modalActions}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowJoinModal(false);
-                    setJoinPwd('');
-                  }}
-                >
-                  취소
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  가입 완료
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 커스텀 컨펌 모달 */}
-      {showConfirmModal && confirmModalData && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3 style={styles.modalTitle}>{confirmModalData.title}</h3>
-            <p style={styles.modalDesc}>{confirmModalData.message}</p>
-            <div style={styles.modalActions}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => {
-                  setShowConfirmModal(false);
-                  setConfirmModalData(null);
-                }}
-              >
-                취소
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => {
-                  confirmModalData.onConfirm();
-                  setShowConfirmModal(false);
-                  setConfirmModalData(null);
-                }}
-              >
-                확인
-              </button>
             </div>
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* 슈퍼어드민 공간 수정 모달 */}
-      {showEditSpaceModal && editingSpace && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3 style={styles.modalTitle}>공간 정보 수정 (슈퍼관리자)</h3>
-            <form onSubmit={handleUpdateSpace} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }} noValidate>
-              <div className="input-group" style={{ marginBottom: 0 }}>
-                <label className="input-label">공간 이름</label>
-                <input
-                  type="text"
-                  className="input-field"
-                  value={editSpaceName}
-                  onChange={(e) => setEditSpaceName(e.target.value)}
-                />
+        {/* 슈퍼어드민 문제 수정 모달 */}
+        {showEditProblemModal && editingProblem && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <h3 style={styles.modalTitle}>문제 메타데이터 수정 (슈퍼관리자)</h3>
+                <form onSubmit={handleUpdateProblem} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }} noValidate>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label">문제 이름</label>
+                    <input
+                        type="text"
+                        className="input-field"
+                        value={editProblemName}
+                        onChange={(e) => setEditProblemName(e.target.value)}
+                    />
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label">지문 내용</label>
+                    <textarea
+                        className="input-field"
+                        rows={3}
+                        value={editProblemContent}
+                        onChange={(e) => setEditProblemContent(e.target.value)}
+                        style={{ height: '80px' }}
+                    />
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label">공식 정답</label>
+                    <input
+                        type="text"
+                        className="input-field"
+                        value={editProblemAnswer}
+                        onChange={(e) => setEditProblemAnswer(e.target.value)}
+                    />
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label">풀이 해설</label>
+                    <textarea
+                        className="input-field"
+                        rows={3}
+                        value={editProblemExplanation}
+                        onChange={(e) => setEditProblemExplanation(e.target.value)}
+                        style={{ height: '80px' }}
+                    />
+                  </div>
+                  <div style={styles.modalActions}>
+                    <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setShowEditProblemModal(false)}
+                    >
+                      취소
+                    </button>
+                    <button type="submit" className="btn btn-primary">
+                      수정 완료
+                    </button>
+                  </div>
+                </form>
               </div>
-              <div className="input-group" style={{ marginBottom: 0 }}>
-                <label className="input-label">공간 설명</label>
-                <textarea
-                  className="input-field"
-                  rows={3}
-                  value={editSpaceDesc}
-                  onChange={(e) => setEditSpaceDesc(e.target.value)}
-                  style={{ height: '80px' }}
-                />
-              </div>
-              <div style={styles.modalActions}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowEditSpaceModal(false)}
-                >
-                  취소
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  수정 완료
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 슈퍼어드민 문제 수정 모달 */}
-      {showEditProblemModal && editingProblem && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3 style={styles.modalTitle}>문제 메타데이터 수정 (슈퍼관리자)</h3>
-            <form onSubmit={handleUpdateProblem} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }} noValidate>
-              <div className="input-group" style={{ marginBottom: 0 }}>
-                <label className="input-label">문제 이름</label>
-                <input
-                  type="text"
-                  className="input-field"
-                  value={editProblemName}
-                  onChange={(e) => setEditProblemName(e.target.value)}
-                />
-              </div>
-              <div className="input-group" style={{ marginBottom: 0 }}>
-                <label className="input-label">지문 내용</label>
-                <textarea
-                  className="input-field"
-                  rows={3}
-                  value={editProblemContent}
-                  onChange={(e) => setEditProblemContent(e.target.value)}
-                  style={{ height: '80px' }}
-                />
-              </div>
-              <div className="input-group" style={{ marginBottom: 0 }}>
-                <label className="input-label">공식 정답</label>
-                <input
-                  type="text"
-                  className="input-field"
-                  value={editProblemAnswer}
-                  onChange={(e) => setEditProblemAnswer(e.target.value)}
-                />
-              </div>
-              <div className="input-group" style={{ marginBottom: 0 }}>
-                <label className="input-label">풀이 해설</label>
-                <textarea
-                  className="input-field"
-                  rows={3}
-                  value={editProblemExplanation}
-                  onChange={(e) => setEditProblemExplanation(e.target.value)}
-                  style={{ height: '80px' }}
-                />
-              </div>
-              <div style={styles.modalActions}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowEditProblemModal(false)}
-                >
-                  취소
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  수정 완료
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
+            </div>
+        )}
+      </div>
   );
 };
 

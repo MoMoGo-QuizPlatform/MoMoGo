@@ -2,7 +2,6 @@ package com.momogo.batch.config;
 
 import com.momogo.core.domain.notification.sse.NotificationSseService;
 import com.momogo.core.domain.problem.service.ProblemGenerationService;
-import com.momogo.core.domain.user.service.RestoreTokenValidator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,17 +12,6 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration
 public class BatchFallbackConfig {
-
-    /**
-     * core UserServiceImpl이 요구. Batch에서 복구 토큰 검증이 호출될 일은 없어야 하므로 예외.
-     */
-    @Bean
-    @ConditionalOnMissingBean(RestoreTokenValidator.class)
-    public RestoreTokenValidator dummyRestoreTokenValidator() {
-        return token -> {
-            throw new UnsupportedOperationException("Batch 모듈에서는 복구 토큰 검증을 지원하지 않습니다.");
-        };
-    }
 
     /**
      * core NotificationEventListener가 요구. 배치 중 알림 이벤트는 발생할 수 있으나

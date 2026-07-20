@@ -26,7 +26,7 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
     private final UserMapper userMapper;
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public UserDetails loadUserByUsername(String username) {
         log.debug("[MoMoGoUserDetailsService] loadUserByUsername 호출됨, email: {}", EmailFormatter.mask(username));
         return loadUserDetails(username);
@@ -36,6 +36,7 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
      * JWT 토큰 검증 시 필터에서 호출하는 메서드입니다.
      * 유저 정보를 조회합니다.
      */
+    @Transactional(readOnly = true)
     public UserDetails loadUserByUsernameForToken(String username) {
         log.debug("[MoMoGoUserDetailsService] loadUserByUsernameForToken 호출됨, email: {}", EmailFormatter.mask(username));
         return loadUserDetails(username);
@@ -43,7 +44,8 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
 
     /**
      * 공통 사용자 정보 조회 및 UserDetails 변환 메서드입니다.
-     * 임시 패스워드가 존재하는 경우 로그인에 사용되는 비밀번호를 대체합니다.
+     * 임시 패스워드가 유효한 경우 로그인 비밀번호를 대체하며,
+     * 3분 만료 시간이 지난 임시 비밀번호는 DB에서 자동으로 초기화(clear)합니다.
      */
     private UserDetails loadUserDetails(String username) {
         String normalizedEmail = EmailFormatter.normalize(username);
@@ -55,12 +57,16 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
                 });
 
         UserResponse userResponse = userMapper.toResponse(user);
-
-        // 3분 이내 유효한 임시 비밀번호가 존재한다면 검증용 비밀번호로 임시 비밀번호 사용
         String passwordForAuth = user.getPassword();
-        if (user.getTempPassword() != null && user.getTempPasswordExpiredAt() != null
-                && OffsetDateTime.now().isBefore(user.getTempPasswordExpiredAt())) {
-            passwordForAuth = user.getTempPassword();
+
+        if (user.getTempPassword() != null) {
+            if (user.isTemporaryPasswordActive(OffsetDateTime.now())) {
+                // 3분 이내 유효한 임시 비밀번호가 존재한다면 검증용 비밀번호로 임시 비밀번호 사용
+                passwordForAuth = user.getTempPassword();
+            } else {
+                // 3분 초과하여 만료된 경우 DB의 임시 비밀번호 및 만료 시각 자동 초기화 (Dirty Checking)
+                user.clearTemporaryPassword();
+            }
         }
 
         return new MoMoGoUserDetails(userResponse, passwordForAuth);

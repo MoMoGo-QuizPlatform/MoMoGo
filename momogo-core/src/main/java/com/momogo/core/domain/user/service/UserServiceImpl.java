@@ -1,10 +1,11 @@
 package com.momogo.core.domain.user.service;
 
 import com.momogo.core.common.exception.BusinessException;
-import com.momogo.core.common.util.EmailFormatter;
 import com.momogo.core.common.exception.GlobalErrorCode;
 import com.momogo.core.common.security.PasswordEncryptor;
 import com.momogo.core.common.storage.StorageService;
+import com.momogo.core.common.util.EmailFormatter;
+import com.momogo.core.common.util.UrlUtils;
 import com.momogo.core.domain.user.dto.UserSearchCondition;
 import com.momogo.core.domain.user.dto.request.ProfileImageUploadRequest;
 import com.momogo.core.domain.user.dto.request.UserCreateRequest;
@@ -15,10 +16,12 @@ import com.momogo.core.domain.user.dto.response.UserResponse;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.SocialType;
 import com.momogo.core.domain.user.entity.enums.UserRole;
+import com.momogo.core.domain.user.event.PasswordChangedEvent;
+import com.momogo.core.domain.user.event.UserBannedEvent;
+import com.momogo.core.domain.user.event.UserDeletedEvent;
 import com.momogo.core.domain.user.exception.UserErrorCode;
 import com.momogo.core.domain.user.mapper.UserMapper;
 import com.momogo.core.domain.user.repository.UserRepository;
-import com.momogo.core.domain.user.event.UserBannedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,8 +38,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 
 @Slf4j
@@ -50,9 +53,7 @@ public class UserServiceImpl implements UserService {
     private final UserRepository userRepository;
     private final PasswordEncryptor passwordEncryptor;
     private final UserMapper userMapper;
-    private final UserSessionService userSessionService;
     private final StorageService storageService;
-    private final RestoreTokenValidator restoreTokenValidator;
     private final UserHardDeleteProcessor hardDeleteProcessor;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -136,21 +137,7 @@ public class UserServiceImpl implements UserService {
                 );
 
                 user.updateProfileImage(savedFileName);
-
-                TransactionSynchronizationManager.registerSynchronization(
-                        new TransactionSynchronization() {
-                            @Override
-                            public void afterCompletion(int status) {
-                                if (status == STATUS_COMMITTED) {
-                                    if (oldProfileImageUrl != null && !oldProfileImageUrl.isBlank()) {
-                                        storageService.delete(PROFILE_IMAGE_DIR + "/" + oldProfileImageUrl);
-                                    }
-                                } else if (status == STATUS_ROLLED_BACK) {
-                                    storageService.delete(PROFILE_IMAGE_DIR + "/" + savedFileName);
-                                }
-                            }
-                        }
-                );
+                registerProfileImageCleanup(oldProfileImageUrl, savedFileName);
             } catch (IOException e) {
                 log.error("[UserService] 프로필 이미지 저장 중 예외 발생", e);
                 throw new BusinessException(
@@ -158,6 +145,10 @@ public class UserServiceImpl implements UserService {
                         "파일 저장 중 시스템 오류가 발생했습니다."
                 );
             }
+        } else if (request != null && Boolean.TRUE.equals(request.removeProfileImage())) {
+            String oldProfileImageUrl = user.getProfileImageUrl();
+            user.updateProfileImage(null);
+            registerProfileImageCleanup(oldProfileImageUrl, null);
         }
 
         if (request != null && request.newPassword() != null && !request.newPassword().isBlank()) {
@@ -185,7 +176,7 @@ public class UserServiceImpl implements UserService {
 
             user.clearTemporaryPassword();
 
-            userSessionService.invalidateUserSessions(userId);
+            eventPublisher.publishEvent(new PasswordChangedEvent(userId));
         }
 
         return userMapper.toResponse(user);
@@ -206,11 +197,16 @@ public class UserServiceImpl implements UserService {
             user.leaveSpace();
         }
 
+        // 임시 비밀번호가 남아있는 경우 초기화
+        if (user.getTempPassword() != null) {
+            user.clearTemporaryPassword();
+        }
+
         // 유저 논리 삭제
         user.delete();
 
         // 탈퇴한 유저 세션 만료
-        userSessionService.invalidateUserSessions(userId);
+        eventPublisher.publishEvent(new UserDeletedEvent(user.getId()));
     }
 
     /**
@@ -237,14 +233,12 @@ public class UserServiceImpl implements UserService {
     /**
      * 논리 삭제 상태인 회원 계정을 비밀번호 검증 후 30일 이내에 복구합니다.
      *
-     * @param restoreToken 복구를 위한 토큰
-     * @param password     본인 확인을 위한 비밀번호
+     * @param email    복구할 회원 이메일
+     * @param password 본인 확인을 위한 비밀번호
      */
     @Override
     @Transactional
-    public void restoreUser(String restoreToken, String password) {
-        String email = restoreTokenValidator.getEmailFromRestoreToken(restoreToken);
-
+    public void restoreUser(String email, String password) {
         User user = findUserByEmail(email);
 
         // 탈퇴 상태가 아니거나 이미 30일이 지난 경우 복구할 수 없음.
@@ -401,14 +395,10 @@ public class UserServiceImpl implements UserService {
     }
 
     /**
-     * 임시 비밀번호가 존재하고, 10분 유효시간 이내이며, 입력받은 평문 비밀번호와 일치하는지 판단합니다.
+     * 임시 비밀번호가 존재하고, 3분 유효시간 이내이며, 입력받은 평문 비밀번호와 일치하는지 판단합니다.
      */
     private boolean isValidTemporaryPassword(User user, String rawPassword) {
-        // 임시 비밀번호가 비어 있는지 확인
-        if (user.getTempPassword() == null || user.getTempPasswordExpiredAt() == null) {
-            return false;
-        }
-        if (OffsetDateTime.now().isAfter(user.getTempPasswordExpiredAt())) {
+        if (!user.isTemporaryPasswordActive(OffsetDateTime.now())) {
             return false;
         }
         return passwordEncryptor.matches(rawPassword, user.getTempPassword());
@@ -423,5 +413,31 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(UserErrorCode.ALREADY_IN_PROGRESS_DELETE);
         }
         return user;
+    }
+
+    /**
+     * 트랜잭션 종료 상태에 따라 기존/신규 프로필 이미지를 정리합니다.
+     */
+    private void registerProfileImageCleanup(String oldImageUrl, String newImageUrl) {
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (status == STATUS_COMMITTED && oldImageUrl != null && !oldImageUrl.isBlank() && !UrlUtils.isExternalUrl(oldImageUrl)) {
+                            try {
+                                storageService.delete(PROFILE_IMAGE_DIR + "/" + oldImageUrl);
+                            } catch (Exception e) {
+                                log.error("[UserService] 기존 프로필 이미지 삭제 실패 - file: {}", oldImageUrl, e);
+                            }
+                        } else if (status == STATUS_ROLLED_BACK && newImageUrl != null && !newImageUrl.isBlank() && !UrlUtils.isExternalUrl(newImageUrl)) {
+                            try {
+                                storageService.delete(PROFILE_IMAGE_DIR + "/" + newImageUrl);
+                            } catch (Exception e) {
+                                log.error("[UserService] 롤백으로 인한 신규 프로필 이미지 삭제 실패 - file: {}", newImageUrl, e);
+                            }
+                        }
+                    }
+                }
+        );
     }
 }

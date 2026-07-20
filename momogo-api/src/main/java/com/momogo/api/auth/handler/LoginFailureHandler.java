@@ -26,7 +26,6 @@ import java.util.Map;
 public class LoginFailureHandler implements AuthenticationFailureHandler {
 
     private final ObjectMapper objectMapper;
-    private final JwtTokenProvider jwtTokenProvider;
 
     @Override
     public void onAuthenticationFailure(
@@ -45,28 +44,6 @@ public class LoginFailureHandler implements AuthenticationFailureHandler {
             errorCode = businessException.getErrorCode().getCode();
             status = businessException.getErrorCode().getHttpStatus().value();
 
-            // 탈퇴 대기 상태(ALREADY_IN_PROGRESS_DELETE)로 인한 로그인 실패 시 복구 쿠키 발급
-            if ("ALREADY_IN_PROGRESS_DELETE".equals(businessException.getErrorCode().getErrorKey())) {
-                String[] usernames = request.getParameterValues("username");
-                if (usernames != null && usernames.length == 1 && !usernames[0].isBlank()) {
-                    String email = usernames[0];
-                    try {
-                        String restoreToken = jwtTokenProvider.generateRestoreToken(email);
-                        ResponseCookie cookie = ResponseCookie.from("RESTORE_TOKEN", restoreToken)
-                                .httpOnly(true)
-                                .secure(true)
-                                .path("/")
-                                .maxAge(JwtTokenProvider.RESTORE_TOKEN_EXPIRATION_SECONDS)
-                                .sameSite("Lax")
-                                .build();
-                        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
-                    } catch (Exception e) {
-                        log.error("[LoginFailureHandler] 일반 로그인 복구 토큰 생성 실패", e);
-                    }
-                } else {
-                    log.warn("[LoginFailureHandler] 로그인 실패 처리에 유효하지 않거나 중복된 username 파라미터가 들어왔습니다.");
-                }
-            }
         } else if (exception instanceof LockedException) {
             errorMessage = "정지된 계정입니다. 관리자에게 문의하세요.";
             errorCode = "USER-BANNED_USER";

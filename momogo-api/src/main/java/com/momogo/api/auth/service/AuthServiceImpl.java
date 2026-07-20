@@ -22,6 +22,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.Locale;
 
 @Slf4j
@@ -104,7 +105,7 @@ public class AuthServiceImpl implements AuthService {
         String tempPassword = PasswordGenerator.generateRandomPassword();
         String hashedTempPassword = passwordEncoder.encode(tempPassword);
 
-        user.setTemporaryPassword(hashedTempPassword);
+        user.setTemporaryPassword(hashedTempPassword, OffsetDateTime.now());
 
         eventPublisher.publishEvent(new TemporaryPasswordGeneratedEvent(user.getEmail(), tempPassword));
     }
