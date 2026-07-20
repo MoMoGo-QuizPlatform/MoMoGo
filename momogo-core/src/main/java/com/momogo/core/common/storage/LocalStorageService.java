@@ -3,6 +3,7 @@ package com.momogo.core.common.storage;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
 import com.momogo.core.common.util.ImageFileValidator;
+import com.momogo.core.common.util.UrlUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -66,7 +67,7 @@ public class LocalStorageService implements StorageService {
         }
 
         // 외부 HTTP/HTTPS URL인 경우 로컬 디스크 삭제 대상이 아니므로 즉시 리턴
-        if (fileUrl.startsWith("http://") || fileUrl.startsWith("https://")) {
+        if (UrlUtils.isExternalUrl(fileUrl)) {
             return;
         }
 

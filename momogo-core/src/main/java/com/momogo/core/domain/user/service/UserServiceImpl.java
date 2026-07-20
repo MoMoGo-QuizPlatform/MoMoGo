@@ -5,6 +5,7 @@ import com.momogo.core.common.exception.GlobalErrorCode;
 import com.momogo.core.common.security.PasswordEncryptor;
 import com.momogo.core.common.storage.StorageService;
 import com.momogo.core.common.util.EmailFormatter;
+import com.momogo.core.common.util.UrlUtils;
 import com.momogo.core.domain.user.dto.UserSearchCondition;
 import com.momogo.core.domain.user.dto.request.ProfileImageUploadRequest;
 import com.momogo.core.domain.user.dto.request.UserCreateRequest;
@@ -141,11 +142,19 @@ public class UserServiceImpl implements UserService {
                             @Override
                             public void afterCompletion(int status) {
                                 if (status == STATUS_COMMITTED) {
-                                    if (oldProfileImageUrl != null && !oldProfileImageUrl.isBlank()) {
-                                        storageService.delete(PROFILE_IMAGE_DIR + "/" + oldProfileImageUrl);
+                                    if (oldProfileImageUrl != null && !oldProfileImageUrl.isBlank() && !UrlUtils.isExternalUrl(oldProfileImageUrl)) {
+                                        try {
+                                            storageService.delete(PROFILE_IMAGE_DIR + "/" + oldProfileImageUrl);
+                                        } catch (Exception e) {
+                                            log.error("[UserService] 기존 프로필 이미지 삭제 실패 - files: {}", oldProfileImageUrl, e);
+                                        }
                                     }
                                 } else if (status == STATUS_ROLLED_BACK) {
-                                    storageService.delete(PROFILE_IMAGE_DIR + "/" + savedFileName);
+                                    try {
+                                        storageService.delete(PROFILE_IMAGE_DIR + "/" + savedFileName);
+                                    } catch (Exception e) {
+                                        log.error("[UserService] 롤백으로 인한 신규 프로필 이미지 삭제 실패 - file: {}", savedFileName, e);
+                                    }
                                 }
                             }
                         }
@@ -161,13 +170,18 @@ public class UserServiceImpl implements UserService {
             String oldProfileImageUrl = user.getProfileImageUrl();
             user.updateProfileImage(null);
 
-            if (oldProfileImageUrl != null && !oldProfileImageUrl.isBlank()) {
+            if (oldProfileImageUrl != null && !oldProfileImageUrl.isBlank() && !UrlUtils.isExternalUrl(oldProfileImageUrl)) {
                 TransactionSynchronizationManager.registerSynchronization(
                         new TransactionSynchronization() {
                             @Override
                             public void afterCompletion(int status) {
                                 if (status == STATUS_COMMITTED) {
-                                    storageService.delete(PROFILE_IMAGE_DIR + "/" + oldProfileImageUrl);
+                                    try {
+                                        storageService.delete(PROFILE_IMAGE_DIR + "/" + oldProfileImageUrl);
+                                    } catch (Exception e) {
+                                        // 스토리지 삭제 실패가 응답에 영향을 주지 않도록 예외를 잡고 에러 로그 기록
+                                        log.error("[UserService] 기존 프로필 이미지 삭제 실패 - file: {}", oldProfileImageUrl, e);
+                                    }
                                 }
                             }
                         }
