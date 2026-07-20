@@ -8,6 +8,9 @@ import com.momogo.core.domain.problem.dto.response.GeneratedProblemData;
 import com.momogo.core.domain.problem.exception.ProblemErrorCode;
 import com.momogo.core.domain.problem.service.ProblemGenerationService;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -27,6 +30,8 @@ public class ProblemGenerationServiceImpl implements ProblemGenerationService {
 
   private final ChatClient validationChatClient;
 
+  private final Executor executor;
+
   /**
    * 정답에 복수 개념 나열 신호 (구분자 / 접속어)가 있는지 걸러내는 1차 휴리스틱
    * 걸리는 경우에만 LLM 재검증 호출 -> 비용 절감
@@ -35,10 +40,12 @@ public class ProblemGenerationServiceImpl implements ProblemGenerationService {
 
   public ProblemGenerationServiceImpl(
       @Qualifier("problemGenerationChatClient") ChatClient chatClient,
-      @Qualifier("answerValidationChatClient") ChatClient validationChatClient) {
+      @Qualifier("answerValidationChatClient") ChatClient validationChatClient,
+      @Qualifier("problemValidationExecutor") Executor executor) {
 
     this.chatClient = chatClient;
     this.validationChatClient = validationChatClient;
+    this.executor = executor;
   }
 
   /**
@@ -60,16 +67,20 @@ public class ProblemGenerationServiceImpl implements ProblemGenerationService {
           .entity(GeneratedProblemSetDto.class);
 
       // 각 문제 정답이 단일 정답인지 검증하고, 아니면 1회 재생성
-      // momogo-ai 내부 파싱용 DTO -> momogo-core용 DTO로 변환
-      return result.items()
-          .stream()
-          .map(dto -> ensureSingleAnswer(dto, referenceText))
+      List<CompletableFuture<GeneratedProblemDto>> futures = result.items().stream()
+          .map(dto -> CompletableFuture.supplyAsync(() -> ensureSingleAnswer(dto, referenceText),
+              executor))
+          .toList();
+
+      return futures.stream()
+          .map(CompletableFuture::join)
           .map(dto -> new GeneratedProblemData(
               dto.name(),
               dto.content(),
               dto.correctAnswer(),
               dto.explanation()))
           .toList();
+
     } catch (TransientAiException | NonTransientAiException e) {
 
       log.error("LLM API 호출 실패. referenceText 길이={}, questionCount={}", referenceText.length(),
@@ -79,6 +90,16 @@ public class ProblemGenerationServiceImpl implements ProblemGenerationService {
     } catch (BusinessException e) {
 
       throw e;
+    } catch (CompletionException e) {
+
+      if (e.getCause() instanceof BusinessException businessException) {
+        throw businessException;
+      }
+
+      log.error("문제 검증/재생성 비동기 처리 실패. referenceText 길이={}, questionCount={}",
+          referenceText.length(), questionCount, e);
+
+      throw new BusinessException(ProblemErrorCode.AI_GENERATION_FAILED);
     } catch (Exception e) {
 
       log.error("LLM 응답 파싱 실패. referenceText 길이={}, questionCount={}", referenceText.length(),

@@ -37,7 +37,10 @@ public enum ProblemErrorCode implements ErrorCode {
       HttpStatus.BAD_REQUEST, "커서 값이 올바르지 않습니다. cursor와 cursorId는 함께 존재하거나 함께 없어야 합니다."),
 
   AI_GENERATION_FAILED(3009, "AI_GENERATION_FAILED",
-      HttpStatus.SERVICE_UNAVAILABLE, "AI 문제 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      HttpStatus.SERVICE_UNAVAILABLE, "AI 문제 생성에 실패했습니다. 잠시 후 다시 시도해주세요."),
+
+  COUNTER_NOT_FOUND(3010, "COUNTER_NOT_FOUND",
+      HttpStatus.INTERNAL_SERVER_ERROR, "문제 통계 정보를 찾을 수 없습니다.");
 
   private final int numeric;
   private final String errorKey;

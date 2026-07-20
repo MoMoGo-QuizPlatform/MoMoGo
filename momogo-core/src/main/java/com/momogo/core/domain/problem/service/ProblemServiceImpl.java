@@ -24,10 +24,12 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -231,7 +233,11 @@ public class ProblemServiceImpl implements ProblemService {
 
     boolean isSolved = normalizedUserAnswer.contains(normalizedCorrectAnswer);
 
-    ProblemCounters counters = countersRepository.findByProblemId(problemId).orElseThrow();
+    ProblemCounters counters = countersRepository.findByProblemId(problemId)
+        .orElseThrow(() -> {
+          log.error("[채점 오류] 문제 통계 카운터가 존재하지 않습니다. problemId: {}", problemId);
+          return new BusinessException(ProblemErrorCode.COUNTER_NOT_FOUND);
+        });
 
     counters.recordAttempt(isSolved);
 
