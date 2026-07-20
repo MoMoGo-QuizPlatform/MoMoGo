@@ -49,7 +49,7 @@ CREATE TABLE "TBL_PROBLEM" (
                                "name"             VARCHAR(255)  NOT NULL,
                                "content"          TEXT          NOT NULL,
                                "explanation"      TEXT          NULL,
-                               "correct_answer"   TEXT          NULL,     -- 정답 레이블 추가
+                               "correct_answer"   TEXT          NOT NULL, -- 정답 레이블 추가
                                "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
                                "updated_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL
 );

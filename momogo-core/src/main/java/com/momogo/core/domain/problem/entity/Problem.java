@@ -49,7 +49,7 @@ public class Problem extends BaseTimeEntity {
     @Column(name = "explanation", columnDefinition = "TEXT")
     private String explanation;
 
-    @Column(name = "correct_answer", columnDefinition = "TEXT")
+    @Column(name = "correct_answer", nullable = false, columnDefinition = "TEXT")
     private String correctAnswer;
 
     public static Problem create(

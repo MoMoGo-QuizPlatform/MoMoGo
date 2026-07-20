@@ -78,11 +78,6 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   // 2. 모의 응답 인터셉터 (Mock Interceptor)
   const lowerPath = resolvedPath.toLowerCase();
 
-  // A. 싱글모드 문제 제출 모의 처리
-  if (lowerPath.includes('/solve')) {
-    return { success: true } as unknown as T;
-  }
-
   // B. 대시보드 API 모의 처리
   if (lowerPath.startsWith('/api/dashboards')) {
     const singleHistory = JSON.parse(localStorage.getItem('momogo_single_history') || '[]');
