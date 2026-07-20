@@ -21,22 +21,23 @@ public class UserSessionEventListener {
 
     private final JwtRegistry jwtRegistry;
 
+    // fallbackExecution = true 옵션을 명시하여 트랜잭션이 없을 때도 즉시 이벤트가 정상적으로 처리되도록 안전만 구축
     @Async(AsyncConfig.USER_EXECUTOR)
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void handleUserBannedEvent(UserBannedEvent event) {
         log.info("[UserSessionEventListener] 유저 정지 이벤트 감지 - userId: {}", event.userId());
         invalidateSession(event.userId(), "정지");
     }
 
     @Async(AsyncConfig.USER_EXECUTOR)
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void handleUserDeletedEvent(UserDeletedEvent event) {
         log.info("[UserSessionEventListener] 유저 탈퇴 이벤트 감지 - userId: {}", event.userId());
         invalidateSession(event.userId(), "탈퇴");
     }
 
     @Async(AsyncConfig.USER_EXECUTOR)
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void handlePasswordChangedEvent(PasswordChangedEvent event) {
         log.info("[UserSessionEventListener] 비밀번호 변경 이벤트 감지 - userId: {}", event.userId());
         invalidateSession(event.userId(), "비밀번호 변경");

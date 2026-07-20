@@ -23,16 +23,18 @@ public class ContextTaskDecoratorConfig {
     public TaskDecorator contextTaskDecorator() {
         return runnable -> {
             Map<String, String> mdcContext = MDC.getCopyOfContextMap();
-            SecurityContext securityContext = SecurityContextHolder.getContext();
+            // 다중 스레드 환경이나 컨텍스트 홀더 저장 방식이 변경될 때 훨씬 유연하게 대응할 수 있음
+            var strategy = SecurityContextHolder.getContextHolderStrategy();
+            SecurityContext securityContext = strategy.getContext();
 
             return () -> {
                 try {
                     if (mdcContext != null) MDC.setContextMap(mdcContext);
-                    if (securityContext != null) SecurityContextHolder.setContext(securityContext);
+                    if (securityContext != null) strategy.setContext(securityContext);
                     runnable.run();
                 } finally {
                     MDC.clear();
-                    SecurityContextHolder.clearContext();
+                    strategy.clearContext();
                 }
             };
         };

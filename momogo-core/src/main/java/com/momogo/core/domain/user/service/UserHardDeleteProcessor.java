@@ -38,8 +38,9 @@ public class UserHardDeleteProcessor {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(UserErrorCode.NOT_FOUND));
 
-        if (user.getProfileImageUrl() != null && !user.getProfileImageUrl().isBlank() && !UrlUtils.isExternalUrl(user.getProfileImageUrl())) {
-            String profileImageUrl = user.getProfileImageUrl();
+        String profileImageUrl = user.getProfileImageUrl();
+        if (profileImageUrl != null && !profileImageUrl.isBlank()
+                && !UrlUtils.isExternalUrl(user.getProfileImageUrl())) {
             TransactionSynchronizationManager.registerSynchronization(
                     new TransactionSynchronization() {
                         @Override

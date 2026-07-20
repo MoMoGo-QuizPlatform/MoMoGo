@@ -38,6 +38,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -136,29 +137,7 @@ public class UserServiceImpl implements UserService {
                 );
 
                 user.updateProfileImage(savedFileName);
-
-                TransactionSynchronizationManager.registerSynchronization(
-                        new TransactionSynchronization() {
-                            @Override
-                            public void afterCompletion(int status) {
-                                if (status == STATUS_COMMITTED) {
-                                    if (oldProfileImageUrl != null && !oldProfileImageUrl.isBlank() && !UrlUtils.isExternalUrl(oldProfileImageUrl)) {
-                                        try {
-                                            storageService.delete(PROFILE_IMAGE_DIR + "/" + oldProfileImageUrl);
-                                        } catch (Exception e) {
-                                            log.error("[UserService] 기존 프로필 이미지 삭제 실패 - files: {}", oldProfileImageUrl, e);
-                                        }
-                                    }
-                                } else if (status == STATUS_ROLLED_BACK) {
-                                    try {
-                                        storageService.delete(PROFILE_IMAGE_DIR + "/" + savedFileName);
-                                    } catch (Exception e) {
-                                        log.error("[UserService] 롤백으로 인한 신규 프로필 이미지 삭제 실패 - file: {}", savedFileName, e);
-                                    }
-                                }
-                            }
-                        }
-                );
+                registerProfileImageCleanup(oldProfileImageUrl, savedFileName);
             } catch (IOException e) {
                 log.error("[UserService] 프로필 이미지 저장 중 예외 발생", e);
                 throw new BusinessException(
@@ -169,24 +148,7 @@ public class UserServiceImpl implements UserService {
         } else if (request != null && Boolean.TRUE.equals(request.removeProfileImage())) {
             String oldProfileImageUrl = user.getProfileImageUrl();
             user.updateProfileImage(null);
-
-            if (oldProfileImageUrl != null && !oldProfileImageUrl.isBlank() && !UrlUtils.isExternalUrl(oldProfileImageUrl)) {
-                TransactionSynchronizationManager.registerSynchronization(
-                        new TransactionSynchronization() {
-                            @Override
-                            public void afterCompletion(int status) {
-                                if (status == STATUS_COMMITTED) {
-                                    try {
-                                        storageService.delete(PROFILE_IMAGE_DIR + "/" + oldProfileImageUrl);
-                                    } catch (Exception e) {
-                                        // 스토리지 삭제 실패가 응답에 영향을 주지 않도록 예외를 잡고 에러 로그 기록
-                                        log.error("[UserService] 기존 프로필 이미지 삭제 실패 - file: {}", oldProfileImageUrl, e);
-                                    }
-                                }
-                            }
-                        }
-                );
-            }
+            registerProfileImageCleanup(oldProfileImageUrl, null);
         }
 
         if (request != null && request.newPassword() != null && !request.newPassword().isBlank()) {
@@ -235,9 +197,9 @@ public class UserServiceImpl implements UserService {
             user.leaveSpace();
         }
 
-        // 유효한 임시 비밀번호 상태인 경우 탈퇴를 거부
-        if (user.isTemporaryPasswordActive()) {
-            throw new BusinessException(UserErrorCode.TEMPORARY_PASSWORD_MUST_BE_CHANGED);
+        // 임시 비밀번호가 남아있는 경우 초기화
+        if (user.getTempPassword() != null) {
+            user.clearTemporaryPassword();
         }
 
         // 유저 논리 삭제
@@ -436,7 +398,7 @@ public class UserServiceImpl implements UserService {
      * 임시 비밀번호가 존재하고, 3분 유효시간 이내이며, 입력받은 평문 비밀번호와 일치하는지 판단합니다.
      */
     private boolean isValidTemporaryPassword(User user, String rawPassword) {
-        if (!user.isTemporaryPasswordActive()) {
+        if (!user.isTemporaryPasswordActive(OffsetDateTime.now())) {
             return false;
         }
         return passwordEncryptor.matches(rawPassword, user.getTempPassword());
@@ -451,5 +413,31 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(UserErrorCode.ALREADY_IN_PROGRESS_DELETE);
         }
         return user;
+    }
+
+    /**
+     * 트랜잭션 종료 상태에 따라 기존/신규 프로필 이미지를 정리합니다.
+     */
+    private void registerProfileImageCleanup(String oldImageUrl, String newImageUrl) {
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (status == STATUS_COMMITTED && oldImageUrl != null && !oldImageUrl.isBlank() && !UrlUtils.isExternalUrl(oldImageUrl)) {
+                            try {
+                                storageService.delete(PROFILE_IMAGE_DIR + "/" + oldImageUrl);
+                            } catch (Exception e) {
+                                log.error("[UserService] 기존 프로필 이미지 삭제 실패 - file: {}", oldImageUrl, e);
+                            }
+                        } else if (status == STATUS_ROLLED_BACK && newImageUrl != null && !newImageUrl.isBlank() && !UrlUtils.isExternalUrl(newImageUrl)) {
+                            try {
+                                storageService.delete(PROFILE_IMAGE_DIR + "/" + newImageUrl);
+                            } catch (Exception e) {
+                                log.error("[UserService] 롤백으로 인한 신규 프로필 이미지 삭제 실패 - file: {}", newImageUrl, e);
+                            }
+                        }
+                    }
+                }
+        );
     }
 }

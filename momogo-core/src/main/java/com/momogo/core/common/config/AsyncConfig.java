@@ -22,6 +22,7 @@ import java.util.concurrent.Executor;
 @RequiredArgsConstructor
 public class AsyncConfig implements AsyncConfigurer {
 
+    public static final String DEFAULT_EXECUTOR = "defaultExecutor";
     public static final String MAIL_EXECUTOR = "mailExecutor";
     public static final String USER_EXECUTOR = "userExecutor";
 
@@ -30,12 +31,20 @@ public class AsyncConfig implements AsyncConfigurer {
 
     @Override
     public Executor getAsyncExecutor() {
-        return mailExecutor();
+        return defaultExecutor();
     }
 
     @Override
     public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {
         return exceptionHandler;
+    }
+
+    @Bean(name = DEFAULT_EXECUTOR)
+    public Executor defaultExecutor() {
+        SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("default-async-");
+        executor.setVirtualThreads(true);
+        taskDecoratorProvider.ifAvailable(executor::setTaskDecorator);
+        return executor;
     }
 
     /**

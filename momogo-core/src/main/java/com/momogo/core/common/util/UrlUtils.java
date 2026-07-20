@@ -1,5 +1,7 @@
 package com.momogo.core.common.util;
 
+import java.util.Locale;
+
 public final class UrlUtils {
 
     private UrlUtils() {
@@ -7,7 +9,7 @@ public final class UrlUtils {
     }
 
     /**
-     * 해당 URL 또는 문자열이 외부 HTTP/HTTPS URL인지 판단합니다.
+     * 해당 URL 또는 문자열이 외부 HTTP/HTTPS URL인지 판단합니다 (대소문자 무시).
      * (접두어가 붙은 "profile/https://..." 형태 포함)
      *
      * @param url 검사할 URL 또는 경로 문자열
@@ -17,7 +19,7 @@ public final class UrlUtils {
         if (url == null || url.isBlank()) {
             return false;
         }
-        return url.startsWith("http://") || url.startsWith("https://")
-                || url.contains("http://") || url.contains("https://");
+        String lowerCaseUrl = url.toLowerCase(Locale.ROOT);
+        return lowerCaseUrl.contains("http://") || lowerCaseUrl.contains("https://");
     }
 }

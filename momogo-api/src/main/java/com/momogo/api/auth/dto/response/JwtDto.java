@@ -29,5 +29,4 @@ public class JwtDto {
         this.accessToken = accessToken;
         this.grantType = "Bearer";
     }
-
 }
