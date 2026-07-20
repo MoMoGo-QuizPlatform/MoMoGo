@@ -29,7 +29,9 @@ public class ReportController {
    *
    * @param userId 로그인한 유저 ID (토큰에서 추출)
    * @param reportType DAILY(일간) 또는 WEEKLY(주간)
-   * @param reportDate 조회할 기준일.
+   * @param reportDate 조회할 기준일. 생략하면 "존재하는 가장 최신 리포트"의 날짜로 조회
+   *                   (배치는 항상 끝난 기간만 집계하므로 일간=어제, 주간=지난주.
+   *                    오늘/이번주를 기본값으로 하면 아직 생성 전인 리포트를 찾아 항상 0이 나옴)
    * @return 해당 기준일의 시도/정답 수와 정답률 (리포트가 없으면 0으로 채워진 응답)
    */
   @GetMapping("/personal")
@@ -38,7 +40,10 @@ public class ReportController {
       @RequestParam ReportType reportType,
       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate reportDate
   ) {
-    LocalDate targetDate = reportDate != null ? reportDate : LocalDate.now();
+    LocalDate targetDate = reportDate != null ? reportDate
+        : (reportType == ReportType.DAILY
+            ? LocalDate.now().minusDays(1)     // 어제 = 최신 일간 리포트
+            : LocalDate.now().minusWeeks(1));  // 지난주 = 최신 주간 리포트 (서비스가 월요일로 보정)
     return ResponseEntity.ok(reportService.getPersonalReport(userId, reportType, targetDate));
   }
 
