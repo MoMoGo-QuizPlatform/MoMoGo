@@ -24,6 +24,27 @@ interface ProblemResponse {
   category: CategoryResponse | null;
 }
 
+// 문제 편집용 단건 조회 응답 (정답 포함, ADMIN 전용 API)
+interface ProblemDetailResponse {
+  id: string;
+  spaceId: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  name: string;
+  content: string;
+  correctAnswer: string;
+  explanation: string;
+}
+
+// 문제 제출/채점 응답
+interface ProblemSolveResponse {
+  isSolved: boolean;
+  correctAnswer: string;
+  explanation: string;
+  tryCount: number;
+  solvedCount: number;
+}
+
 interface RoomResponse {
   id: string;
   name: string;
@@ -354,6 +375,25 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
     }
   };
 
+  // 문제 편집 모달 열기 (정답은 목록 응답에 없어서 단건 조회로 별도 가져옴)
+  const handleOpenEditProblem = async (prob: ProblemResponse) => {
+    try {
+      const detail = await request<ProblemDetailResponse>(
+        `/api/spaces/${space.id}/problems/${prob.id}`,
+        { method: 'GET' }
+      );
+      setEditingProblem(prob);
+      setProbName(detail.name);
+      setProbContent(detail.content);
+      setProbAnswer(detail.correctAnswer);
+      setProbExplanation(detail.explanation);
+      setProbCategory(detail.categoryId || '');
+      setShowCreateProblemModal(true);
+    } catch (err: any) {
+      showToast(err.message || '문제 정보를 불러오지 못했습니다.', 'error');
+    }
+  };
+
   // 문제 삭제
   const handleDeleteProblem = async (problemId: string) => {
     if (!window.confirm('정말 이 문제를 삭제하시겠습니까?')) return;
@@ -375,12 +415,13 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
     }
 
     try {
-      await request<any>(`/api/spaces/${space.id}/problems/${solvingProblem?.id}/solve`, {
-        method: 'POST',
-        body: JSON.stringify({ userAnswer: solveUserAnswer }),
-      });
-
-      const isCorrect = solveUserAnswer.trim() === solvingProblem?.correctAnswer.trim();
+      const result = await request<ProblemSolveResponse>(
+        `/api/spaces/${space.id}/problems/${solvingProblem?.id}/solve`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ userAnswer: solveUserAnswer }),
+        }
+      );
 
       // localStorage에 풀이 이력 저장 (오답 이력 및 통계용)
       const singleHistory = JSON.parse(localStorage.getItem('momogo_single_history') || '[]');
@@ -388,9 +429,9 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
         problemId: solvingProblem?.id,
         problemName: solvingProblem?.name,
         categoryName: solvingProblem?.category?.name || '미분류',
-        isSolved: isCorrect,
+        isSolved: result.isSolved,
         userAnswer: solveUserAnswer,
-        correctAnswer: solvingProblem?.correctAnswer,
+        correctAnswer: result.correctAnswer,
         solvedAt: new Date().toISOString()
       };
       // 중복 풀이 기록이 있을 시 이전 기록 제거하고 최신 풀이로 갱신
@@ -398,9 +439,9 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
       localStorage.setItem('momogo_single_history', JSON.stringify([newHistoryItem, ...filteredHistory]));
 
       setSolveResult({
-        correct: isCorrect,
-        answer: solvingProblem?.correctAnswer || '',
-        exp: solvingProblem?.explanation || '',
+        correct: result.isSolved,
+        answer: result.correctAnswer,
+        exp: result.explanation,
       });
       loadDashboardData();
     } catch (err: any) {
@@ -924,15 +965,7 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                           <button
                             className="btn btn-secondary"
                             style={styles.smallIconBtn}
-                            onClick={() => {
-                              setEditingProblem(prob);
-                              setProbName(prob.name);
-                              setProbContent(prob.content);
-                              setProbAnswer(prob.correctAnswer);
-                              setProbExplanation(prob.explanation);
-                              setProbCategory(prob.category?.id || '');
-                              setShowCreateProblemModal(true);
-                            }}
+                            onClick={() => handleOpenEditProblem(prob)}
                           >
                             편집
                           </button>
@@ -1457,7 +1490,6 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
           <div className="modal-content">
             <h3 style={styles.modalTitle}>
               연습 문제 풀기
-              <span style={styles.demoBadge}>제출 결과 데모 처리 (백엔드 미연동)</span>
             </h3>
             <div style={styles.solvingCard}>
               <span className="badge badge-info">{solvingProblem.category?.name || '미분류'}</span>
@@ -1475,7 +1507,7 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                     <input
                       type="text"
                       className="input-field"
-                      placeholder="단답형 해답 값을 기입하세요"
+                      placeholder="정답을 기입하세요."
                       value={solveUserAnswer}
                       onChange={(e) => {
                         setSolveUserAnswer(e.target.value);

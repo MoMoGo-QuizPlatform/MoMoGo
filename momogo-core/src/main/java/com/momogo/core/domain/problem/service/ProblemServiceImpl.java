@@ -7,6 +7,7 @@ import com.momogo.core.domain.problem.dto.request.ProblemSolveRequest;
 import com.momogo.core.domain.problem.dto.request.ProblemUpdateRequest;
 import com.momogo.core.domain.problem.dto.response.GeneratedProblemData;
 import com.momogo.core.domain.problem.dto.response.ProblemCursorResponse;
+import com.momogo.core.domain.problem.dto.response.ProblemDetailResponse;
 import com.momogo.core.domain.problem.dto.response.ProblemResponse;
 import com.momogo.core.domain.problem.dto.response.ProblemSolveResponse;
 import com.momogo.core.domain.problem.entity.Problem;
@@ -23,10 +24,12 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -130,7 +133,7 @@ public class ProblemServiceImpl implements ProblemService {
    * @param problemId 문제 ID
    */
   @Override
-  public ProblemResponse getProblem(UUID spaceId, UUID problemId) {
+  public ProblemDetailResponse getProblem(UUID spaceId, UUID problemId) {
 
     Problem problem = problemRepository.findByIdWithCategory(problemId)
         .orElseThrow(() -> new BusinessException(ProblemErrorCode.PROBLEM_NOT_FOUND));
@@ -139,7 +142,7 @@ public class ProblemServiceImpl implements ProblemService {
       throw new BusinessException(ProblemErrorCode.PROBLEM_NOT_IN_SPACE);
     }
 
-    return problemMapper.toResponse(problem);
+    return problemMapper.toDetailResponse(problem);
   }
 
   /**
@@ -195,11 +198,15 @@ public class ProblemServiceImpl implements ProblemService {
       throw new BusinessException(ProblemErrorCode.PROBLEM_NOT_IN_SPACE);
     }
 
+    // 카운터 먼저 제거
+    countersRepository.deleteById(problemId);
+
+    // 문제 제거
     problemRepository.deleteById(problemId);
   }
 
   /**
-   * 문제 제출 (채점) - AI 채점 연동 필요, ai 모듈 채점 서비스 구현 후 연결 예정
+   * 문제 제출 (채점)
    *
    * @param problemId 문제 ID
    * @param userId    유저 ID
@@ -207,10 +214,40 @@ public class ProblemServiceImpl implements ProblemService {
    */
   @Override
   @Transactional
-  public ProblemSolveResponse solveProblem(UUID problemId, UUID userId,
+  public ProblemSolveResponse solveProblem(
+      UUID spaceId,
+      UUID problemId,
+      UUID userId,
       ProblemSolveRequest request) {
 
-    return null;
+    Problem problem = problemRepository.findById(problemId)
+        .orElseThrow(() -> new BusinessException(ProblemErrorCode.PROBLEM_NOT_FOUND));
+
+    if (!problem.getSpace().getId().equals(spaceId)) {
+      throw new BusinessException(ProblemErrorCode.PROBLEM_NOT_IN_SPACE);
+    }
+
+    String normalizedUserAnswer = request.userAnswer().replaceAll("\\s+", "").toLowerCase();
+
+    String normalizedCorrectAnswer = problem.getCorrectAnswer().replaceAll("\\s+", "").toLowerCase();
+
+    boolean isSolved = normalizedUserAnswer.contains(normalizedCorrectAnswer);
+
+    ProblemCounters counters = countersRepository.findByProblemId(problemId)
+        .orElseThrow(() -> {
+          log.error("[채점 오류] 문제 통계 카운터가 존재하지 않습니다. problemId: {}", problemId);
+          return new BusinessException(ProblemErrorCode.COUNTER_NOT_FOUND);
+        });
+
+    counters.recordAttempt(isSolved);
+
+    return new ProblemSolveResponse(
+        isSolved,
+        problem.getCorrectAnswer(),
+        problem.getExplanation(),
+        counters.getTryCount(),
+        counters.getSolvedCount()
+    );
   }
 
   /**

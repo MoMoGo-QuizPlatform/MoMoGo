@@ -1,9 +1,8 @@
 package com.momogo.core.domain.problem.mapper;
 
+import com.momogo.core.domain.problem.dto.response.ProblemDetailResponse;
 import com.momogo.core.domain.problem.dto.response.ProblemResponse;
-import com.momogo.core.domain.problem.dto.response.ProblemSolveResponse;
 import com.momogo.core.domain.problem.entity.Problem;
-import com.momogo.core.domain.problem.entity.ProblemCounters;
 import java.util.List;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -22,4 +21,10 @@ public interface ProblemMapper {
 
   // List<Problem> → List<ProblemResponse> 변환
   List<ProblemResponse> toResponseList(List<Problem> problems);
+
+  // Problem -> ProblemDetailResponse 변환 (편집용, 정답 포함)
+  @Mapping(source = "space.id", target = "spaceId")
+  @Mapping(source = "category.id", target = "categoryId")
+  @Mapping(source = "category.name", target = "categoryName")
+  ProblemDetailResponse toDetailResponse(Problem problem);
 }
