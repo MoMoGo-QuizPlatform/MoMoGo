@@ -101,6 +101,9 @@ public class SecurityConfig {
                         // 소셜 로그인 관련
                         .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
 
+                        // 프로필 등 업로드 이미지 조회 (민감정보 아니므로 인증 없이 공개)
+                        .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
+
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().authenticated()
                 )

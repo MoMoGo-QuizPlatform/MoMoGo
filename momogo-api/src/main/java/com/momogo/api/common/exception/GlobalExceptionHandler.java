@@ -20,6 +20,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @Slf4j
 @RestControllerAdvice
@@ -61,6 +62,15 @@ public class GlobalExceptionHandler {
         log.error("데이터 무결성 예외 발생 : message={}, path={}", e.getMessage(), request.getRequestURI(), e);
         return ResponseEntity.status(code.getHttpStatus())
             .body(ErrorResponse.of(code, code.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException e, HttpServletRequest request) {
+        ErrorCode code = GlobalErrorCode.FILE_UPLOAD_FAILED;
+        log.warn("업로드 파일 용량 초과 : path={}", request.getRequestURI());
+
+        ErrorResponse response = ErrorResponse.of(code, "업로드 가능한 파일 용량(10MB)을 초과했습니다.", request.getRequestURI());
+        return ResponseEntity.status(code.getHttpStatus()).body(response);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
