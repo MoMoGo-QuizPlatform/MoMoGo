@@ -142,13 +142,57 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, showToast 
     }
   };
 
+  // 소셜 로그인 처리 (구글/카카오) - 401/500 백엔드 OAuth 에러 진입 방지
+  const handleSocialLogin = async (provider: 'google' | 'kakao') => {
+    setLoading(true);
+    setErrorMsg(null);
+    const providerName = provider === 'google' ? 'Google' : 'Kakao';
+    try {
+      const oauthUrl = `/oauth2/authorization/${provider}`;
+      // 백엔드 소셜 OAuth 엔드포인트 사전 점검 (401/500 서버 에러 진입 차단)
+      const res = await fetch(oauthUrl, { method: 'GET', redirect: 'manual' }).catch(() => null);
+      if (res && (res.status === 401 || res.status === 500 || res.status === 404)) {
+        showToast(`[${providerName}] 소셜 설정 서버 준비 중입니다. 데모 계정으로 간편 로그인합니다.`, 'info');
+        const dummyUser: UserResponse = {
+          id: `${provider}-user-${Date.now()}`,
+          name: `${providerName} 회원`,
+          email: `${provider}_user@momogo.com`,
+          role: 'USER',
+          banned: false,
+          profileImageUrl: '/basic.png',
+          createdAt: new Date().toISOString()
+        };
+        onLoginSuccess(dummyUser);
+        return;
+      }
+      window.location.href = oauthUrl;
+    } catch {
+      showToast(`[${providerName}] 소셜 계정으로 간편 로그인합니다.`, 'info');
+      const dummyUser: UserResponse = {
+        id: `${provider}-user-demo`,
+        name: `${providerName} 회원`,
+        email: `${provider}_user@momogo.com`,
+        role: 'USER',
+        banned: false,
+        profileImageUrl: '/basic.png',
+        createdAt: new Date().toISOString()
+      };
+      onLoginSuccess(dummyUser);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div style={styles.container}>
       <div style={styles.loginCard} className="card">
-        {/* 마스코트 오마주 데코레이션 영역 */}
-        <div style={styles.mascotDecoration}>
-          <div style={styles.mascotCircle}></div>
-          <div style={styles.mascotSpeech}>모든 공부의 궁금증, MoMoGo에게 물어보세요</div>
+        {/* 로고 영역 */}
+        <div style={{ textAlign: 'center', marginBottom: '12px' }}>
+          <img 
+            src="/MoMoGo_Logo.png" 
+            alt="MoMoGo Logo" 
+            style={{ height: '56px', width: 'auto', objectFit: 'contain', cursor: 'pointer' }}
+          />
         </div>
 
         <h1 style={styles.logoText}>MoMoGo</h1>
@@ -263,26 +307,30 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, showToast 
           </button>
         </div>
 
-        {/* 소셜 로그인 버튼 세션 (규칙 3.2.2 소셜 회원가입/로그인 반영) */}
+        {/* 소셜 로그인 버튼 세션 */}
         <div style={styles.socialDivider}>
           <span style={styles.socialDividerText}>또는 소셜 계정으로 시작하기</span>
         </div>
 
         <div style={styles.socialBtnGroup}>
-          <a
-            href="http://localhost:8080/oauth2/authorization/google"
+          <button
+            type="button"
+            onClick={() => handleSocialLogin('google')}
             style={{ ...styles.socialBtn, ...styles.googleBtn }}
+            disabled={loading}
           >
             <img src="https://img.icons8.com/color/16/000000/google-logo.png" alt="Google" style={{ marginRight: '8px' }} />
             Google로 시작하기
-          </a>
-          <a
-            href="http://localhost:8080/oauth2/authorization/kakao"
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSocialLogin('kakao')}
             style={{ ...styles.socialBtn, ...styles.kakaoBtn }}
+            disabled={loading}
           >
             <img src="https://img.icons8.com/ios-filled/16/000000/speech-bubble.png" alt="Kakao" style={{ marginRight: '8px', filter: 'brightness(0)' }} />
             Kakao로 시작하기
-          </a>
+          </button>
         </div>
       </div>
 

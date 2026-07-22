@@ -19,7 +19,9 @@ const App: React.FC = () => {
   const [checkingSession, setCheckingSession] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
   // 대시보드와 공간 상세 페이지 뷰 상태 정의
-  const [view, setView] = useState<{ type: 'dashboard' } | { type: 'space'; space: any }>({ type: 'dashboard' });
+  const [view, setView] = useState<
+    { type: 'dashboard'; initialTab?: 'dashboard' | 'superadmin' | 'mypage' } | { type: 'space'; space: any }
+  >({ type: 'dashboard' });
 
   useEffect(() => {
     checkSession();
@@ -27,6 +29,13 @@ const App: React.FC = () => {
 
   const checkSession = async () => {
     try {
+      // OAuth 소셜 로그인 콜백 URL 파라미터 처리 (?token=... 또는 ?error=...)
+      const urlParams = new URLSearchParams(window.location.search);
+      const oauthToken = urlParams.get('token') || urlParams.get('accessToken');
+      if (oauthToken) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+
       // /api/auth/refresh는 accessToken만 내려주고 user는 항상 null이라(백엔드 응답 스펙),
       // 재발급 성공 후 /api/users/me로 실제 유저 정보를 따로 받아온다.
       const response = await refresh();
@@ -62,6 +71,7 @@ const App: React.FC = () => {
   if (checkingSession) {
     return (
       <div style={styles.loadingWrapper}>
+        <img src="/MoMoGo_Logo.png" alt="MoMoGo Logo" style={{ width: '80px', height: 'auto', marginBottom: '8px' }} />
         <div style={styles.spinner}></div>
         <p style={styles.loadingText}>MoMoGo 세션을 확인하고 있습니다...</p>
       </div>
@@ -90,6 +100,7 @@ const App: React.FC = () => {
       ) : view.type === 'dashboard' ? (
         <DashboardPage
           user={user}
+          initialTab={view.initialTab}
           onLogout={() => setUser(null)}
           showToast={showToast}
           onEnterSpace={(space) => setView({ type: 'space', space })}
@@ -99,7 +110,7 @@ const App: React.FC = () => {
         <SpacePage
           user={user}
           space={view.space}
-          onBack={() => setView({ type: 'dashboard' })}
+          onBack={(tab = 'dashboard') => setView({ type: 'dashboard', initialTab: tab })}
           showToast={showToast}
         />
       )}
