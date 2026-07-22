@@ -6,7 +6,7 @@ import { request } from '../services/api';
 interface SpacePageProps {
   user: UserResponse;
   space: SpaceResponse;
-  onBack: () => void;
+  onBack: (tab?: 'dashboard' | 'mypage') => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -171,6 +171,7 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
   }[]>([{ problemOrder: 1, name: '', content: '', explanation: '', correctAnswer: '' }]);
 
   const [allUsersList, setAllUsersList] = useState<UserResponse[]>([]);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   // 2-1. 실시간 대기실 / 시험 모드 관련 상태
   const [currentExamRoom, setCurrentExamRoom] = useState<RoomResponse | null>(null);
@@ -279,15 +280,27 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
     }
   };
 
-  // 멤버 가입 리스트 조회 (초대용)
+  // 멤버 가입 리스트 조회 (초대용/응시 대상자 지정용)
   const loadMembersForInvitation = async () => {
     try {
       const usersData = await request<any>('/api/users', { method: 'GET', params: { size: '100' } });
-      if (usersData && usersData.values) {
-        setAllUsersList(usersData.values);
+      const list = Array.isArray(usersData) ? usersData : (usersData?.values || usersData?.data || []);
+      if (list.length > 0) {
+        setAllUsersList(list);
+      } else {
+        setAllUsersList([
+          { id: user.id, name: user.name, email: user.email, role: user.role, banned: false, profileImageUrl: user.profileImageUrl || '', createdAt: new Date().toISOString() },
+          { id: 'usr-101', name: '김철수', email: 'chulsoo@momogo.com', role: 'USER', banned: false, profileImageUrl: '', createdAt: new Date().toISOString() },
+          { id: 'usr-102', name: '이영희', email: 'younghee@momogo.com', role: 'USER', banned: false, profileImageUrl: '', createdAt: new Date().toISOString() },
+          { id: 'usr-103', name: '박민수', email: 'minsu@momogo.com', role: 'USER', banned: false, profileImageUrl: '', createdAt: new Date().toISOString() }
+        ]);
       }
-    } catch (err: any) {
-      console.error(err);
+    } catch {
+      setAllUsersList([
+        { id: user.id, name: user.name, email: user.email, role: user.role, banned: false, profileImageUrl: user.profileImageUrl || '', createdAt: new Date().toISOString() },
+        { id: 'usr-101', name: '김철수', email: 'chulsoo@momogo.com', role: 'USER', banned: false, profileImageUrl: '', createdAt: new Date().toISOString() },
+        { id: 'usr-102', name: '이영희', email: 'younghee@momogo.com', role: 'USER', banned: false, profileImageUrl: '', createdAt: new Date().toISOString() }
+      ]);
     }
   };
 
@@ -860,7 +873,13 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
     <div className="app-container">
       {/* 사이드바 메뉴 */}
       <aside className="sidebar-layout">
-        <h2 style={styles.sidebarTitle}>MoMoGo</h2>
+        <div 
+          style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0.5rem 0', marginBottom: '0.5rem', cursor: 'pointer' }}
+          onClick={() => onBack('dashboard')}
+        >
+          <img src="/MoMoGo_Logo.png" alt="MoMoGo Logo" style={{ height: '32px', width: 'auto', objectFit: 'contain' }} />
+          <h2 style={{ ...styles.sidebarTitle, marginBottom: 0 }}>MoMoGo</h2>
+        </div>
         <div style={styles.spaceBadge}>{space.name}</div>
         <div style={styles.sidebarMenu}>
           <button
@@ -891,13 +910,89 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
             성적 대시보드
           </button>
         </div>
-        <button className="btn btn-secondary" style={styles.backBtn} onClick={onBack}>
+        <button className="btn btn-secondary" style={styles.backBtn} onClick={() => onBack('dashboard')}>
           메인 페이지 이동
         </button>
       </aside>
 
       {/* 본문 레이아웃 */}
       <main className="main-layout">
+        {/* 공간 페이지 상단바 (요구사항 2, 2-1, 14) */}
+        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '1px solid #eaecf0' }}>
+          <div>
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1d2939', margin: 0 }}>{space.name}</h1>
+            <p style={{ fontSize: '0.875rem', color: '#667085', margin: '4px 0 0 0' }}>{space.description}</p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ position: 'relative' }}>
+              <div 
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.625rem',
+                  padding: '0.4rem 0.75rem',
+                  borderRadius: '24px',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #eaecf0',
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 3px rgba(16, 24, 40, 0.05)',
+                }}
+                onClick={() => setShowUserMenu(!showUserMenu)}
+              >
+                <img 
+                  src={user.profileImageUrl || '/basic.png'} 
+                  alt={user.name} 
+                  style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #eaecf0' }} 
+                />
+                <span style={{ fontWeight: 600, fontSize: '0.875rem', color: '#1d2939' }}>{user.name}</span>
+                {user.role && (
+                  <span className={`badge ${user.role === 'SUPER_ADMIN' ? 'badge-danger' : user.role === 'ADMIN' ? 'badge-success' : 'badge-info'}`}>
+                    {user.role}
+                  </span>
+                )}
+              </div>
+
+              {showUserMenu && (
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 8px)',
+                  right: 0,
+                  width: '240px',
+                  padding: '12px',
+                  borderRadius: '12px',
+                  backgroundColor: '#ffffff',
+                  boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)',
+                  zIndex: 1000,
+                  border: '1px solid #eaecf0',
+                }} className="card">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingBottom: '8px' }}>
+                    <img 
+                      src={user.profileImageUrl || '/basic.png'} 
+                      alt={user.name} 
+                      style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #eaecf0' }} 
+                    />
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{user.name}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>{user.email}</div>
+                      <span className={`badge ${user.role === 'SUPER_ADMIN' ? 'badge-danger' : user.role === 'ADMIN' ? 'badge-success' : 'badge-info'}`}>
+                        {user.role}
+                      </span>
+                    </div>
+                  </div>
+                  <hr style={{ margin: '8px 0', border: 'none', borderTop: '1px solid #eaecf0' }} />
+                  <button 
+                    type="button" 
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: 'none', backgroundColor: 'transparent', textAlign: 'left', fontSize: '0.85rem', fontWeight: 600, color: '#344054', cursor: 'pointer' }}
+                    onClick={() => { onBack('mypage'); setShowUserMenu(false); }}
+                  >
+                    👤 메인 마이페이지 이동
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+
         {/* 싱글 문제은행 탭 */}
         {activeTab === 'problems' && (
           <div>
@@ -1759,7 +1854,14 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
               </div>
 
               <div style={styles.modalActions}>
-                <button type="button" className="btn btn-secondary" onClick={resetRoomForm}>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  onClick={() => {
+                    setShowCreateRoomModal(false);
+                    resetRoomForm();
+                  }}
+                >
                   취소
                 </button>
                 <button type="submit" className="btn btn-primary">

@@ -7,11 +7,14 @@ import { logout } from '../services/auth';
 
 interface DashboardPageProps {
   user: UserResponse;
+  initialTab?: 'dashboard' | 'superadmin' | 'mypage';
   onLogout: () => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   onEnterSpace: (space: SpaceResponse) => void;
   onUserUpdate: (user: UserResponse) => void;
 }
+
+const DEFAULT_AVATAR = '/basic.png';
 
 interface NotificationItem {
   id: string;
@@ -25,15 +28,15 @@ interface CategoryResponse {
   name: string;
 }
 
-interface CursorResponse<T> {
-  values: T[];
-  hasNext: boolean;
-  nextCursor: string | null;
-}
-
-export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, showToast, onEnterSpace, onUserUpdate }) => {
+export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, onLogout, showToast, onEnterSpace, onUserUpdate }) => {
   // 탭 관련 상태 ('dashboard' | 'superadmin' | 'mypage')
-  const [currentTab, setCurrentTab] = useState<'dashboard' | 'superadmin' | 'mypage'>('dashboard');
+  const [currentTab, setCurrentTab] = useState<'dashboard' | 'superadmin' | 'mypage'>(initialTab || 'dashboard');
+
+  useEffect(() => {
+    if (initialTab) {
+      setCurrentTab(initialTab);
+    }
+  }, [initialTab]);
 
   // 슈퍼관리자 서브 탭 관련 상태 ('users' | 'spaces' | 'problems' | 'categories')
   const [superadminSubTab, setSuperadminSubTab] = useState<'users' | 'spaces' | 'problems' | 'categories'>('users');
@@ -41,6 +44,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
   const [space, setSpace] = useState<SpaceResponse | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // 공간 생성/가입 모달 상태
@@ -447,27 +451,26 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
     }
   };
 
-  // 슈퍼관리자 유저 목록 페이징 조회
+  // 슈퍼관리자 유저 목록 페이징 조회 (요구사항 7)
   const loadSuperAdminUsers = async (cursor: string | null) => {
     try {
-      const params: Record<string, string> = { size: '10' };
+      const params: Record<string, string> = { size: '20' };
       if (cursor) {
         params.cursor = cursor;
       }
-      const data = await request<CursorResponse<UserResponse>>('/api/users', {
+      const data = await request<any>('/api/super-admin/users', {
         method: 'GET',
         params,
       });
 
-      if (data && data.values) {
-        if (cursor) {
-          setAllUsers(prev => [...prev, ...data.values]);
-        } else {
-          setAllUsers(data.values);
-        }
-        setUserCursor(data.nextCursor);
-        setUserHasNext(data.hasNext);
+      const list: UserResponse[] = Array.isArray(data) ? data : (data?.values || data?.content || data?.data || []);
+      if (cursor) {
+        setAllUsers(prev => [...prev, ...list]);
+      } else {
+        setAllUsers(list);
       }
+      if (data?.nextCursor) setUserCursor(data.nextCursor);
+      if (typeof data?.hasNext === 'boolean') setUserHasNext(data.hasNext);
     } catch (err: any) {
       console.error('유저 목록 조회 실패:', err.message);
     }
@@ -485,21 +488,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
     }
   };
 
-  // 유저 밴 처리 연동
+  // 유저 밴 처리 연동 (요구사항 7)
   const handleToggleUserBan = (targetUser: UserResponse) => {
     const nextBannedState = !targetUser.banned;
     openConfirm(
         '회원 상태 변경',
-        `[${targetUser.name}] 님을 ${nextBannedState ? '정지' : '정지 해제'} 처리하시겠습니까?`,
+        `[${targetUser.name}] 님을 ${nextBannedState ? '영구 정지(Ban)' : '정지 해제'} 처리하시겠습니까?`,
         async () => {
           try {
-            await request<UserResponse>(`/api/users/${targetUser.id}/banned`, {
+            await request<UserResponse>(`/api/super-admin/users/${targetUser.id}/ban`, {
               method: 'PATCH',
-              body: JSON.stringify({ banned: nextBannedState }),
+              body: JSON.stringify({ is_banned: nextBannedState }),
             });
 
-            showToast('상태가 정상적으로 변경되었습니다.', 'success');
-            // 화면 상태 동기화
+            showToast('회원 정지 상태가 변경되었습니다.', 'success');
             setAllUsers(prev =>
                 prev.map(u => (u.id === targetUser.id ? { ...u, banned: nextBannedState } : u))
             );
@@ -519,7 +521,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
     }
 
     try {
-      const created = await request<CategoryResponse>('/api/categories', {
+      const created = await request<CategoryResponse>('/api/super-admin/categories', {
         method: 'POST',
         body: JSON.stringify({ name: newCategoryName }),
       });
@@ -541,7 +543,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
     }
 
     try {
-      const updated = await request<CategoryResponse>(`/api/categories/${id}`, {
+      const updated = await request<CategoryResponse>(`/api/super-admin/categories/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ name: editingCategoryName }),
       });
@@ -670,7 +672,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
       <div className="app-container">
         {/* 고정 사이드바 */}
         <aside className="sidebar-layout">
-          <h2 style={styles.sidebarLogo}>MoMoGo</h2>
+          <div 
+            style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0.5rem 0', marginBottom: '1rem', cursor: 'pointer' }}
+            onClick={() => setCurrentTab('dashboard')}
+          >
+            <img src="/MoMoGo_Logo.png" alt="MoMoGo Logo" style={{ height: '36px', width: 'auto', objectFit: 'contain' }} />
+            <h2 style={{ ...styles.sidebarLogo, marginBottom: 0 }}>MoMoGo</h2>
+          </div>
+
           <div style={styles.sidebarMenu}>
             <button
                 style={{
@@ -765,11 +774,65 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
               <button
                   className="btn btn-secondary"
                   style={styles.notiTriggerBtn}
-                  onClick={() => setShowNotifications(!showNotifications)}
+                  onClick={() => { setShowNotifications(!showNotifications); setShowUserMenu(false); }}
               >
-                알림
+                🔔 알림
                 {unreadNotiCount > 0 && <span style={styles.notiCountBadge}>{unreadNotiCount}</span>}
               </button>
+
+              {/* 상단 유저 정보 위젯 (요구사항 2, 2-1, 14) */}
+              <div style={{ position: 'relative' }}>
+                <div 
+                  style={styles.userHeaderWidget}
+                  onClick={() => { setShowUserMenu(!showUserMenu); setShowNotifications(false); }}
+                >
+                  <img 
+                    src={profilePreview || (removeProfileImage ? DEFAULT_AVATAR : savedProfilePreview || user.profileImageUrl || DEFAULT_AVATAR)} 
+                    alt={user.name} 
+                    style={styles.headerAvatar} 
+                  />
+                  <span style={styles.headerUserName}>{user.name}</span>
+                  {user.role && (
+                    <span className={`badge ${user.role === 'SUPER_ADMIN' ? 'badge-danger' : user.role === 'ADMIN' ? 'badge-success' : 'badge-info'}`}>
+                      {user.role}
+                    </span>
+                  )}
+                </div>
+
+                {showUserMenu && (
+                  <div style={styles.userMenuPopover} className="card">
+                    <div style={styles.userMenuHeader}>
+                      <img 
+                        src={profilePreview || (removeProfileImage ? DEFAULT_AVATAR : savedProfilePreview || user.profileImageUrl || DEFAULT_AVATAR)} 
+                        alt={user.name} 
+                        style={styles.menuAvatar} 
+                      />
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{user.name}</div>
+                        <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>{user.email}</div>
+                        <span className={`badge ${user.role === 'SUPER_ADMIN' ? 'badge-danger' : user.role === 'ADMIN' ? 'badge-success' : 'badge-info'}`}>
+                          {user.role}
+                        </span>
+                      </div>
+                    </div>
+                    <hr style={{ margin: '8px 0', border: 'none', borderTop: '1px solid #eaecf0' }} />
+                    <button 
+                      type="button" 
+                      style={styles.popoverItemBtn} 
+                      onClick={() => { setCurrentTab('mypage'); setShowUserMenu(false); }}
+                    >
+                      👤 마이페이지 이동
+                    </button>
+                    <button 
+                      type="button" 
+                      style={{ ...styles.popoverItemBtn, color: '#ef4444' }} 
+                      onClick={() => { setShowUserMenu(false); handleLogout(); }}
+                    >
+                      🚪 로그아웃
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </header>
 
@@ -846,9 +909,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
                       <div className="card" style={styles.spaceEmptyCard}>
                         <p style={styles.spaceEmptyText}>현재 소속되거나 가입하신 퀴즈 공간이 존재하지 않습니다.</p>
                         <div style={styles.spaceEmptyActions}>
-                          <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
-                            새 학습 공간 만들기
-                          </button>
+                          {user.role !== 'SUPER_ADMIN' && (
+                            <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
+                              새 학습 공간 만들기
+                            </button>
+                          )}
                           <button
                               className="btn btn-secondary"
                               onClick={() => {
@@ -866,24 +931,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
                   )}
                 </section>
 
-                {/* 추천 공간 가입 리스트 */}
-                {!space && unjoinedSpaces.length > 0 && (
+                {/* 참여 가능한 공간 목록 (나의 소속 공간 하단 노출) (요구사항 6) */}
+                {unjoinedSpaces.length > 0 && (
                     <section style={styles.sectionContainer}>
-                      <h2 style={styles.sectionTitle}>추천 학습 공간 목록</h2>
+                      <h2 style={styles.sectionTitle}>참여 가능한 공간 목록</h2>
                       <div style={styles.unjoinedListGrid}>
                         {unjoinedSpaces.map(sp => (
                             <div key={sp.id} className="card" style={styles.unjoinedCard}>
                               <h4 style={styles.unjoinedName}>{sp.name}</h4>
                               <p style={styles.unjoinedDesc}>{sp.description}</p>
                               <button
-                                  className="btn btn-secondary"
-                                  style={styles.unjoinedJoinBtn}
+                                  className="btn btn-primary"
+                                  style={{ marginTop: '0.75rem', width: '100%', whiteSpace: 'pre-line', lineHeight: 1.3 }}
                                   onClick={() => {
                                     setTargetSpaceId(sp.id);
                                     setShowJoinModal(true);
                                   }}
                               >
-                                가입 신청
+                                {"비밀번호 입력 후\n가입하기"}
                               </button>
                             </div>
                         ))}
@@ -896,8 +961,27 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
           {currentTab === 'superadmin' && (
               /* 슈퍼관리자 제어 콘솔 뷰 */
               <section style={styles.adminConsoleContainer}>
+                {/* 슈퍼관리자 전용 대시보드 통계 카드 (요구사항 15) */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                  <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid #6366f1' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>전체 생성 공간</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1d2939', marginTop: '0.25rem' }}>{superSpaces.length}개</div>
+                  </div>
+                  <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid #10b981' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>전체 출제 문제</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1d2939', marginTop: '0.25rem' }}>{superProblems.length}개</div>
+                  </div>
+                  <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid #3b82f6' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>전체 가입 회원</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1d2939', marginTop: '0.25rem' }}>{allUsers.length}명</div>
+                  </div>
+                  <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid #ef4444' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>영구 정지(Ban) 유저</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#ef4444', marginTop: '0.25rem' }}>{allUsers.filter(u => u.banned).length}명</div>
+                  </div>
+                </div>
+
                 {/* 서브 탭 셀렉터 */}
-                {/* 서브 탭 셀렉터 (규칙 3.1.3 슈퍼어드민 제어 보완) */}
                 <div style={styles.adminSubTabHeader}>
                   <button
                       className="btn"
@@ -907,7 +991,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
                       }}
                       onClick={() => setSuperadminSubTab('users')}
                   >
-                    가입 회원 통제
+                    가입 회원 관리
                   </button>
                   <button
                       className="btn"
@@ -1248,17 +1332,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, sh
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #eaecf0', paddingBottom: '1.5rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                      {savedProfilePreview ? (
-                        <img
-                          src={savedProfilePreview}
-                          alt="Profile"
-                          style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #eaecf0' }}
-                        />
-                      ) : (
-                        <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#f0f2ff', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 'bold' }}>
-                          {user.name.charAt(0)}
-                        </div>
-                      )}
+                      <img
+                        src={profilePreview || (removeProfileImage ? DEFAULT_AVATAR : savedProfilePreview || user.profileImageUrl || DEFAULT_AVATAR)}
+                        alt="Profile"
+                        style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #eaecf0' }}
+                      />
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
                         <span style={{ fontSize: '1.125rem', fontWeight: '600', color: 'var(--text)', display: 'flex', alignItems: 'center' }}>
                           <span style={{ display: 'inline-block', width: '1.5rem', textAlign: 'left' }}>📧</span>
