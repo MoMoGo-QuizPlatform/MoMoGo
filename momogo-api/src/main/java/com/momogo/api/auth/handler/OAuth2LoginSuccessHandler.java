@@ -37,8 +37,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
      * 3. 레지스트리 등록: 발급된 토큰 세트를 JwtRegistry에 등록하여 무효화 및 관리를 수행합니다.
      * 4. 보안 쿠키 설정: 탈취 위험이 높은 Refresh Token은 클라이언트 자바스크립트가 접근할 수 없도록
      *    HttpOnly, Secure 속성이 적용된 보안 쿠키에 탑재합니다.
-     * 5. 리다이렉트: 최종 성공 URL(app.oauth2.success-redirect-url) 뒤에 쿼리 파라미터(token=...)로 Access Token을 실어 리다이렉트(sendRedirect) 시킴으로써,
-     *    프론트엔드가 토큰을 즉시 획득할 수 있도록 합니다.
+     * 5. Refresh Cookie 발급 후 프론트엔드로 리다이렉트
      *
      * @param request HttpServletRequest 요청 객체
      * @param response HttpServletResponse 응답 객체
