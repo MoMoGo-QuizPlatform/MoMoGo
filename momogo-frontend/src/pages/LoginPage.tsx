@@ -142,45 +142,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, showToast 
     }
   };
 
-  // 소셜 로그인 처리 (구글/카카오) - 401/500 백엔드 OAuth 에러 진입 방지
-  const handleSocialLogin = async (provider: 'google' | 'kakao') => {
-    setLoading(true);
-    setErrorMsg(null);
-    const providerName = provider === 'google' ? 'Google' : 'Kakao';
-    try {
-      const oauthUrl = `/oauth2/authorization/${provider}`;
-      // 백엔드 소셜 OAuth 엔드포인트 사전 점검 (401/500 서버 에러 진입 차단)
-      const res = await fetch(oauthUrl, { method: 'GET', redirect: 'manual' }).catch(() => null);
-      if (res && (res.status === 401 || res.status === 500 || res.status === 404)) {
-        showToast(`[${providerName}] 소셜 설정 서버 준비 중입니다. 데모 계정으로 간편 로그인합니다.`, 'info');
-        const dummyUser: UserResponse = {
-          id: `${provider}-user-${Date.now()}`,
-          name: `${providerName} 회원`,
-          email: `${provider}_user@momogo.com`,
-          role: 'USER',
-          banned: false,
-          profileImageUrl: '/basic.png',
-          createdAt: new Date().toISOString()
-        };
-        onLoginSuccess(dummyUser);
-        return;
-      }
-      window.location.href = oauthUrl;
-    } catch {
-      showToast(`[${providerName}] 소셜 계정으로 간편 로그인합니다.`, 'info');
-      const dummyUser: UserResponse = {
-        id: `${provider}-user-demo`,
-        name: `${providerName} 회원`,
-        email: `${provider}_user@momogo.com`,
-        role: 'USER',
-        banned: false,
-        profileImageUrl: '/basic.png',
-        createdAt: new Date().toISOString()
-      };
-      onLoginSuccess(dummyUser);
-    } finally {
-      setLoading(false);
-    }
+  // 소셜 로그인 처리 (구글/카카오)
+  const handleSocialLogin = (provider: 'google' | 'kakao') => {
+    window.location.href = `/oauth2/authorization/${provider}`;
   };
 
   return (

@@ -29,15 +29,8 @@ const App: React.FC = () => {
 
   const checkSession = async () => {
     try {
-      // OAuth 소셜 로그인 콜백 URL 파라미터 처리 (?token=... 또는 ?error=...)
-      const urlParams = new URLSearchParams(window.location.search);
-      const oauthToken = urlParams.get('token') || urlParams.get('accessToken');
-      if (oauthToken) {
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
-
-      // /api/auth/refresh는 accessToken만 내려주고 user는 항상 null이라(백엔드 응답 스펙),
-      // 재발급 성공 후 /api/users/me로 실제 유저 정보를 따로 받아온다.
+      //  순수 쿠키 방식 (Cookie-Only Flow): URL 쿼리 파라미터에 토큰을 전혀 노출하지 않습니다.
+      // 백엔드가 리다이렉트 시 보낸 HttpOnly Refresh Cookie로 /api/auth/refresh를 호출하여 Access Token을 안전하게 발급받습니다.
       const response = await refresh();
       if (response && response.accessToken) {
         const freshUser = await request<UserResponse>('/api/users/me', { method: 'GET' });
