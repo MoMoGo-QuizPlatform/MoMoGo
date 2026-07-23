@@ -68,13 +68,8 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                 // 리프레시 토큰 보안 쿠키 추가(HttpOnly)
                 jwtTokenProvider.addRefreshCookie(response, refreshToken);
 
-                // 프론트엔드(React) 특정 콜백 주소로 Access Token을 쿼리스트링에 실어 리다이렉트
-                String targetUrl = UriComponentsBuilder.fromUriString(redirectUrl)
-                        .queryParam("token", accessToken)
-                        .build().toUriString();
-
-                log.info("[OAuth2LoginSuccessHandler] 소셜 로그인 성공");
-                response.sendRedirect(targetUrl);
+                log.info("[OAuth2LoginSuccessHandler] 소셜 로그인 성공 - 쿠키 발급 완료");
+                response.sendRedirect(redirectUrl);
 
             } catch (Exception e) {
                 log.error("[OAuth2LoginSuccessHandler] 토큰 생성 및 리다이렉션 실패", e);
