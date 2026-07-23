@@ -19,11 +19,18 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 /*
  * 다른 도메인에서 발행한 이벤트를 받아서 알림을 저장하고 SSE로 실시간 전송하는 리스너.
+ *
+ * AFTER_COMMIT 단계는 원본 트랜잭션이 이미 커밋을 마친 뒤(스레드에 바인딩된 트랜잭션 리소스가
+ * 정리되는 시점) 실행되므로, 이 시점에서 수행하는 DB 쓰기는 REQUIRES_NEW로 완전히 새로운
+ * 트랜잭션을 열어야 한다. 그렇지 않으면 save()가 예외 없이 반환되어도(엔티티에 ID까지 채워진
+ * 상태로) 실제로는 어떤 트랜잭션에도 커밋되지 않아 DB에 반영되지 않는 문제가 발생한다.
  */
 @Slf4j
 @Component
@@ -37,6 +44,7 @@ public class NotificationEventListener {
 
   // 평가 시험(방) 생성 -> 대상 유저 전원에게 알림
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void handleRoomCreated(RoomCreatedEvent event) {
     Map<UUID, User> userMap = userRepository.findAllById(event.userIds()).stream()
         .collect(Collectors.toMap(User::getId, Function.identity()));
@@ -54,6 +62,7 @@ public class NotificationEventListener {
 
   // 공간 내 권한 변경 -> 변경된 본인에게 알림
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void handleUserRoleChanged(SpaceUserRoleChangedEvent event) {
     User receiver = userRepository.findById(event.targetUserId()).orElse(null);
     if (receiver == null) {
@@ -66,6 +75,7 @@ public class NotificationEventListener {
 
   // 공간에 새 유저 가입 -> 그 공간 ADMIN에게 알림
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void handleUserJoined(SpaceUserJoinedEvent event) {
     User receiver = userRepository.findBySpaceIdAndRole(event.spaceId(), UserRole.ADMIN).orElse(null);
     if (receiver == null) {

@@ -1,7 +1,9 @@
 package com.momogo.api.room;
 
+import com.momogo.core.domain.problem.dto.response.GeneratedProblemData;
 import com.momogo.core.domain.room.dto.request.RoomAnswerSubmitRequest;
 import com.momogo.core.domain.room.dto.request.RoomCreateRequest;
+import com.momogo.core.domain.room.dto.request.RoomProblemDraftAiRequest;
 import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
 import com.momogo.core.domain.room.dto.response.RoomReportResponse;
 import com.momogo.core.domain.room.dto.response.RoomResponse;
@@ -47,6 +49,22 @@ public class RoomController {
 
     RoomResponse response = roomService.createRoom(userId, spaceId, request);
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
+  }
+
+  /**
+   * 시험방 생성 마법사(2단계) 미리보기용 AI 문제 생성 (ADMIN 전용)
+   * 방이 아직 만들어지기 전 단계이므로 DB에는 저장하지 않고 생성 결과만 반환한다.
+   * @param spaceId 공간 아이디
+   * @param request 참고자료/문항 수 요청 DTO
+   * @return 생성된 문제 초안 목록 (미저장)
+   */
+  @PostMapping("/spaces/{spaceId}/rooms/ai-draft-problems")
+  public ResponseEntity<List<GeneratedProblemData>> generateDraftProblems(
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID userId,
+      @PathVariable UUID spaceId,
+      @Valid @RequestBody RoomProblemDraftAiRequest request
+  ) {
+    return ResponseEntity.ok(roomService.generateDraftProblems(userId, spaceId, request));
   }
 
   /**

@@ -73,60 +73,10 @@ export interface RequestOptions extends RequestInit {
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { params, headers, ...restOptions } = options;
 
-  // 1. URL 재매핑 (Super Admin User API)
   let resolvedPath = path;
-  if (path.startsWith('/api/super-admin/users')) {
-    resolvedPath = path.replace('/api/super-admin/users', '/api/users');
-  }
 
-  // 2. 모의 응답 인터셉터 (Mock Interceptor)
+  // 모의 응답 인터셉터 (Mock Interceptor)
   const lowerPath = resolvedPath.toLowerCase();
-
-  // B. 대시보드 API 모의 처리
-  if (lowerPath.startsWith('/api/dashboards')) {
-    const singleHistory = JSON.parse(localStorage.getItem('momogo_single_history') || '[]');
-    const examsHistory = JSON.parse(localStorage.getItem('momogo_exams_history') || '[]');
-    const examDetails = JSON.parse(localStorage.getItem('momogo_exam_details') || '{}');
-
-    if (lowerPath === '/api/dashboards/single/summary') {
-      const now = new Date();
-      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-      const startOfWeek = now.getTime() - 7 * 24 * 60 * 60 * 1000;
-
-      const daily = singleHistory.filter((h: any) => new Date(h.solvedAt).getTime() >= startOfToday).length;
-      const weekly = singleHistory.filter((h: any) => new Date(h.solvedAt).getTime() >= startOfWeek).length;
-
-      let correctRate = 0;
-      if (singleHistory.length > 0) {
-        const correct = singleHistory.filter((h: any) => h.isSolved).length;
-        correctRate = Math.round((correct / singleHistory.length) * 100);
-      }
-      return {
-        dailySolvedCount: daily,
-        weeklySolvedCount: weekly,
-        averageCorrectRate: correctRate
-      } as unknown as T;
-    }
-
-    if (lowerPath === '/api/dashboards/single/history') {
-      return singleHistory as unknown as T;
-    }
-
-    if (lowerPath === '/api/dashboards/exams') {
-      return examsHistory as unknown as T;
-    }
-
-    if (lowerPath.startsWith('/api/dashboards/exams/')) {
-      const roomId = resolvedPath.split('/').pop() || '';
-      return (examDetails[roomId] || {
-        roomId,
-        roomName: '평가 시험',
-        description: '상세 내역이 존재하지 않습니다.',
-        score: 0,
-        problems: []
-      }) as unknown as T;
-    }
-  }
 
   // C. 슈퍼 관리자용 모의 처리 (공간 및 문제 관리)
   if (lowerPath.startsWith('/api/super-admin/spaces')) {
@@ -279,4 +229,100 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     return null as unknown as T;
   }
   return JSON.parse(rawBody);
+}
+
+export interface NotificationSseHandlers {
+  onNotification: (data: any) => void;
+  onError?: (err: unknown) => void;
+}
+
+// 알림 실시간 수신(SSE, GET /api/sse) 연결.
+// 브라우저 기본 EventSource는 커스텀 헤더를 지원하지 않아 Authorization(JWT) 인증 방식과 맞지 않으므로,
+// fetch + ReadableStream으로 SSE 프로토콜(event:/data: 라인, 빈 줄 구분)을 직접 파싱한다.
+// 반환된 함수를 호출하면 연결을 종료한다.
+export function connectNotificationSse(handlers: NotificationSseHandlers): () => void {
+  const controller = new AbortController();
+  let stopped = false;
+
+  const buildHeaders = (): Record<string, string> => {
+    const headers: Record<string, string> = { Accept: 'text/event-stream' };
+    if (accessTokenMemory) {
+      headers['Authorization'] = `Bearer ${accessTokenMemory}`;
+    }
+    return headers;
+  };
+
+  const openStream = async () => {
+    let response = await fetch('/api/sse', {
+      headers: buildHeaders(),
+      credentials: 'include',
+      signal: controller.signal,
+    });
+
+    // 액세스 토큰 만료 시 재발급 후 1회 재연결 시도
+    if (response.status === 401) {
+      await refreshAccessToken();
+      response = await fetch('/api/sse', {
+        headers: buildHeaders(),
+        credentials: 'include',
+        signal: controller.signal,
+      });
+    }
+
+    if (!response.ok || !response.body) {
+      throw new Error(`알림 SSE 연결 실패 (status: ${response.status})`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (!stopped) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let sepIndex: number;
+      while ((sepIndex = buffer.indexOf('\n\n')) !== -1) {
+        const rawEvent = buffer.slice(0, sepIndex);
+        buffer = buffer.slice(sepIndex + 2);
+
+        const eventName = /^event:\s*(.+)$/m.exec(rawEvent)?.[1]?.trim() || 'message';
+        const dataStr = rawEvent
+            .split('\n')
+            .filter(line => line.startsWith('data:'))
+            .map(line => line.slice(5).trim())
+            .join('\n');
+
+        if (eventName === 'notifications' && dataStr) {
+          try {
+            handlers.onNotification(JSON.parse(dataStr));
+          } catch (e) {
+            console.error('알림 SSE 데이터 파싱 실패:', e);
+          }
+        }
+      }
+    }
+  };
+
+  const run = async () => {
+    while (!stopped) {
+      try {
+        await openStream();
+      } catch (err) {
+        if (stopped) return;
+        handlers.onError?.(err);
+      }
+      if (stopped) return;
+      // 연결 종료/오류 시 5초 후 재연결
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+  };
+
+  run();
+
+  return () => {
+    stopped = true;
+    controller.abort();
+  };
 }

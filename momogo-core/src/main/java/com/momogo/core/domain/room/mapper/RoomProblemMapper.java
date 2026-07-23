@@ -10,6 +10,8 @@ import org.mapstruct.Mapping;
 public interface RoomProblemMapper {
 
   @Mapping(source = "room.id", target = "roomId")
+  @Mapping(source = "category.id", target = "categoryId")
+  @Mapping(source = "category.name", target = "categoryName")
   RoomProblemResponse toResponse(RoomProblem roomProblem);
 
   @Mapping(source = "room.id", target = "roomId")

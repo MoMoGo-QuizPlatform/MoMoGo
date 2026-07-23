@@ -1,6 +1,11 @@
 package com.momogo.api.report;
 
+import com.momogo.core.domain.report.dto.response.DashboardSummaryResponse;
+import com.momogo.core.domain.report.dto.response.MyExamDetailResponse;
+import com.momogo.core.domain.report.dto.response.MyExamListItemResponse;
 import com.momogo.core.domain.report.dto.response.PersonalReportResponse;
+import com.momogo.core.domain.report.dto.response.SingleModeHistoryResponse;
+import com.momogo.core.domain.report.dto.response.SingleModeSummaryResponse;
 import com.momogo.core.domain.report.dto.response.SpaceRankingResponse;
 import com.momogo.core.domain.report.entity.ReportType;
 import com.momogo.core.domain.report.service.ReportService;
@@ -58,5 +63,56 @@ public class ReportController {
       @PathVariable UUID spaceId
   ) {
     return ResponseEntity.ok(reportService.getSpaceRanking(spaceId));
+  }
+
+  /**
+   * 메인 대시보드 요약 카드(오늘 푼 문제 수 / 이번 주 정답률 / 참여 완료 시험 수) 실시간 조회
+   */
+  @GetMapping("/summary")
+  public ResponseEntity<DashboardSummaryResponse> getDashboardSummary(
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID userId
+  ) {
+    return ResponseEntity.ok(reportService.getDashboardSummary(userId));
+  }
+
+  /**
+   * 공간 내 성적 대시보드: 싱글모드 요약(오늘/이번 주 정답 수, 전체 평균 정답률) 조회
+   */
+  @GetMapping("/single/summary")
+  public ResponseEntity<SingleModeSummaryResponse> getSingleModeSummary(
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID userId
+  ) {
+    return ResponseEntity.ok(reportService.getSingleModeSummary(userId));
+  }
+
+  /**
+   * 공간 내 성적 대시보드: 싱글모드 전체 풀이 이력 조회
+   */
+  @GetMapping("/single/history")
+  public ResponseEntity<List<SingleModeHistoryResponse>> getSingleModeHistory(
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID userId
+  ) {
+    return ResponseEntity.ok(reportService.getSingleModeHistory(userId));
+  }
+
+  /**
+   * 공간 내 성적 대시보드: 내가 응시(제출 완료)한 평가 시험 목록 조회
+   */
+  @GetMapping("/exams")
+  public ResponseEntity<List<MyExamListItemResponse>> getMyExamList(
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID userId
+  ) {
+    return ResponseEntity.ok(reportService.getMyExamList(userId));
+  }
+
+  /**
+   * 공간 내 성적 대시보드: 내가 응시한 평가 시험의 문항별 채점 결과(리뷰) 조회
+   */
+  @GetMapping("/exams/{roomId}")
+  public ResponseEntity<MyExamDetailResponse> getMyExamDetail(
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID userId,
+      @PathVariable UUID roomId
+  ) {
+    return ResponseEntity.ok(reportService.getMyExamDetail(userId, roomId));
   }
 }

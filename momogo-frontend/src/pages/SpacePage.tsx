@@ -118,6 +118,12 @@ interface RoomProblemResponse {
   content: string;
 }
 
+interface SpaceRankingResponse {
+  userId: string;
+  userName: string;
+  solvedCount: number;
+}
+
 export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showToast }) => {
   const [activeTab, setActiveTab] = useState<'problems' | 'exams' | 'dashboard'>('problems');
 
@@ -155,20 +161,32 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
   // 2. 평가 시험방 관련 상태
   const [rooms, setRooms] = useState<RoomResponse[]>([]);
   const [showCreateRoomModal, setShowCreateRoomModal] = useState(false);
+  const [roomWizardStep, setRoomWizardStep] = useState<1 | 2>(1);
 
-  // 시험방 생성 폼 상태
+  // 시험방 생성 폼 상태 (1단계: 기본 정보)
   const [roomName, setRoomName] = useState('');
   const [roomDesc, setRoomDesc] = useState('');
   const [roomStart, setRoomStart] = useState('');
   const [roomEnd, setRoomEnd] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+
+  // 시험방 생성 폼 상태 (2단계: 문제 출제 - 수동/AI 혼합)
   const [examProblemsList, setExamProblemsList] = useState<{
+    categoryId: string;
     problemOrder: number;
     name: string;
     content: string;
     explanation: string;
     correctAnswer: string;
-  }[]>([{ problemOrder: 1, name: '', content: '', explanation: '', correctAnswer: '' }]);
+  }[]>([{ categoryId: '', problemOrder: 1, name: '', content: '', explanation: '', correctAnswer: '' }]);
+
+  // 2단계 내 AI 자동 출제 (싱글모드 AI 출제기와 동일한 방식, 결과는 저장 전 미리보기로 목록에 추가됨)
+  const [showRoomAiModal, setShowRoomAiModal] = useState(false);
+  const [roomAiCategory, setRoomAiCategory] = useState('');
+  const [roomAiRefData, setRoomAiRefData] = useState('');
+  const [roomAiCount, setRoomAiCount] = useState(3);
+  const [roomAiLoading, setRoomAiLoading] = useState(false);
 
   const [allUsersList, setAllUsersList] = useState<UserResponse[]>([]);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -191,6 +209,7 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
   const [history, setHistory] = useState<SingleHistoryResponse[]>([]);
   const [examsHistory, setExamsHistory] = useState<ExamListItemResponse[]>([]);
   const [viewingExamDetail, setViewingExamDetail] = useState<ExamDetailResponse | null>(null);
+  const [ranking, setRanking] = useState<SpaceRankingResponse[]>([]);
 
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const timerRef = useRef<any>(null);
@@ -271,36 +290,25 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
       const summaryData = await request<SingleSummaryResponse>('/api/dashboards/single/summary', { method: 'GET' });
       const historyData = await request<SingleHistoryResponse[]>('/api/dashboards/single/history', { method: 'GET' });
       const examHistoryData = await request<ExamListItemResponse[]>('/api/dashboards/exams', { method: 'GET' });
+      const rankingData = await request<SpaceRankingResponse[]>(`/api/dashboards/spaces/${space.id}/ranking`, { method: 'GET' });
 
       if (summaryData) setSummary(summaryData);
       if (historyData) setHistory(historyData);
       if (examHistoryData) setExamsHistory(examHistoryData);
+      if (rankingData) setRanking(rankingData);
     } catch (err: any) {
       console.error(err);
     }
   };
 
-  // 멤버 가입 리스트 조회 (초대용/응시 대상자 지정용)
+  // 멤버 가입 리스트 조회 (초대용/응시 대상자 지정용) - 내가 소속된 공간의 전체 유저 목록
   const loadMembersForInvitation = async () => {
     try {
-      const usersData = await request<any>('/api/users', { method: 'GET', params: { size: '100' } });
-      const list = Array.isArray(usersData) ? usersData : (usersData?.values || usersData?.data || []);
-      if (list.length > 0) {
-        setAllUsersList(list);
-      } else {
-        setAllUsersList([
-          { id: user.id, name: user.name, email: user.email, role: user.role, banned: false, profileImageUrl: user.profileImageUrl || '', createdAt: new Date().toISOString() },
-          { id: 'usr-101', name: '김철수', email: 'chulsoo@momogo.com', role: 'USER', banned: false, profileImageUrl: '', createdAt: new Date().toISOString() },
-          { id: 'usr-102', name: '이영희', email: 'younghee@momogo.com', role: 'USER', banned: false, profileImageUrl: '', createdAt: new Date().toISOString() },
-          { id: 'usr-103', name: '박민수', email: 'minsu@momogo.com', role: 'USER', banned: false, profileImageUrl: '', createdAt: new Date().toISOString() }
-        ]);
-      }
-    } catch {
-      setAllUsersList([
-        { id: user.id, name: user.name, email: user.email, role: user.role, banned: false, profileImageUrl: user.profileImageUrl || '', createdAt: new Date().toISOString() },
-        { id: 'usr-101', name: '김철수', email: 'chulsoo@momogo.com', role: 'USER', banned: false, profileImageUrl: '', createdAt: new Date().toISOString() },
-        { id: 'usr-102', name: '이영희', email: 'younghee@momogo.com', role: 'USER', banned: false, profileImageUrl: '', createdAt: new Date().toISOString() }
-      ]);
+      const usersData = await request<any[]>('/api/users', { method: 'GET' });
+      setAllUsersList(usersData || []);
+    } catch (err) {
+      console.error('공간 멤버 목록 조회 실패:', err);
+      setAllUsersList([]);
     }
   };
 
@@ -436,21 +444,6 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
         }
       );
 
-      // localStorage에 풀이 이력 저장 (오답 이력 및 통계용)
-      const singleHistory = JSON.parse(localStorage.getItem('momogo_single_history') || '[]');
-      const newHistoryItem = {
-        problemId: solvingProblem?.id,
-        problemName: solvingProblem?.name,
-        categoryName: solvingProblem?.category?.name || '미분류',
-        isSolved: result.isSolved,
-        userAnswer: solveUserAnswer,
-        correctAnswer: result.correctAnswer,
-        solvedAt: new Date().toISOString()
-      };
-      // 중복 풀이 기록이 있을 시 이전 기록 제거하고 최신 풀이로 갱신
-      const filteredHistory = singleHistory.filter((h: any) => h.problemId !== solvingProblem?.id);
-      localStorage.setItem('momogo_single_history', JSON.stringify([newHistoryItem, ...filteredHistory]));
-
       setSolveResult({
         correct: result.isSolved,
         answer: result.correctAnswer,
@@ -462,9 +455,8 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
     }
   };
 
-  // 평가 시험방 생성 처리
-  const handleCreateRoom = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // 시험방 생성 마법사 1단계(기본 정보) 검증 - 통과 시 2단계(문제 출제)로 전환
+  const validateRoomStep1 = () => {
     const errors: Record<string, string> = {};
     if (!roomName.trim()) errors.roomName = '시험 이름을 입력해 주세요.';
     if (!roomStart) errors.roomStart = '시작 일시를 입력해 주세요.';
@@ -473,6 +465,25 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
 
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
+      return false;
+    }
+    setValidationErrors({});
+    return true;
+  };
+
+  // 시험방 생성 마법사 2단계(문제 출제) 검증 후 최종 개설 요청
+  const submitCreateRoom = async () => {
+    const errors: Record<string, string> = {};
+    examProblemsList.forEach((p, i) => {
+      if (!p.categoryId) errors[`problem_${i}_category`] = '카테고리를 선택해 주세요.';
+      if (!p.name.trim()) errors[`problem_${i}_name`] = '문제명을 입력해 주세요.';
+      if (!p.content.trim()) errors[`problem_${i}_content`] = '문제 내용을 입력해 주세요.';
+      if (!p.correctAnswer.trim()) errors[`problem_${i}_answer`] = '정답을 입력해 주세요.';
+    });
+
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      showToast('출제 문제 정보를 모두 입력해 주세요. (카테고리 포함)', 'error');
       return;
     }
 
@@ -489,24 +500,10 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
         })),
       };
 
-      const newRoom = await request<any>(`/api/spaces/${space.id}/rooms`, {
+      await request<any>(`/api/spaces/${space.id}/rooms`, {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-
-      // 개설된 룸의 문제를 로컬 스토리지에 백업해둡니다. (사용자 오프라인 채점용)
-      if (newRoom && newRoom.id) {
-        localStorage.setItem(`momogo_created_room_problems_${newRoom.id}`, JSON.stringify(
-          examProblemsList.map((p, i) => ({
-            id: `rp-${newRoom.id}-${i}`,
-            problemOrder: i + 1,
-            name: p.name || `문제 ${i + 1}`,
-            content: p.content,
-            correctAnswer: p.correctAnswer,
-            explanation: p.explanation
-          }))
-        ));
-      }
 
       showToast('정기 평가시험이 개설되었습니다.', 'success');
       setShowCreateRoomModal(false);
@@ -514,6 +511,71 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
       loadRooms();
     } catch (err: any) {
       showToast(err.message || '시험방 개설에 실패했습니다.', 'error');
+    }
+  };
+
+  // 마법사 폼 제출 - 1단계면 다음 단계로, 2단계면 실제 개설 요청
+  const handleCreateRoom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (roomWizardStep === 1) {
+      if (validateRoomStep1()) {
+        setRoomWizardStep(2);
+      }
+      return;
+    }
+    await submitCreateRoom();
+  };
+
+  // 2단계: AI 자동 출제 - 생성 결과를 저장하지 않고 문제 목록에 미리보기로 추가
+  const handleGenerateRoomAiProblems = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const errors: Record<string, string> = {};
+    if (!roomAiCategory) errors.roomAiCategory = '카테고리를 선택해 주세요.';
+    if (!roomAiRefData.trim()) errors.roomAiRefData = '참고 학습 자료를 기입해 주세요.';
+
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+
+    try {
+      setRoomAiLoading(true);
+      const generated = await request<{ name: string; content: string; explanation: string; correctAnswer: string }[]>(
+          `/api/spaces/${space.id}/rooms/ai-draft-problems`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              referenceText: roomAiRefData,
+              questionCount: roomAiCount,
+            }),
+          }
+      );
+
+      const newItems = (generated || []).map(g => ({
+        categoryId: roomAiCategory,
+        problemOrder: 0,
+        name: g.name,
+        content: g.content,
+        explanation: g.explanation,
+        correctAnswer: g.correctAnswer,
+      }));
+
+      setExamProblemsList(prev => {
+        const withoutEmptyFirst = prev.length === 1 && !prev[0].name.trim() && !prev[0].content.trim()
+            ? []
+            : prev;
+        return [...withoutEmptyFirst, ...newItems];
+      });
+
+      showToast(`AI 문제 ${newItems.length}개가 생성되어 목록에 추가되었습니다. 내용을 검토한 뒤 개설해 주세요.`, 'success');
+      setShowRoomAiModal(false);
+      setRoomAiRefData('');
+      setRoomAiCategory('');
+      setValidationErrors({});
+    } catch (err: any) {
+      showToast(err.message || 'AI 생성 도중 서버 내부 오류가 발생했습니다.', 'error');
+    } finally {
+      setRoomAiLoading(false);
     }
   };
 
@@ -586,9 +648,6 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
         body: JSON.stringify({ answers: answersPayload }),
       });
 
-      // 제출 답안을 로컬 스토리지에 임시 저장 (채점 시 사용)
-      localStorage.setItem(`momogo_temp_exam_submission_${currentExamRoom.id}`, JSON.stringify(examAnswers));
-
       showToast('시험 답안이 성공적으로 제출되었습니다.', 'success');
       exitExamMode();
     } catch (err: any) {
@@ -618,65 +677,6 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
     try {
       await request(`/api/rooms/${roomId}/finalize-grade`, { method: 'POST' });
       showToast('최종 채점 마감이 확정되었습니다. 이제 리포트를 열람할 수 있습니다.', 'success');
-
-      // 로컬 스토리지에 저장된 유저 제출 답안과 출제 문제의 정답을 비교하여 채점 결과 생성
-      const tempSubmission = JSON.parse(localStorage.getItem(`momogo_temp_exam_submission_${roomId}`) || '{}');
-      const createdProblems = JSON.parse(localStorage.getItem(`momogo_created_room_problems_${roomId}`) || '[]');
-
-      if (createdProblems.length > 0) {
-        // 백업된 제출 내역이 없는 경우 가상의 답안 생성 (데모 편의성 확보)
-        const defaultSubmission: Record<string, string> = {};
-        createdProblems.forEach((p: any) => {
-          defaultSubmission[p.id] = Math.random() > 0.2 ? p.correctAnswer : '오답';
-        });
-        const userAnswers = Object.keys(tempSubmission).length > 0 ? tempSubmission : defaultSubmission;
-
-        let correctCount = 0;
-        const detailedProblems = createdProblems.map((rp: any) => {
-          const userAns = userAnswers[rp.id] || '';
-          const isCorrect = userAns.trim().toLowerCase() === rp.correctAnswer?.trim().toLowerCase();
-          if (isCorrect) correctCount++;
-          return {
-            problemId: rp.id,
-            problemOrder: rp.problemOrder,
-            name: rp.name,
-            content: rp.content,
-            userAnswer: userAns,
-            correctAnswer: rp.correctAnswer,
-            explanation: rp.explanation || '해설 정보가 존재하지 않습니다.',
-            isCorrect
-          };
-        });
-
-        const score = Math.round((correctCount / createdProblems.length) * 100);
-
-        // 1. 리스트 아이템 추가
-        const examsHistory = JSON.parse(localStorage.getItem('momogo_exams_history') || '[]');
-        const targetRoom = rooms.find(r => r.id === roomId);
-        const newItem = {
-          roomId,
-          roomName: targetRoom?.name || '평가 시험',
-          description: targetRoom?.description || '',
-          score,
-          totalProblems: createdProblems.length,
-          testStartAt: targetRoom?.testStartAt || new Date().toISOString(),
-          testEndAt: targetRoom?.testEndAt || new Date().toISOString(),
-          isEnded: true
-        };
-        const filteredList = examsHistory.filter((item: any) => item.roomId !== roomId);
-        localStorage.setItem('momogo_exams_history', JSON.stringify([newItem, ...filteredList]));
-
-        // 2. 상세 내역 저장
-        const examDetails = JSON.parse(localStorage.getItem('momogo_exam_details') || '{}');
-        examDetails[roomId] = {
-          roomId,
-          roomName: targetRoom?.name || '평가 시험',
-          description: targetRoom?.description || '',
-          score,
-          problems: detailedProblems
-        };
-        localStorage.setItem('momogo_exam_details', JSON.stringify(examDetails));
-      }
 
       loadRooms();
       loadDashboardData();
@@ -736,12 +736,18 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
   };
 
   const resetRoomForm = () => {
+    setRoomWizardStep(1);
     setRoomName('');
     setRoomDesc('');
     setRoomStart('');
     setRoomEnd('');
     setSelectedMembers([]);
-    setExamProblemsList([{ problemOrder: 1, name: '', content: '', explanation: '', correctAnswer: '' }]);
+    setMemberSearchQuery('');
+    setExamProblemsList([{ categoryId: '', problemOrder: 1, name: '', content: '', explanation: '', correctAnswer: '' }]);
+    setShowRoomAiModal(false);
+    setRoomAiCategory('');
+    setRoomAiRefData('');
+    setRoomAiCount(3);
     setValidationErrors({});
   };
 
@@ -868,6 +874,28 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
       </div>
     );
   }
+
+  // 응시 대상자 검색/선택 (관리자 본인은 응시 대상에서 제외)
+  const selectableMembers = allUsersList.filter(u => u.id !== user.id);
+  const filteredMembers = selectableMembers.filter(u => {
+    const q = memberSearchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
+  });
+  const allFilteredSelected = filteredMembers.length > 0 && filteredMembers.every(u => selectedMembers.includes(u.id || ''));
+
+  // 시험 시작~종료 소요 시간 표시용 (30분 단위 반올림 없이 그대로 표기)
+  const examDurationLabel = (() => {
+    if (!roomStart || !roomEnd) return null;
+    const diffMs = new Date(roomEnd).getTime() - new Date(roomStart).getTime();
+    if (isNaN(diffMs) || diffMs <= 0) return null;
+    const totalMinutes = Math.round(diffMs / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours === 0) return `${minutes}분`;
+    if (minutes === 0) return `${hours}시간`;
+    return `${hours}시간 ${minutes}분`;
+  })();
 
   return (
     <div className="app-container">
@@ -1180,7 +1208,6 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
           <div>
             <h2>
               내 학습 대시보드
-              <span style={styles.demoBadge}>데모 데이터 (백엔드 미연동)</span>
             </h2>
 
             {/* 카드 요약 정보 (규칙 3.6 개인 대시보드 반영) */}
@@ -1209,46 +1236,41 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
             <div className="card" style={{ marginTop: '0.5rem', marginBottom: '2rem', padding: '1.5rem' }}>
               <h3 style={{ ...styles.dashboardSectionTitle, borderBottom: '2px solid var(--primary-border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
                 공간 랭킹 대시보드
-                <span style={styles.demoBadge}>데모 데이터 (백엔드 미연동)</span>
               </h3>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-sub)', marginBottom: '1.25rem' }}>
-                공간 내부에 등록되어 있는 문제를 푼 유저들의 실시간 랭킹입니다.
+                공간 내부에 등록되어 있는 문제를 푼 유저들의 이번 주(월요일~현재) 실시간 랭킹입니다.
               </p>
               <div style={styles.tableScroll}>
                 <table style={styles.table}>
                   <thead>
                     <tr>
                       <th style={{ width: '80px' }}>순위</th>
-                      <th>이름 (이메일)</th>
+                      <th>이름</th>
                       <th>해결한 문제 수</th>
-                      <th>정답률</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr style={{ backgroundColor: '#fffbeb' }}>
-                      <td><strong>1등 🥇</strong></td>
-                      <td>김철수 (chulsoo@naver.com)</td>
-                      <td>15개</td>
-                      <td>92.5%</td>
-                    </tr>
-                    <tr>
-                      <td><strong>2등 🥈</strong></td>
-                      <td>이영희 (younghee@gmail.com)</td>
-                      <td>12개</td>
-                      <td>85.0%</td>
-                    </tr>
-                    <tr style={{ backgroundColor: '#f0f2ff', borderLeft: '4px solid var(--primary)' }}>
-                      <td><strong>3등 🥉 (나)</strong></td>
-                      <td>{user.name} ({user.email})</td>
-                      <td>{history.filter(h => h.isSolved).length}개</td>
-                      <td>{summary?.averageCorrectRate || 0}%</td>
-                    </tr>
-                    <tr>
-                      <td>4등</td>
-                      <td>박민수 (minsoo@daum.net)</td>
-                      <td>3개</td>
-                      <td>66.6%</td>
-                    </tr>
+                    {ranking.map((r, i) => {
+                      const isMe = r.userId === user.id;
+                      const medal = i === 0 ? ' 🥇' : i === 1 ? ' 🥈' : i === 2 ? ' 🥉' : '';
+                      return (
+                        <tr
+                          key={r.userId}
+                          style={isMe ? { backgroundColor: '#f0f2ff', borderLeft: '4px solid var(--primary)' } : undefined}
+                        >
+                          <td><strong>{i + 1}등{medal}</strong></td>
+                          <td>{r.userName}{isMe ? ' (나)' : ''}</td>
+                          <td>{r.solvedCount}개</td>
+                        </tr>
+                      );
+                    })}
+                    {ranking.length === 0 && (
+                      <tr>
+                        <td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                          이번 주 랭킹 데이터가 존재하지 않습니다.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1664,12 +1686,24 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
         </div>
       )}
 
-      {/* 평가 시험방 개설 모달 */}
+      {/* 평가 시험방 개설 모달 (2단계 마법사) */}
       {showCreateRoomModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '600px' }}>
-            <h3 style={styles.modalTitle}>정기 평가 시험방 개설</h3>
+          <div className="modal-content" style={{ maxWidth: '640px' }}>
+            <div style={styles.wizardHeader}>
+              <h3 style={styles.modalTitle}>정기 평가 시험방 개설</h3>
+              <div style={styles.wizardSteps}>
+                <span style={{ ...styles.wizardStepDot, ...(roomWizardStep >= 1 ? styles.wizardStepDotActive : {}) }}>1</span>
+                <span style={styles.wizardStepLine}></span>
+                <span style={{ ...styles.wizardStepDot, ...(roomWizardStep >= 2 ? styles.wizardStepDotActive : {}) }}>2</span>
+              </div>
+            </div>
+            <p style={styles.wizardStepLabel}>
+              {roomWizardStep === 1 ? '1단계 · 기본 정보 및 응시 대상자' : '2단계 · 문제 출제 (수동 + AI 혼합 가능)'}
+            </p>
             <form onSubmit={handleCreateRoom} style={styles.form} noValidate>
+              {roomWizardStep === 1 && (
+              <>
               <div className="input-group">
                 <label className="input-label">시험 이름</label>
                 <input
@@ -1703,88 +1737,185 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: '1rem' }}>
-                <div className="input-group" style={{ flex: 1 }}>
-                  <label className="input-label">시험 시작 일시</label>
-                  <input
-                    type="datetime-local"
-                    className="input-field"
-                    value={roomStart}
-                    onChange={(e) => {
-                      setRoomStart(e.target.value);
-                      if (validationErrors.roomStart) {
-                        setValidationErrors(prev => ({ ...prev, roomStart: '' }));
-                      }
-                    }}
-                    style={{
-                      borderColor: validationErrors.roomStart ? '#ef4444' : undefined,
-                    }}
-                  />
-                  {validationErrors.roomStart && (
-                    <span style={styles.errorText}>{validationErrors.roomStart}</span>
+              {/* 시험 일정 설정 */}
+              <div className="input-group">
+                <label className="input-label">시험 일정</label>
+                <div style={styles.scheduleCard}>
+                  <div style={styles.scheduleField}>
+                    <span style={{ ...styles.scheduleDot, backgroundColor: 'var(--success)' }}></span>
+                    <div style={styles.scheduleFieldBody}>
+                      <span style={styles.scheduleFieldLabel}>시작</span>
+                      <input
+                        type="datetime-local"
+                        style={{
+                          ...styles.scheduleInput,
+                          color: validationErrors.roomStart ? 'var(--danger)' : 'var(--text-main)',
+                        }}
+                        value={roomStart}
+                        onChange={(e) => {
+                          setRoomStart(e.target.value);
+                          if (validationErrors.roomStart) {
+                            setValidationErrors(prev => ({ ...prev, roomStart: '' }));
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <span style={styles.scheduleArrow}>→</span>
+                  <div style={styles.scheduleField}>
+                    <span style={{ ...styles.scheduleDot, backgroundColor: 'var(--danger)' }}></span>
+                    <div style={styles.scheduleFieldBody}>
+                      <span style={styles.scheduleFieldLabel}>종료</span>
+                      <input
+                        type="datetime-local"
+                        style={{
+                          ...styles.scheduleInput,
+                          color: validationErrors.roomEnd ? 'var(--danger)' : 'var(--text-main)',
+                        }}
+                        value={roomEnd}
+                        onChange={(e) => {
+                          setRoomEnd(e.target.value);
+                          if (validationErrors.roomEnd) {
+                            setValidationErrors(prev => ({ ...prev, roomEnd: '' }));
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                  {examDurationLabel && (
+                    <span style={styles.scheduleDuration}>⏱ {examDurationLabel}</span>
                   )}
                 </div>
-                <div className="input-group" style={{ flex: 1 }}>
-                  <label className="input-label">시험 종료 일시</label>
-                  <input
-                    type="datetime-local"
-                    className="input-field"
-                    value={roomEnd}
-                    onChange={(e) => {
-                      setRoomEnd(e.target.value);
-                      if (validationErrors.roomEnd) {
-                        setValidationErrors(prev => ({ ...prev, roomEnd: '' }));
-                      }
-                    }}
-                    style={{
-                      borderColor: validationErrors.roomEnd ? '#ef4444' : undefined,
-                    }}
-                  />
-                  {validationErrors.roomEnd && (
-                    <span style={styles.errorText}>{validationErrors.roomEnd}</span>
-                  )}
-                </div>
+                {(validationErrors.roomStart || validationErrors.roomEnd) && (
+                  <span style={styles.errorText}>{validationErrors.roomStart || validationErrors.roomEnd}</span>
+                )}
               </div>
 
               {/* 응시 대상자 다중 선택 */}
               <div className="input-group">
-                <label className="input-label">응시 대상자 지정</label>
-                <div style={styles.scrollMultiSelect}>
-                  {allUsersList.map(u => (
-                    <label key={u.id} style={styles.checkboxRow}>
-                      <input
-                        type="checkbox"
-                        checked={selectedMembers.includes(u.id || '')}
-                        onChange={(e) => {
-                          const uid = u.id || '';
-                          if (e.target.checked) {
-                            setSelectedMembers(prev => [...prev, uid]);
-                          } else {
-                            setSelectedMembers(prev => prev.filter(id => id !== uid));
-                          }
+                <div style={styles.examineeHeader}>
+                  <label className="input-label" style={{ marginBottom: 0 }}>응시 대상자 지정</label>
+                  <span style={styles.examineeCount}>{selectedMembers.length}명 선택됨</span>
+                </div>
+
+                <div style={styles.examineeToolbar}>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="이름 또는 이메일로 검색"
+                    style={styles.examineeSearchInput}
+                    value={memberSearchQuery}
+                    onChange={(e) => setMemberSearchQuery(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={styles.examineeToggleAllBtn}
+                    onClick={() => {
+                      const filteredIds = filteredMembers.map(u => u.id || '');
+                      if (allFilteredSelected) {
+                        setSelectedMembers(prev => prev.filter(id => !filteredIds.includes(id)));
+                      } else {
+                        setSelectedMembers(prev => Array.from(new Set([...prev, ...filteredIds])));
+                      }
+                      if (validationErrors.selectedMembers) {
+                        setValidationErrors(prev => ({ ...prev, selectedMembers: '' }));
+                      }
+                    }}
+                  >
+                    {allFilteredSelected ? '전체 해제' : '전체 선택'}
+                  </button>
+                </div>
+
+                <div style={styles.examineeList}>
+                  {filteredMembers.map(u => {
+                    const uid = u.id || '';
+                    const selected = selectedMembers.includes(uid);
+                    return (
+                      <div
+                        key={uid}
+                        onClick={() => {
+                          setSelectedMembers(prev => selected ? prev.filter(id => id !== uid) : [...prev, uid]);
                           if (validationErrors.selectedMembers) {
                             setValidationErrors(prev => ({ ...prev, selectedMembers: '' }));
                           }
                         }}
-                      />
-                      <span>{u.name} ({u.email})</span>
-                    </label>
-                  ))}
+                        style={{
+                          ...styles.examineeItem,
+                          ...(selected ? styles.examineeItemSelected : {}),
+                        }}
+                      >
+                        <span
+                          style={{
+                            ...styles.examineeAvatar,
+                            ...(selected ? styles.examineeAvatarSelected : {}),
+                          }}
+                        >
+                          {(u.name || '?').charAt(0)}
+                        </span>
+                        <div style={styles.examineeInfo}>
+                          <span style={styles.examineeName}>{u.name}</span>
+                          <span style={styles.examineeEmail}>{u.email}</span>
+                        </div>
+                        <span style={{ ...styles.examineeCheck, opacity: selected ? 1 : 0 }}>✓</span>
+                      </div>
+                    );
+                  })}
+                  {filteredMembers.length === 0 && (
+                    <p style={styles.examineeEmptyText}>
+                      {selectableMembers.length === 0 ? '공간에 다른 유저가 없습니다.' : '검색 결과가 없습니다.'}
+                    </p>
+                  )}
                 </div>
+
                 {validationErrors.selectedMembers && (
                   <span style={styles.errorText}>{validationErrors.selectedMembers}</span>
                 )}
               </div>
+              </>
+              )}
 
-              {/* 출제 문제 등록 */}
+              {roomWizardStep === 2 && (
+              <>
+              {/* 출제 문제 등록 (수동 입력 + AI 자동 출제 혼합 가능) */}
               <div className="input-group">
-                <label className="input-label">시험 출제 문제 목록</label>
+                <div style={styles.examineeHeader}>
+                  <label className="input-label" style={{ marginBottom: 0 }}>시험 출제 문제 목록</label>
+                  <span style={styles.examineeCount}>{examProblemsList.length}문항</span>
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                   {examProblemsList.map((item, idx) => (
-                    <div key={idx} className="card" style={{ padding: '0.75rem', border: '1px solid #eaecf0' }}>
-                      <p style={{ fontWeight: 600, fontSize: '0.8rem', color: 'var(--primary)' }}>
-                        문항 {idx + 1}
-                      </p>
+                    <div key={idx} className="card" style={{ padding: '0.75rem', border: '1px solid var(--border-color)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                        <p style={{ fontWeight: 600, fontSize: '0.8rem', color: 'var(--primary)' }}>
+                          문항 {idx + 1}
+                        </p>
+                        {examProblemsList.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setExamProblemsList(prev => prev.filter((_, i) => i !== idx))}
+                            style={styles.problemRemoveBtn}
+                            aria-label="문항 삭제"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      <select
+                        className="input-field"
+                        style={{ padding: '0.4rem', fontSize: '0.85rem', marginBottom: '0.25rem' }}
+                        value={item.categoryId}
+                        onChange={(e) => {
+                          const newList = [...examProblemsList];
+                          newList[idx].categoryId = e.target.value;
+                          setExamProblemsList(newList);
+                        }}
+                      >
+                        <option value="">카테고리 선택</option>
+                        {categories.map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
                       <input
                         type="text"
                         placeholder="문제명"
@@ -1837,26 +1968,47 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                       </div>
                     </div>
                   ))}
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', flex: 1 }}
+                      onClick={() =>
+                        setExamProblemsList(prev => [
+                          ...prev,
+                          { categoryId: '', problemOrder: prev.length + 1, name: '', content: '', explanation: '', correctAnswer: '' },
+                        ])
+                      }
+                    >
+                      + 문제 직접 추가
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', flex: 1, color: 'var(--primary)', borderColor: 'var(--primary-border)' }}
+                      onClick={() => setShowRoomAiModal(true)}
+                    >
+                      ✨ AI 자동 출제
+                    </button>
+                  </div>
+                </div>
+              </div>
+              </>
+              )}
+
+              <div style={styles.modalActions}>
+                {roomWizardStep === 2 && (
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    style={{ padding: '0.4rem', fontSize: '0.8rem' }}
-                    onClick={() =>
-                      setExamProblemsList(prev => [
-                        ...prev,
-                        { problemOrder: prev.length + 1, name: '', content: '', explanation: '', correctAnswer: '' },
-                      ])
-                    }
+                    onClick={() => setRoomWizardStep(1)}
                   >
-                    문제 추가하기
+                    이전
                   </button>
-                </div>
-              </div>
-
-              <div style={styles.modalActions}>
-                <button 
-                  type="button" 
-                  className="btn btn-secondary" 
+                )}
+                <button
+                  type="button"
+                  className="btn btn-secondary"
                   onClick={() => {
                     setShowCreateRoomModal(false);
                     resetRoomForm();
@@ -1865,7 +2017,105 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                   취소
                 </button>
                 <button type="submit" className="btn btn-primary">
-                  개설 및 등록 완료
+                  {roomWizardStep === 1 ? '다음' : '개설 및 등록 완료'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 2단계 내 AI 자동 출제 모달 (시험방 문제) */}
+      {showRoomAiModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3 style={styles.modalTitle}>AI 자동 문제 출제기</h3>
+            <form onSubmit={handleGenerateRoomAiProblems} style={styles.form} noValidate>
+              <div className="input-group">
+                <label className="input-label">타겟 카테고리</label>
+                <select
+                  className="input-field"
+                  value={roomAiCategory}
+                  onChange={(e) => {
+                    setRoomAiCategory(e.target.value);
+                    if (validationErrors.roomAiCategory) {
+                      setValidationErrors(prev => ({ ...prev, roomAiCategory: '' }));
+                    }
+                  }}
+                  style={{
+                    borderColor: validationErrors.roomAiCategory ? '#ef4444' : undefined,
+                  }}
+                >
+                  <option value="">출제 카테고리 선택</option>
+                  {categories.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                {validationErrors.roomAiCategory && (
+                  <span style={styles.errorText}>{validationErrors.roomAiCategory}</span>
+                )}
+                {categories.length === 0 && (
+                  <span style={styles.hintText}>
+                    선택 가능한 카테고리가 없습니다. 슈퍼관리자에게 카테고리 생성을 요청해 주세요.
+                  </span>
+                )}
+              </div>
+
+              <div className="input-group">
+                <label className="input-label">참고 학습자료 (자료 제공)</label>
+                <textarea
+                  className="input-field"
+                  rows={5}
+                  placeholder="AI가 분석하여 출제할 요약 노트, 문서 텍스트 등을 복사 붙여넣기 해주세요"
+                  value={roomAiRefData}
+                  onChange={(e) => {
+                    setRoomAiRefData(e.target.value);
+                    if (validationErrors.roomAiRefData) {
+                      setValidationErrors(prev => ({ ...prev, roomAiRefData: '' }));
+                    }
+                  }}
+                  style={{
+                    borderColor: validationErrors.roomAiRefData ? '#ef4444' : undefined,
+                    height: '140px',
+                  }}
+                />
+                {validationErrors.roomAiRefData && (
+                  <span style={styles.errorText}>{validationErrors.roomAiRefData}</span>
+                )}
+              </div>
+
+              <div className="input-group">
+                <label className="input-label">출제 문항 수</label>
+                <select
+                  className="input-field"
+                  value={roomAiCount}
+                  onChange={(e) => setRoomAiCount(Number(e.target.value))}
+                >
+                  <option value={1}>1개 문제</option>
+                  <option value={3}>3개 문제</option>
+                  <option value={5}>5개 문제</option>
+                </select>
+              </div>
+
+              <p style={styles.hintText}>
+                생성된 문제는 바로 저장되지 않고 목록에 미리보기로 추가됩니다. 내용을 검토/수정한 뒤 최종 개설해 주세요.
+              </p>
+
+              <div style={styles.modalActions}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setShowRoomAiModal(false);
+                    setRoomAiRefData('');
+                    setRoomAiCategory('');
+                  }}
+                  disabled={roomAiLoading}
+                >
+                  취소
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={roomAiLoading}>
+                  {roomAiLoading ? 'AI 출제 분석 중...' : 'AI 출제 생성'}
                 </button>
               </div>
             </form>
@@ -2152,17 +2402,6 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'left',
     display: 'block',
   },
-  demoBadge: {
-    marginLeft: '0.5rem',
-    padding: '0.15rem 0.5rem',
-    borderRadius: '999px',
-    fontSize: '0.7rem',
-    fontWeight: 700,
-    color: '#b45309',
-    backgroundColor: '#fef3c7',
-    border: '1px solid #fde68a',
-    verticalAlign: 'middle',
-  },
   modalTitle: {
     fontSize: '1.25rem',
     fontWeight: 700,
@@ -2202,22 +2441,208 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 800,
     marginBottom: '1rem',
   },
-  scrollMultiSelect: {
-    maxHeight: '120px',
-    overflowY: 'auto',
-    border: '1px solid #eaecf0',
-    padding: '0.5rem',
-    borderRadius: '8px',
-    backgroundColor: '#ffffff',
-  },
-  checkboxRow: {
+  scheduleCard: {
     display: 'flex',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: '0.75rem',
+    padding: '1rem 1.25rem',
+    borderRadius: 'var(--border-radius-md)',
+    border: '1px solid var(--border-color)',
+    backgroundColor: '#ffffff',
+  },
+  scheduleField: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.625rem',
+    flex: 1,
+    minWidth: '180px',
+  },
+  scheduleDot: {
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    flexShrink: 0,
+  },
+  scheduleFieldBody: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.15rem',
+    flex: 1,
+  },
+  scheduleFieldLabel: {
+    fontSize: '0.7rem',
+    fontWeight: 700,
+    color: 'var(--text-muted)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.03em',
+  },
+  scheduleInput: {
+    border: 'none',
+    outline: 'none',
+    padding: 0,
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    fontFamily: 'inherit',
+    backgroundColor: 'transparent',
+    width: '100%',
+  },
+  scheduleArrow: {
+    color: 'var(--text-muted)',
+    fontSize: '1rem',
+  },
+  scheduleDuration: {
+    fontSize: '0.75rem',
+    fontWeight: 700,
+    color: 'var(--primary)',
+    backgroundColor: 'var(--primary-light)',
+    border: '1px solid var(--primary-border)',
+    borderRadius: '999px',
+    padding: '0.25rem 0.75rem',
+    whiteSpace: 'nowrap',
+  },
+  examineeHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: '0.5rem',
+  },
+  examineeCount: {
+    fontSize: '0.8rem',
+    fontWeight: 700,
+    color: 'var(--primary)',
+  },
+  examineeToolbar: {
+    display: 'flex',
     gap: '0.5rem',
-    padding: '0.25rem 0',
-    fontSize: '0.875rem',
-    color: '#475467',
+    marginBottom: '0.625rem',
+  },
+  examineeSearchInput: {
+    flex: 1,
+    padding: '0.6rem 0.9rem',
+    fontSize: '0.85rem',
+  },
+  examineeToggleAllBtn: {
+    padding: '0.5rem 0.9rem',
+    fontSize: '0.8rem',
+    whiteSpace: 'nowrap',
+  },
+  examineeList: {
+    maxHeight: '220px',
+    overflowY: 'auto',
+    border: '1px solid var(--border-color)',
+    borderRadius: 'var(--border-radius-md)',
+    padding: '0.5rem',
+    backgroundColor: '#ffffff',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.375rem',
+  },
+  examineeItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+    padding: '0.5rem 0.625rem',
+    borderRadius: 'var(--border-radius-sm)',
     cursor: 'pointer',
+    transition: 'var(--transition)',
+    border: '1px solid transparent',
+  },
+  examineeItemSelected: {
+    backgroundColor: 'var(--primary-light)',
+    borderColor: 'var(--primary-border)',
+  },
+  examineeAvatar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '32px',
+    height: '32px',
+    borderRadius: '50%',
+    backgroundColor: 'var(--bg-color)',
+    color: 'var(--text-sub)',
+    fontWeight: 700,
+    fontSize: '0.85rem',
+    flexShrink: 0,
+  },
+  examineeAvatarSelected: {
+    backgroundColor: 'var(--primary)',
+    color: '#ffffff',
+  },
+  examineeInfo: {
+    display: 'flex',
+    flexDirection: 'column',
+    flex: 1,
+    minWidth: 0,
+  },
+  examineeName: {
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    color: 'var(--text-main)',
+  },
+  examineeEmail: {
+    fontSize: '0.75rem',
+    color: 'var(--text-muted)',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  examineeCheck: {
+    color: 'var(--primary)',
+    fontWeight: 800,
+    fontSize: '1rem',
+    flexShrink: 0,
+  },
+  examineeEmptyText: {
+    fontSize: '0.8rem',
+    color: 'var(--text-muted)',
+    textAlign: 'center',
+    padding: '0.75rem 0',
+  },
+  wizardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  wizardSteps: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.375rem',
+  },
+  wizardStepDot: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '24px',
+    height: '24px',
+    borderRadius: '50%',
+    backgroundColor: 'var(--bg-color)',
+    color: 'var(--text-muted)',
+    fontSize: '0.75rem',
+    fontWeight: 700,
+  },
+  wizardStepDotActive: {
+    backgroundColor: 'var(--primary)',
+    color: '#ffffff',
+  },
+  wizardStepLine: {
+    width: '24px',
+    height: '2px',
+    backgroundColor: 'var(--border-color)',
+  },
+  wizardStepLabel: {
+    fontSize: '0.8rem',
+    fontWeight: 600,
+    color: 'var(--primary)',
+    marginTop: '-0.75rem',
+  },
+  problemRemoveBtn: {
+    border: 'none',
+    background: 'none',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    fontSize: '0.8rem',
+    padding: '0.1rem 0.3rem',
   },
   examAppContainer: {
     display: 'flex',

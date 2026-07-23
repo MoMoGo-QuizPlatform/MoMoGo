@@ -23,4 +23,12 @@ public interface RoomUserRepository extends JpaRepository<RoomUser, RoomUserId> 
 
   @EntityGraph(attributePaths = {"user"})
   List<RoomUser> findAllByRoomId(UUID roomId);
+
+  // "참여 완료 시험" 집계도 항상 "내가 지금 속한 공간"의 시험만 대상으로 해야 한다.
+  // (공간을 나갔다가 다른 공간에 가입해도 예전 RoomUser 행은 남아있으므로,
+  //  room.space로 반드시 필터링해서 다른 공간의 이력이 섞여 보이지 않게 한다.)
+  long countByUser_IdAndIsAttendedTrueAndRoom_Space_Id(UUID userId, UUID spaceId);
+
+  @EntityGraph(attributePaths = {"room"})
+  List<RoomUser> findAllByUser_IdAndRoom_Space_Id(UUID userId, UUID spaceId);
 }
