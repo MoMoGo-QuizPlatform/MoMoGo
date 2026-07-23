@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import type { UserResponse } from '../types/user';
 import { PASSWORD_REGEX, PASSWORD_INVALID_MESSAGE } from '../types/user';
 import type { SpaceResponse, SpaceCreateRequest } from '../types/space';
-import { request, getAccessToken } from '../services/api';
+import { request, getAccessToken, connectNotificationSse } from '../services/api';
 import { logout } from '../services/auth';
 
 interface DashboardPageProps {
@@ -18,14 +18,22 @@ const DEFAULT_AVATAR = '/basic.png';
 
 interface NotificationItem {
   id: string;
+  title: string;
   content: string;
-  status: 'UNCONFIRMED' | 'CONFIRMED';
+  type: string;
+  isConfirmed: boolean;
   createdAt: string;
 }
 
 interface CategoryResponse {
   id: string;
   name: string;
+}
+
+interface DashboardSummaryResponse {
+  todaySolvedCount: number;
+  weeklyAccuracyRate: number;
+  completedExamCount: number;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, onLogout, showToast, onEnterSpace, onUserUpdate }) => {
@@ -42,6 +50,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
   const [superadminSubTab, setSuperadminSubTab] = useState<'users' | 'spaces' | 'problems' | 'categories'>('users');
 
   const [space, setSpace] = useState<SpaceResponse | null>(null);
+  const [dashboardSummary, setDashboardSummary] = useState<DashboardSummaryResponse | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -388,6 +397,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
     loadInitialData();
   }, []);
 
+  // 알림 실시간 수신(SSE) 연결 - 신규 알림 발생 시 목록 맨 앞에 추가
+  useEffect(() => {
+    const disconnect = connectNotificationSse({
+      onNotification: (noti: NotificationItem) => {
+        setNotifications(prev => (prev.some(n => n.id === noti.id) ? prev : [noti, ...prev]));
+      },
+      onError: (err) => {
+        console.error('알림 SSE 연결 오류:', err);
+      },
+    });
+    return () => disconnect();
+  }, []);
+
   const loadInitialData = async () => {
     setLoading(true);
     try {
@@ -395,38 +417,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
       const spaceData = await request<SpaceResponse | null>('/api/spaces/me', { method: 'GET' });
       setSpace(spaceData);
 
-      // 2. 알림 조회 및 모의 알림 추가
+      // 1-1. 메인 대시보드 요약 카드(싱글모드/종합성과/참여시험) 조회
+      try {
+        const summaryData = await request<DashboardSummaryResponse>('/api/dashboards/summary', { method: 'GET' });
+        setDashboardSummary(summaryData);
+      } catch (err) {
+        console.error('대시보드 요약 조회 실패', err);
+      }
+
+      // 2. 알림 조회
       try {
         const notiData = await request<any>('/api/notifications', { method: 'GET' });
-        const list = notiData?.values || notiData?.data || [];
-        if (list.length > 0) {
-          setNotifications(list);
-        } else {
-          // 알림이 비어 있는 경우 시나리오 검증용 모의 알림 삽입 (규칙 3.3.4 알림 발송 요건 반영)
-          const mockNotifications: NotificationItem[] = [
-            {
-              id: 'noti-1',
-              content: user.role === 'ADMIN'
-                  ? '관리하는 공간에 새로운 유저(김철수)가 새로 유입되었습니다.'
-                  : '학습 공간의 어드민이 회원님의 권한을 ADMIN으로 상향조정했습니다.',
-              status: 'UNCONFIRMED',
-              createdAt: new Date().toISOString()
-            },
-            {
-              id: 'noti-2',
-              content: '참여 중인 공간 [마포고 수학 문제은행]에 새로운 평가시험 [2026학년도 1회차 정기 평가시험]이 생성되었습니다.',
-              status: 'UNCONFIRMED',
-              createdAt: new Date(Date.now() - 3600000).toISOString()
-            },
-            {
-              id: 'noti-3',
-              content: '회원님의 개인 일간/주간 학습 리포트가 발행되었습니다. 대시보드 탭에서 확인하세요.',
-              status: 'UNCONFIRMED',
-              createdAt: new Date(Date.now() - 7200000).toISOString()
-            }
-          ];
-          setNotifications(mockNotifications);
-        }
+        setNotifications(notiData?.data || []);
       } catch (err) {
         console.error('Failed to load notifications', err);
       }
@@ -498,7 +500,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
           try {
             await request<UserResponse>(`/api/super-admin/users/${targetUser.id}/ban`, {
               method: 'PATCH',
-              body: JSON.stringify({ is_banned: nextBannedState }),
+              body: JSON.stringify({ banned: nextBannedState }),
             });
 
             showToast('회원 정지 상태가 변경되었습니다.', 'success');
@@ -662,7 +664,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
     setValidationErrors({});
   };
 
-  const unreadNotiCount = notifications.filter(n => n.status !== 'CONFIRMED').length;
+  const unreadNotiCount = notifications.filter(n => !n.isConfirmed).length;
 
   if (loading) {
     return <div style={styles.loadingContainer}>MoMoGo 데이터를 불러오는 중입니다...</div>;
@@ -786,10 +788,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                   style={styles.userHeaderWidget}
                   onClick={() => { setShowUserMenu(!showUserMenu); setShowNotifications(false); }}
                 >
-                  <img 
-                    src={profilePreview || (removeProfileImage ? DEFAULT_AVATAR : savedProfilePreview || user.profileImageUrl || DEFAULT_AVATAR)} 
-                    alt={user.name} 
-                    style={styles.headerAvatar} 
+                  <img
+                    src={profilePreview || (removeProfileImage ? DEFAULT_AVATAR : savedProfilePreview || user.profileImageUrl || DEFAULT_AVATAR)}
+                    alt={user.name}
+                    style={styles.headerAvatar}
                   />
                   <span style={styles.headerUserName}>{user.name}</span>
                   {user.role && (
@@ -802,10 +804,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                 {showUserMenu && (
                   <div style={styles.userMenuPopover} className="card">
                     <div style={styles.userMenuHeader}>
-                      <img 
-                        src={profilePreview || (removeProfileImage ? DEFAULT_AVATAR : savedProfilePreview || user.profileImageUrl || DEFAULT_AVATAR)} 
-                        alt={user.name} 
-                        style={styles.menuAvatar} 
+                      <img
+                        src={profilePreview || (removeProfileImage ? DEFAULT_AVATAR : savedProfilePreview || user.profileImageUrl || DEFAULT_AVATAR)}
+                        alt={user.name}
+                        style={styles.menuAvatar}
                       />
                       <div>
                         <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{user.name}</div>
@@ -868,21 +870,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                 <section style={styles.statsGrid}>
                   <div className="card" style={styles.statCard}>
                     <span className="badge badge-info">싱글 모드</span>
-                    <h3 style={styles.statTitle}>오늘 완료한 퀴즈</h3>
-                    <div style={styles.statNumber}>4개</div>
-                    <p style={styles.statDesc}>어제보다 2개 더 많이 학습했습니다.</p>
+                    <h3 style={styles.statTitle}>오늘 맞춘 퀴즈</h3>
+                    <div style={styles.statNumber}>{dashboardSummary?.todaySolvedCount ?? 0}개</div>
+                    <p style={styles.statDesc}>오늘 정답 처리된 싱글모드 문제 수입니다.</p>
                   </div>
                   <div className="card" style={styles.statCard}>
                     <span className="badge badge-success">종합 성과</span>
                     <h3 style={styles.statTitle}>이번 주 평균 정답률</h3>
-                    <div style={styles.statNumber}>82%</div>
-                    <p style={styles.statDesc}>전주 대비 4% 상승하였습니다.</p>
+                    <div style={styles.statNumber}>{Math.round(dashboardSummary?.weeklyAccuracyRate ?? 0)}%</div>
+                    <p style={styles.statDesc}>이번 주 월요일부터 지금까지의 정답률입니다.</p>
                   </div>
                   <div className="card" style={styles.statCard}>
                     <span className="badge badge-danger">참여 시험</span>
                     <h3 style={styles.statTitle}>참가 완료 시험방</h3>
-                    <div style={styles.statNumber}>1개</div>
-                    <p style={styles.statDesc}>완료된 모든 시험은 채점 중입니다.</p>
+                    <div style={styles.statNumber}>{dashboardSummary?.completedExamCount ?? 0}개</div>
+                    <p style={styles.statDesc}>답안을 제출해 응시를 완료한 시험방 수입니다.</p>
                   </div>
                 </section>
 
@@ -1042,7 +1044,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                             <th style={styles.th}>이메일</th>
                             <th style={styles.th}>역할 권한</th>
                             <th style={styles.th}>정지 상태</th>
-                            <th style={styles.th}>제재 명령</th>
+                            <th style={styles.th}>유저 정지</th>
                           </tr>
                           </thead>
                           <tbody>
@@ -1062,15 +1064,27 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                                 </td>
                                 <td style={styles.td}>
                                   {u.role === 'SUPER_ADMIN' ? (
-                                      <span style={styles.disabledText}>명령 금지</span>
+                                      <span style={styles.disabledText}>변경 불가</span>
                                   ) : (
-                                      <button
-                                          className={`btn ${u.banned ? 'btn-secondary' : 'btn-danger'}`}
-                                          style={styles.banBtn}
+                                      <div
+                                          role="switch"
+                                          aria-checked={u.banned}
+                                          style={styles.banSwitch}
                                           onClick={() => handleToggleUserBan(u)}
                                       >
-                                        {u.banned ? '정지 해제' : '영구 정지'}
-                                      </button>
+                                        <div
+                                            style={{
+                                              ...styles.banSwitchTrack,
+                                              backgroundColor: u.banned ? '#ef4444' : '#d0d5dd',
+                                            }}
+                                        />
+                                        <div
+                                            style={{
+                                              ...styles.banSwitchKnob,
+                                              transform: u.banned ? 'translateX(20px)' : 'translateX(0)',
+                                            }}
+                                        />
+                                      </div>
                                   )}
                                 </td>
                               </tr>
@@ -1404,12 +1418,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                           </button>
                         )}
                       </div>
-                      {profilePreview && (
-                          <div style={{ marginTop: '0.75rem' }}>
-                            <p style={{ fontSize: '0.8rem', color: 'var(--text-sub)', marginBottom: '0.375rem' }}>프로필 이미지 미리보기:</p>
-                            <img src={profilePreview} alt="Profile Preview" style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #d0d5dd' }} />
-                          </div>
-                      )}
                     </div>
 
                     {/* 비밀번호 변경 영역 (소셜 가입 유저는 비밀번호 변경 불가) */}
@@ -2121,9 +2129,29 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.825rem',
     fontStyle: 'italic',
   },
-  banBtn: {
-    fontSize: '0.8rem',
-    padding: '0.4rem 0.8rem',
+  banSwitch: {
+    position: 'relative',
+    display: 'inline-block',
+    width: '44px',
+    height: '24px',
+    cursor: 'pointer',
+  },
+  banSwitchTrack: {
+    position: 'absolute',
+    inset: 0,
+    borderRadius: '999px',
+    transition: 'background-color 0.2s',
+  },
+  banSwitchKnob: {
+    position: 'absolute',
+    top: '2px',
+    left: '2px',
+    width: '20px',
+    height: '20px',
+    borderRadius: '50%',
+    backgroundColor: '#fff',
+    transition: 'transform 0.2s',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
   },
   moreLoadBtn: {
     alignSelf: 'center',

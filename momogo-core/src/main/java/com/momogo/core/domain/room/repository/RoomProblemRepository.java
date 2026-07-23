@@ -7,4 +7,6 @@ import java.util.UUID;
 
 @Repository
 public interface RoomProblemRepository extends JpaRepository<RoomProblem, UUID>, RoomProblemRepositoryCustom {
+
+  long countByRoomId(UUID roomId);
 }

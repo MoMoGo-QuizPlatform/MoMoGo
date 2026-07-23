@@ -7,7 +7,13 @@ import com.lowagie.text.Paragraph;
 import com.lowagie.text.pdf.BaseFont;
 import com.lowagie.text.pdf.PdfWriter;
 import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.domain.problem.dto.response.GeneratedProblemData;
+import com.momogo.core.domain.problem.entity.ProblemCategory;
+import com.momogo.core.domain.problem.exception.ProblemErrorCode;
+import com.momogo.core.domain.problem.repository.ProblemCategoryRepository;
+import com.momogo.core.domain.problem.service.ProblemGenerationService;
 import com.momogo.core.domain.room.dto.request.ProblemAnswerRequest;
+import com.momogo.core.domain.room.dto.request.RoomProblemDraftAiRequest;
 import com.momogo.core.domain.room.dto.request.RoomAnswerSubmitRequest;
 import com.momogo.core.domain.room.dto.request.RoomCreateRequest;
 import com.momogo.core.domain.room.dto.response.ProblemGradeReport;
@@ -62,6 +68,8 @@ public class RoomServiceImpl implements RoomService{
   private final UserRepository userRepository;
   private final SpaceRepository spaceRepository;
   private final UserRoomAnswerRepository userRoomAnswerRepository;
+  private final ProblemCategoryRepository categoryRepository;
+  private final ProblemGenerationService problemGenerationService;
   private final RoomMapper roomMapper;
   private final ApplicationEventPublisher eventPublisher;
 
@@ -92,10 +100,22 @@ public class RoomServiceImpl implements RoomService{
         .toList();
     roomUserRepository.saveAll(roomUsers);
 
-    // 4. RoomProblem 생성 및 저장
+    // 4. 문제별 카테고리 일괄 조회 및 검증
+    List<UUID> categoryIds = request.problems().stream()
+        .map(com.momogo.core.domain.room.dto.request.RoomProblemCreatedRequest::categoryId)
+        .distinct()
+        .toList();
+    Map<UUID, ProblemCategory> categoriesById = categoryRepository.findAllById(categoryIds).stream()
+        .collect(Collectors.toMap(ProblemCategory::getId, Function.identity()));
+    if (categoriesById.size() != categoryIds.size()) {
+      throw new BusinessException(ProblemErrorCode.CATEGORY_NOT_FOUND);
+    }
+
+    // 5. RoomProblem 생성 및 저장
     List<RoomProblem> roomProblems = request.problems().stream()
         .map(prob -> RoomProblem.of(
             savedRoom,
+            categoriesById.get(prob.categoryId()),
             prob.problemOrder(),
             prob.name(),
             prob.content(),
@@ -115,6 +135,18 @@ public class RoomServiceImpl implements RoomService{
     ));
 
     return roomMapper.toResponse(savedRoom);
+  }
+
+  @Override
+  public List<GeneratedProblemData> generateDraftProblems(UUID userId, UUID spaceId, RoomProblemDraftAiRequest request) {
+    User user = userRepository.findById(userId)
+        .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
+
+    if (user.getRole() != UserRole.ADMIN || user.getSpace() == null || !user.getSpace().getId().equals(spaceId)) {
+      throw new BusinessException(SpaceErrorCode.NOT_SPACE_ADMIN);
+    }
+
+    return problemGenerationService.generateProblems(request.referenceText(), request.questionCount());
   }
 
   @Override

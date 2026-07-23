@@ -3,9 +3,11 @@ package com.momogo.core.domain.room.dto.response;
 import java.util.UUID;
 
 /**
- * 응시자용 평가 시험 문제 상세 응답 DTO (정답 및 해설 제외)
+ * 관리자용 방 문제 응답 DTO
  * @param id 평가 시험 문제 ID
  * @param roomId 평가 시험 방 ID
+ * @param categoryId 문제 카테고리 ID
+ * @param categoryName 문제 카테고리 이름
  * @param problemOrder 문제 순서
  * @param name 문제 이름
  * @param content 문제 내용
@@ -13,6 +15,8 @@ import java.util.UUID;
 public record RoomProblemResponse(
     UUID id,
     UUID roomId,
+    UUID categoryId,
+    String categoryName,
     Integer problemOrder,
     String name,
     String content

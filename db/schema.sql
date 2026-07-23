@@ -88,6 +88,7 @@ CREATE TABLE "TBL_ROOM_USER" (
 CREATE TABLE "TBL_ROOM_PROBLEM" (
                                     "id"               UUID          NOT NULL,
                                     "room_id"          UUID          NOT NULL,
+                                    "category_id"      UUID          NOT NULL,
                                     "problem_order"    INTEGER       NOT NULL,
                                     "name"             VARCHAR(255)  NULL,
                                     "content"          TEXT          NULL,
@@ -175,6 +176,7 @@ ALTER TABLE "TBL_PROBLEM_COUNTERS" ADD CONSTRAINT "FK_TBL_PROBLEM_TO_TBL_PROBLEM
 -- 방 및 독립 시험지 세팅
 ALTER TABLE "TBL_ROOM" ADD CONSTRAINT "FK_TBL_SPACE_TO_TBL_ROOM" FOREIGN KEY ("space_id") REFERENCES "TBL_SPACE" ("id");
 ALTER TABLE "TBL_ROOM_PROBLEM" ADD CONSTRAINT "FK_TBL_ROOM_TO_TBL_ROOM_PROBLEM" FOREIGN KEY ("room_id") REFERENCES "TBL_ROOM" ("id") ON DELETE CASCADE;
+ALTER TABLE "TBL_ROOM_PROBLEM" ADD CONSTRAINT "FK_TBL_PROBLEM_CATEGORY_TO_TBL_ROOM_PROBLEM" FOREIGN KEY ("category_id") REFERENCES "TBL_PROBLEM_CATEGORY" ("id");
 
 -- 방 참여 유저 맵
 ALTER TABLE "TBL_ROOM_USER" ADD CONSTRAINT "FK_TBL_ROOM_TO_TBL_ROOM_USER" FOREIGN KEY ("room_id") REFERENCES "TBL_ROOM" ("id") ON DELETE CASCADE;

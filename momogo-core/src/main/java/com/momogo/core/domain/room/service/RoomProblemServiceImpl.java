@@ -2,6 +2,9 @@ package com.momogo.core.domain.room.service;
 
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.problem.dto.response.GeneratedProblemData;
+import com.momogo.core.domain.problem.entity.ProblemCategory;
+import com.momogo.core.domain.problem.exception.ProblemErrorCode;
+import com.momogo.core.domain.problem.repository.ProblemCategoryRepository;
 import com.momogo.core.domain.problem.service.ProblemGenerationService;
 import com.momogo.core.domain.room.dto.request.RoomProblemAiCreateRequest;
 import com.momogo.core.domain.room.dto.request.RoomProblemCreatedRequest;
@@ -38,6 +41,8 @@ public class RoomProblemServiceImpl implements RoomProblemService {
 
   private final RoomProblemMapper roomProblemMapper;
 
+  private final ProblemCategoryRepository categoryRepository;
+
   private final ProblemGenerationService problemGenerationService;
 
   private final RoomProblemPersister roomProblemPersister;
@@ -56,8 +61,10 @@ public class RoomProblemServiceImpl implements RoomProblemService {
 
     validateAdmin(userId, room);
 
+    ProblemCategory category = getCategory(request.categoryId());
+
     RoomProblem roomProblem = RoomProblem.of(
-        room, request.problemOrder(), request.name(),
+        room, category, request.problemOrder(), request.name(),
         request.content(), request.explanation(), request.correctAnswer());
 
     RoomProblem saved = roomProblemRepository.save(roomProblem);
@@ -82,7 +89,9 @@ public class RoomProblemServiceImpl implements RoomProblemService {
 
     RoomProblem roomProblem = getRoomProblem(roomId, roomProblemId);
 
-    roomProblem.update(null, request.name(), request.content(), request.explanation(), request.correctAnswer());
+    ProblemCategory category = request.categoryId() != null ? getCategory(request.categoryId()) : null;
+
+    roomProblem.update(category, null, request.name(), request.content(), request.explanation(), request.correctAnswer());
 
     return roomProblemMapper.toResponse(roomProblem);
   }
@@ -121,12 +130,14 @@ public class RoomProblemServiceImpl implements RoomProblemService {
 
     validateAdmin(userId, room);
 
+    ProblemCategory category = getCategory(request.categoryId());
+
     List<GeneratedProblemData> generated = problemGenerationService.generateProblems(
         request.referenceText(),
         request.questionCount()
     );
 
-    return roomProblemPersister.saveGeneratedProblems(roomId, generated);
+    return roomProblemPersister.saveGeneratedProblems(roomId, category, generated);
   }
 
 
@@ -134,6 +145,12 @@ public class RoomProblemServiceImpl implements RoomProblemService {
 
     return roomRepository.findById(roomId)
         .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+  }
+
+  private ProblemCategory getCategory(UUID categoryId) {
+
+    return categoryRepository.findById(categoryId)
+        .orElseThrow(() -> new BusinessException(ProblemErrorCode.CATEGORY_NOT_FOUND));
   }
 
   private RoomProblem getRoomProblem(UUID roomId, UUID roomProblemId) {

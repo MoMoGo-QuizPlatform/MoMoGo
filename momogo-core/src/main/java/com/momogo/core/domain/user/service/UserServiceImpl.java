@@ -332,6 +332,23 @@ public class UserServiceImpl implements UserService {
     }
 
     /**
+     * 요청 유저가 소속된 공간에 함께 속한 전체 유저 목록을 조회합니다. (응시 대상자 지정 등에 사용)
+     *
+     * @param userId 요청 유저 식별자
+     * @return 같은 공간에 소속된 유저 목록 DTO (소속 공간이 없으면 빈 리스트)
+     */
+    @Override
+    public List<UserResponse> findUsersInMySpace(UUID userId) {
+        User user = findActiveUser(userId);
+        if (user.getSpace() == null) {
+            return List.of();
+        }
+        return userRepository.findAllBySpaceId(user.getSpace().getId()).stream()
+                .map(userMapper::toResponse)
+                .toList();
+    }
+
+    /**
      * 유저의 정지(밴) 상태를 업데이트합니다.
      * 유저를 정지 처리할 경우, 유저의 모든 활성 JWT 세션을 만료시키는 이벤트를 발행합니다.
      *

@@ -2,6 +2,7 @@ package com.momogo.core.domain.room.service;
 
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.problem.dto.response.GeneratedProblemData;
+import com.momogo.core.domain.problem.entity.ProblemCategory;
 import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
 import com.momogo.core.domain.room.entity.Room;
 import com.momogo.core.domain.room.entity.RoomProblem;
@@ -32,6 +33,7 @@ public class RoomProblemPersister {
   @Transactional
   public List<RoomProblemResponse> saveGeneratedProblems(
       UUID roomId,
+      ProblemCategory category,
       List<GeneratedProblemData> generated) {
 
     // 같은 방에 대한 동시 채번 요청을 직렬화하기 위해 비관적 락으로 재조회
@@ -49,6 +51,7 @@ public class RoomProblemPersister {
       roomProblemsToSave.add(
           RoomProblem.of(
               lockedRoom,
+              category,
               nextOrder++,
               dto.name(),
               dto.content(),

@@ -5,13 +5,18 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.util.UUID;
 
 /**
  * AI 문제 자동 생성 요청 DTO (방 문제 생성)
+ * @param categoryId        문제 카테고리 아이디
  * @param referenceText     참고자료 텍스트
  * @param questionCount     지정 문항 수
  */
 public record RoomProblemAiCreateRequest(
+
+    @NotNull(message = "카테고리는 필수입니다.")
+    UUID categoryId,
 
     @NotBlank(message = "참고자료는 필수입니다.")
     @Size(max = 10000, message = "참고자료는 10,000자를 초과할 수 없습니다.")

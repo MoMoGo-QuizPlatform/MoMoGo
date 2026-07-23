@@ -18,12 +18,28 @@ const App: React.FC = () => {
   const [user, setUser] = useState<UserResponse | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  // 소셜 로그인 실패 시 백엔드가 리다이렉트로 넘긴 error/code 쿼리 파라미터를 담아 모달로 보여주기 위한 상태
+  const [oauthErrorMessage, setOauthErrorMessage] = useState<string | null>(null);
   // 대시보드와 공간 상세 페이지 뷰 상태 정의
   const [view, setView] = useState<
     { type: 'dashboard'; initialTab?: 'dashboard' | 'superadmin' | 'mypage' } | { type: 'space'; space: any }
   >({ type: 'dashboard' });
 
   useEffect(() => {
+    // 소셜 로그인 실패 리다이렉트(/oauth-callback?error=...&code=...)로 들어온 경우,
+    // 주소창에 에러 메시지/코드가 그대로 노출되지 않도록 즉시 쿼리스트링을 제거하고 모달로 대체 안내한다.
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const errorMsg = params.get('error');
+    if (code || errorMsg) {
+      window.history.replaceState({}, '', window.location.pathname);
+      setOauthErrorMessage(
+        code === 'USER-BANNED_USER'
+          ? '해당 계정은 정지된 상태입니다.\n(관리자에게 문의하세요.)'
+          : (errorMsg || '소셜 로그인 처리 중 오류가 발생했습니다.')
+      );
+    }
+
     checkSession();
   }, []);
 
@@ -81,6 +97,25 @@ const App: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {/* 소셜 로그인 실패(정지 계정 등) 안내 모달 */}
+      {oauthErrorMessage && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3 style={styles.oauthModalTitle}>로그인 실패</h3>
+            <p style={styles.oauthModalDesc}>{oauthErrorMessage}</p>
+            <div style={styles.oauthModalActions}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setOauthErrorMessage(null)}
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {user === null ? (
         <LoginPage 
@@ -171,6 +206,22 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: '#f0f2ff',
     color: '#4338ca',
     border: '1px solid #c7d2fe',
+  },
+  oauthModalTitle: {
+    fontSize: '1.25rem',
+    fontWeight: 700,
+    color: '#1d2939',
+  },
+  oauthModalDesc: {
+    fontSize: '0.875rem',
+    color: '#475467',
+    lineHeight: 1.5,
+    whiteSpace: 'pre-line',
+  },
+  oauthModalActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    marginTop: '0.5rem',
   },
 };
 

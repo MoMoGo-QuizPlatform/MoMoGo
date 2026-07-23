@@ -20,6 +20,10 @@ import com.momogo.core.domain.problem.repository.ProblemCountersRepository;
 import com.momogo.core.domain.problem.repository.ProblemRepository;
 import com.momogo.core.domain.space.entity.Space;
 import com.momogo.core.domain.space.repository.SpaceRepository;
+import com.momogo.core.domain.user.entity.UserProblem;
+import com.momogo.core.domain.user.entity.UserProblemId;
+import com.momogo.core.domain.user.repository.UserProblemRepository;
+import com.momogo.core.domain.user.repository.UserRepository;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -48,6 +52,10 @@ public class ProblemServiceImpl implements ProblemService {
   private final ProblemGenerationService problemGenerationService;
 
   private final ProblemPersister problemPersister;
+
+  private final UserProblemRepository userProblemRepository;
+
+  private final UserRepository userRepository;
 
   /**
    * 문제 직접 생성
@@ -240,6 +248,21 @@ public class ProblemServiceImpl implements ProblemService {
         });
 
     counters.recordAttempt(isSolved);
+
+    // 유저별 문제 풀이 이력 upsert (싱글모드 대시보드/랭킹 집계의 데이터 소스)
+    UserProblemId userProblemId = new UserProblemId(userId, problemId);
+    UserProblem userProblem = userProblemRepository.findById(userProblemId).orElse(null);
+    if (userProblem != null) {
+      userProblem.updateAttempt(isSolved, request.userAnswer());
+    } else {
+      userProblemRepository.save(UserProblem.builder()
+          .id(userProblemId)
+          .user(userRepository.getReferenceById(userId))
+          .problem(problem)
+          .isSolved(isSolved)
+          .userAnswer(request.userAnswer())
+          .build());
+    }
 
     return new ProblemSolveResponse(
         isSolved,

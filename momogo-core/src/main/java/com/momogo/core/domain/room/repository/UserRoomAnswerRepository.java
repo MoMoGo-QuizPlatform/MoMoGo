@@ -13,4 +13,7 @@ public interface UserRoomAnswerRepository extends JpaRepository<UserRoomAnswer, 
 
   @Query("select u from UserRoomAnswer u join fetch u.roomProblem rp where rp.room.id = :roomId")
   List<UserRoomAnswer> findByRoomProblemRoomId(@Param("roomId") java.util.UUID roomId);
+
+  @Query("select u from UserRoomAnswer u join fetch u.roomProblem rp where rp.room.id = :roomId and u.user.id = :userId")
+  List<UserRoomAnswer> findByRoomProblemRoomIdAndUserId(@Param("roomId") java.util.UUID roomId, @Param("userId") java.util.UUID userId);
 }

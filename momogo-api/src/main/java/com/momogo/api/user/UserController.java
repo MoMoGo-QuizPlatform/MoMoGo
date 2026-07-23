@@ -8,6 +8,7 @@ import com.momogo.core.domain.user.dto.response.UserResponse;
 import com.momogo.core.domain.user.service.UserService;
 import jakarta.validation.Valid;
 import java.io.IOException;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -43,6 +44,19 @@ public class UserController {
     ) {
         UserResponse userResponse = userService.createUser(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(userResponse);
+    }
+
+    /**
+     * 요청 유저와 같은 공간에 소속된 전체 유저 목록을 조회합니다. (응시 대상자 지정 등에 사용)
+     *
+     * @param userId 인증 객체에서 추출한 요청 유저 식별자
+     * @return 같은 공간에 소속된 유저 목록 DTO
+     */
+    @GetMapping
+    public ResponseEntity<List<UserResponse>> findUsersInMySpace(
+            @AuthenticationPrincipal(expression = "userResponse.id") UUID userId
+    ) {
+        return ResponseEntity.ok(userService.findUsersInMySpace(userId));
     }
 
     /**

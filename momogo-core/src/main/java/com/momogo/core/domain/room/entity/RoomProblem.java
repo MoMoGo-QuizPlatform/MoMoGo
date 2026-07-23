@@ -1,6 +1,7 @@
 package com.momogo.core.domain.room.entity;
 
 import com.momogo.core.common.base.BaseTimeEntity;
+import com.momogo.core.domain.problem.entity.ProblemCategory;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -33,6 +34,10 @@ public class RoomProblem extends BaseTimeEntity {
     @JoinColumn(name = "room_id", nullable = false)
     private Room room;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id", nullable = false)
+    private ProblemCategory category;
+
     @Column(name = "problem_order", nullable = false)
     private Integer problemOrder;
 
@@ -51,6 +56,7 @@ public class RoomProblem extends BaseTimeEntity {
     // 정적 팩토리 생성 메소드
     public static RoomProblem of(
         Room room,
+        ProblemCategory category,
         Integer problemOrder,
         String name,
         String content,
@@ -59,6 +65,7 @@ public class RoomProblem extends BaseTimeEntity {
     ) {
         return RoomProblem.builder()
             .room(room)
+            .category(category)
             .problemOrder(problemOrder)
             .name(name)
             .content(content)
@@ -69,11 +76,14 @@ public class RoomProblem extends BaseTimeEntity {
 
     // 방 문제 수정 시 사용하는 팩토리 메서드
     public void update(
+        ProblemCategory category,
         Integer problemOrder,
         String name,
         String content,
         String explanation,
         String correctAnswer) {
+
+        if (category != null) this.category = category;
 
         if (problemOrder != null) this.problemOrder = problemOrder;
 
