@@ -1,13 +1,15 @@
 import React, { useEffect, useState, useRef } from 'react';
 import type { UserResponse } from '../types/user';
 import type { SpaceResponse } from '../types/space';
-import { request } from '../services/api';
+import { request, getAccessToken } from '../services/api';
 
 interface SpacePageProps {
   user: UserResponse;
   space: SpaceResponse;
   onBack: (tab?: 'dashboard' | 'mypage') => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  initialTab?: 'problems' | 'exams' | 'dashboard';
+  onTabChange?: (tab: 'problems' | 'exams' | 'dashboard') => void;
 }
 
 interface CategoryResponse {
@@ -58,11 +60,17 @@ interface RoomResponse {
 interface RoomReportResponse {
   roomId: string;
   roomName: string;
-  userScores: {
+  totalApplicants: number;
+  attendedCount: number;
+  averageScore: number;
+  maxScore: number;
+  takerGrades: {
     userId: string;
-    userName: string;
+    name: string;
+    email: string;
+    profileImageUrl: string | null;
+    isAttended: boolean;
     score: number;
-    attended: boolean;
   }[];
 }
 
@@ -110,6 +118,26 @@ interface ExamDetailResponse {
   }[];
 }
 
+interface AnswerGradingItem {
+  answerId: string;
+  userId: string;
+  userName: string;
+  userProfileImageUrl: string | null;
+  problemId: string;
+  problemOrder: number;
+  problemName: string;
+  userAnswer: string;
+  correctAnswer: string;
+  isCorrect: boolean | null;
+}
+
+interface RoomGradingResponse {
+  roomId: string;
+  roomName: string;
+  isAiGradingInProgress: boolean;
+  answers: AnswerGradingItem[];
+}
+
 interface RoomProblemResponse {
   id: string;
   roomId: string;
@@ -121,11 +149,16 @@ interface RoomProblemResponse {
 interface SpaceRankingResponse {
   userId: string;
   userName: string;
+  profileImageUrl: string | null;
   solvedCount: number;
 }
 
-export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showToast }) => {
-  const [activeTab, setActiveTab] = useState<'problems' | 'exams' | 'dashboard'>('problems');
+export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showToast, initialTab, onTabChange }) => {
+  const [activeTab, setActiveTabState] = useState<'problems' | 'exams' | 'dashboard'>(initialTab ?? 'problems');
+  const setActiveTab = (tab: 'problems' | 'exams' | 'dashboard') => {
+    setActiveTabState(tab);
+    onTabChange?.(tab);
+  };
 
   // 데이터 로딩 상태
   const [loading, setLoading] = useState(false);
@@ -194,7 +227,6 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
   // 2-1. 실시간 대기실 / 시험 모드 관련 상태
   const [currentExamRoom, setCurrentExamRoom] = useState<RoomResponse | null>(null);
   const [examMode, setExamMode] = useState<'none' | 'waiting' | 'testing'>('none');
-  const [waitingUsers, setWaitingUsers] = useState<{ userId: string; name: string }[]>([]);
   const [examProblems, setExamProblems] = useState<RoomProblemResponse[]>([]);
   const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
   const [examAnswers, setExamAnswers] = useState<Record<string, string>>({});
@@ -203,6 +235,12 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
   // 2-2. 성적표 / 통계 모달
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportData, setReportData] = useState<RoomReportResponse | null>(null);
+
+  // 2-3. 채점 검토 모달 (AI 채점 + 수동 채점 확인 후 확정)
+  const [showGradingModal, setShowGradingModal] = useState(false);
+  const [gradingRoomId, setGradingRoomId] = useState<string | null>(null);
+  const [gradingData, setGradingData] = useState<RoomGradingResponse | null>(null);
+  const [gradingLoading, setGradingLoading] = useState(false);
 
   // 3. 마이페이지 대시보드 관련 상태
   const [summary, setSummary] = useState<SingleSummaryResponse | null>(null);
@@ -271,15 +309,11 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
   // 시험방 로딩
   const loadRooms = async () => {
     try {
-      const data = await request<RoomResponse[]>(`/api/spaces/${space.id}/rooms/list`, {
+      const data = await request<RoomResponse[]>(`/api/spaces/${space.id}/rooms`, {
         method: 'GET',
-      }).catch(async () => {
-        // 백엔드에 전용 맵핑 리스트가 없을 시 전체 목록으로 조회 필터링 fallback
-        return request<RoomResponse[]>(`/api/spaces/${space.id}/rooms`, { method: 'GET' });
       });
       if (data) setRooms(data);
     } catch {
-      // 룸 리스트 불러오기 임시 하드코딩 mock 구조
       setRooms([]);
     }
   };
@@ -583,21 +617,6 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
   const handleEnterWaitRoom = async (room: RoomResponse) => {
     setCurrentExamRoom(room);
     setExamMode('waiting');
-    setWaitingUsers([{ userId: user.id || 'me', name: user.name }]);
-
-    // 웹소켓/STOMP 연결 시뮬레이션 및 실시간 유저 업데이트
-    const names = ['김철수', '이영희', '박민수', '최현우'];
-    let counter = 0;
-    const interval = setInterval(() => {
-      if (counter < names.length) {
-        setWaitingUsers(prev => [...prev, { userId: `id-${counter}`, name: names[counter] }]);
-        counter++;
-      } else {
-        clearInterval(interval);
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
   };
 
   // 시험 시작하기
@@ -672,12 +691,60 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
     }
   };
 
-  // 채점 최종 확정
-  const handleFinalizeGrade = async (roomId: string) => {
+  // 채점 검토 모달 데이터 로딩 (AI 채점 진행 상태 및 답안별 정오 판정 포함)
+  const loadGradingData = async (roomId: string) => {
     try {
-      await request(`/api/rooms/${roomId}/finalize-grade`, { method: 'POST' });
-      showToast('최종 채점 마감이 확정되었습니다. 이제 리포트를 열람할 수 있습니다.', 'success');
+      setGradingLoading(true);
+      const data = await request<RoomGradingResponse>(`/api/rooms/${roomId}/grading`, { method: 'GET' });
+      setGradingData(data);
+    } catch (err: any) {
+      showToast(err.message || '채점 데이터 로드 실패', 'error');
+    } finally {
+      setGradingLoading(false);
+    }
+  };
 
+  // 채점 검토 모달 열기
+  const handleOpenGrading = (roomId: string) => {
+    setGradingRoomId(roomId);
+    setGradingData(null);
+    setShowGradingModal(true);
+    loadGradingData(roomId);
+  };
+
+  // 채점 검토 모달 내 AI 채점 실행 (완료 후 "새로고침"으로 결과 재조회)
+  const handleAiGradeInModal = async () => {
+    if (!gradingRoomId) return;
+    await handleAiGrade(gradingRoomId);
+    await loadGradingData(gradingRoomId);
+  };
+
+  // 답안 한 건 수동 채점 (클릭 즉시 저장)
+  const handleManualGrade = async (answerId: string, isCorrect: boolean) => {
+    if (!gradingRoomId) return;
+    try {
+      await request(`/api/rooms/${gradingRoomId}/grading/${answerId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isCorrect }),
+      });
+      setGradingData(prev => prev ? {
+        ...prev,
+        answers: prev.answers.map(a => a.answerId === answerId ? { ...a, isCorrect } : a),
+      } : prev);
+    } catch (err: any) {
+      showToast(err.message || '수동 채점 반영 실패', 'error');
+    }
+  };
+
+  // 채점 검토 모달에서 최종 확정
+  const handleFinalizeFromGrading = async () => {
+    if (!gradingRoomId) return;
+    try {
+      await request(`/api/rooms/${gradingRoomId}/finalize-grade`, { method: 'POST' });
+      showToast('최종 채점 마감이 확정되었습니다. 이제 리포트를 열람할 수 있습니다.', 'success');
+      setShowGradingModal(false);
+      setGradingData(null);
+      setGradingRoomId(null);
       loadRooms();
       loadDashboardData();
     } catch (err: any) {
@@ -698,10 +765,31 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
     }
   };
 
-  // 리포트 PDF 다운로드
-  const handleDownloadPdf = (roomId: string) => {
-    window.open(`http://localhost:8080/api/rooms/${roomId}/report/download`, '_blank');
-    showToast('PDF 다운로드를 시도합니다.', 'info');
+  // 리포트 PDF 다운로드 (Authorization 헤더 인증이 필요해 window.open 대신 인증된 fetch로 blob을 받아 저장)
+  const handleDownloadPdf = async (roomId: string) => {
+    try {
+      const headers: Record<string, string> = {};
+      const token = getAccessToken();
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const response = await fetch(`/api/rooms/${roomId}/report/download`, {
+        headers,
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('PDF 다운로드에 실패했습니다.');
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `room_${roomId}_report.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      showToast(err.message || 'PDF 다운로드에 실패했습니다.', 'error');
+    }
   };
 
   // 마이페이지 시험 상세 보기
@@ -721,7 +809,6 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
     setCurrentExamRoom(null);
     setExamProblems([]);
     setExamAnswers({});
-    setWaitingUsers([]);
     loadRooms();
     loadDashboardData();
   };
@@ -767,15 +854,6 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
             <p><strong>시험방 이름:</strong> {currentExamRoom.name}</p>
             <p><strong>설명:</strong> {currentExamRoom.description}</p>
             <p><strong>시험 시간:</strong> {new Date(currentExamRoom.testStartAt).toLocaleTimeString()} ~ {new Date(currentExamRoom.testEndAt).toLocaleTimeString()}</p>
-          </div>
-
-          <h3 style={styles.examSubTitle}>현재 접속 유저 목록</h3>
-          <div style={styles.participantList}>
-            {waitingUsers.map((u, i) => (
-              <div key={i} style={styles.participantTag}>
-                <span style={styles.statusDot}></span> {u.name}
-              </div>
-            ))}
           </div>
 
           <div style={styles.examWaitActions}>
@@ -1128,6 +1206,8 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
 
             <div style={styles.examGrid}>
               {rooms.map(room => {
+                // 이미 답안을 제출한 시험인지 여부 (재입장/재응시 차단용)
+                const alreadySubmitted = examsHistory.some(ex => ex.roomId === room.id);
                 return (
                   <div key={room.id} className="card" style={styles.examCard}>
                     <div>
@@ -1146,22 +1226,13 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                       {user.role === 'ADMIN' ? (
                         <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
                           {!room.isEnded ? (
-                            <>
-                              <button
-                                className="btn btn-secondary"
-                                style={{ flex: 1 }}
-                                onClick={() => handleAiGrade(room.id)}
-                              >
-                                AI 채점
-                              </button>
-                              <button
-                                className="btn btn-primary"
-                                style={{ flex: 1 }}
-                                onClick={() => handleFinalizeGrade(room.id)}
-                              >
-                                채점 확정
-                              </button>
-                            </>
+                            <button
+                              className="btn btn-primary"
+                              style={{ flex: 1 }}
+                              onClick={() => handleOpenGrading(room.id)}
+                            >
+                              채점하기
+                            </button>
                           ) : (
                             <>
                               <button
@@ -1181,6 +1252,25 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                             </>
                           )}
                         </div>
+                      ) : alreadySubmitted && room.isEnded ? (
+                        // 채점 확정(방 마감) 전에는 정답/해설을 보여주지 않는다.
+                        // 같은 방에서 다른 응시자가 아직 풀고 있을 수 있어, 먼저 제출한 사람이
+                        // 결과를 미리 보면 옆에서 컨닝하는 데 악용될 수 있기 때문.
+                        <button
+                          className="btn btn-secondary"
+                          style={{ width: '100%' }}
+                          onClick={() => handleViewExamDetail(room.id)}
+                        >
+                          응시 완료 (결과 보기)
+                        </button>
+                      ) : alreadySubmitted ? (
+                        <button className="btn btn-secondary" style={{ width: '100%' }} disabled>
+                          제출 완료 (채점 대기 중)
+                        </button>
+                      ) : room.isEnded ? (
+                        <button className="btn btn-secondary" style={{ width: '100%' }} disabled>
+                          종료된 시험입니다
+                        </button>
                       ) : (
                         <button
                           className="btn btn-primary"
@@ -1223,11 +1313,11 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                 </div>
                 <div className="card" style={styles.summaryCard}>
                   <span style={styles.summaryLabel}>평균 정답률</span>
-                  <h3 style={styles.summaryVal}>{summary.averageCorrectRate}%</h3>
+                  <h3 style={styles.summaryVal}>{summary.averageCorrectRate.toFixed(1)}%</h3>
                 </div>
                 <div className="card" style={styles.summaryCard}>
                   <span style={styles.summaryLabel}>평균 오답률</span>
-                  <h3 style={styles.summaryVal}>{100 - summary.averageCorrectRate}%</h3>
+                  <h3 style={styles.summaryVal}>{(100 - summary.averageCorrectRate).toFixed(1)}%</h3>
                 </div>
               </div>
             )}
@@ -1240,9 +1330,9 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
               <p style={{ fontSize: '0.85rem', color: 'var(--text-sub)', marginBottom: '1.25rem' }}>
                 공간 내부에 등록되어 있는 문제를 푼 유저들의 이번 주(월요일~현재) 실시간 랭킹입니다.
               </p>
-              <div style={styles.tableScroll}>
+              <div style={styles.tableScrollFixed}>
                 <table style={styles.table}>
-                  <thead>
+                  <thead style={styles.stickyThead}>
                     <tr>
                       <th style={{ width: '80px' }}>순위</th>
                       <th>이름</th>
@@ -1259,7 +1349,12 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                           style={isMe ? { backgroundColor: '#f0f2ff', borderLeft: '4px solid var(--primary)' } : undefined}
                         >
                           <td><strong>{i + 1}등{medal}</strong></td>
-                          <td>{r.userName}{isMe ? ' (나)' : ''}</td>
+                          <td>
+                            <div style={styles.nameWithAvatar}>
+                              <img src={r.profileImageUrl || '/basic.png'} alt={r.userName} style={styles.avatarImg} />
+                              <span>{r.userName}{isMe ? ' (나)' : ''}</span>
+                            </div>
+                          </td>
                           <td>{r.solvedCount}개</td>
                         </tr>
                       );
@@ -1280,9 +1375,9 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
               {/* 싱글모드 풀이 이력 */}
               <div className="card" style={styles.dashboardSectionCard}>
                 <h3 style={styles.dashboardSectionTitle}>싱글모드 오답 학습 이력</h3>
-                <div style={styles.tableScroll}>
+                <div style={styles.tableScrollFixed}>
                   <table style={styles.table}>
-                    <thead>
+                    <thead style={styles.stickyThead}>
                       <tr>
                         <th>문제명</th>
                         <th>카테고리</th>
@@ -1318,9 +1413,9 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
               {/* 평가시험 이력 */}
               <div className="card" style={styles.dashboardSectionCard}>
                 <h3 style={styles.dashboardSectionTitle}>정기 평가시험 응시 결과</h3>
-                <div style={styles.tableScroll}>
+                <div style={styles.tableScrollFixed}>
                   <table style={styles.table}>
-                    <thead>
+                    <thead style={styles.stickyThead}>
                       <tr>
                         <th>시험명</th>
                         <th>취득 점수</th>
@@ -1845,14 +1940,18 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                           ...(selected ? styles.examineeItemSelected : {}),
                         }}
                       >
-                        <span
+                        <img
+                          src={u.profileImageUrl || '/basic.png'}
+                          alt={u.name || '?'}
                           style={{
-                            ...styles.examineeAvatar,
-                            ...(selected ? styles.examineeAvatarSelected : {}),
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '50%',
+                            objectFit: 'cover',
+                            flexShrink: 0,
+                            border: selected ? '2px solid var(--primary)' : '1px solid var(--border-color)',
                           }}
-                        >
-                          {(u.name || '?').charAt(0)}
-                        </span>
+                        />
                         <div style={styles.examineeInfo}>
                           <span style={styles.examineeName}>{u.name}</span>
                           <span style={styles.examineeEmail}>{u.email}</span>
@@ -2140,15 +2239,20 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                   </tr>
                 </thead>
                 <tbody>
-                  {reportData.userScores.map((score, i) => (
+                  {reportData.takerGrades.map((grade, i) => (
                     <tr key={i}>
-                      <td>{score.userName}</td>
                       <td>
-                        <span className={`badge ${score.attended ? 'badge-success' : 'badge-danger'}`}>
-                          {score.attended ? '응시 완료' : '결시'}
+                        <div style={styles.nameWithAvatar}>
+                          <img src={grade.profileImageUrl || '/basic.png'} alt={grade.name} style={styles.avatarImg} />
+                          <span>{grade.name}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`badge ${grade.isAttended ? 'badge-success' : 'badge-danger'}`}>
+                          {grade.isAttended ? '응시 완료' : '결시'}
                         </span>
                       </td>
-                      <td><strong>{score.attended ? `${score.score}점` : '-'}</strong></td>
+                      <td><strong>{grade.isAttended ? `${grade.score}점` : '-'}</strong></td>
                     </tr>
                   ))}
                 </tbody>
@@ -2158,6 +2262,120 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
             <div style={styles.modalActions}>
               <button className="btn btn-secondary" onClick={() => setShowReportModal(false)}>
                 닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 채점 검토 모달 - AI 채점 실행 + 답안별 수동 채점 확인 후 최종 확정 */}
+      {showGradingModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '900px' }}>
+            <h3 style={styles.modalTitle}>채점하기</h3>
+            {gradingData && <p style={styles.modalDesc}>시험명: {gradingData.roomName}</p>}
+
+            {gradingData?.isAiGradingInProgress && (
+              <p style={{ ...styles.hintText, color: 'var(--primary)' }}>
+                AI 채점이 진행 중입니다. 잠시 후 "새로고침"을 눌러 결과를 확인해 주세요.
+              </p>
+            )}
+
+            <p style={styles.hintText}>
+              정오 표시가 없는(미채점) 답안은 확정 시 제출 답안과 모범 정답의 글자가 완전히 같은 경우에만 자동으로 정답 처리됩니다.
+              주관식 등 표현이 다를 수 있는 답안은 AI 채점을 실행하거나 아래에서 직접 정답/오답을 지정해 주세요.
+            </p>
+
+            {gradingLoading ? (
+              <p style={styles.hintText}>채점 데이터를 불러오는 중...</p>
+            ) : (
+              <div style={{ ...styles.tableScrollFixed, maxHeight: '420px' }}>
+                <table style={styles.table}>
+                  <thead style={styles.stickyThead}>
+                    <tr>
+                      <th style={{ width: '50px' }}>번호</th>
+                      <th>응시자</th>
+                      <th>제출 답안</th>
+                      <th>모범 정답</th>
+                      <th style={{ width: '150px' }}>정오 판정</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(gradingData?.answers || []).map(item => (
+                      <tr key={item.answerId}>
+                        <td>{item.problemOrder}</td>
+                        <td>
+                          <div style={styles.nameWithAvatar}>
+                            <img src={item.userProfileImageUrl || '/basic.png'} alt={item.userName} style={styles.avatarImg} />
+                            <span>{item.userName}</span>
+                          </div>
+                        </td>
+                        <td>{item.userAnswer || '-'}</td>
+                        <td>{item.correctAnswer}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '0.25rem' }}>
+                            <button
+                              type="button"
+                              className={item.isCorrect === true ? 'btn btn-primary' : 'btn btn-secondary'}
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', flex: 1 }}
+                              onClick={() => handleManualGrade(item.answerId, true)}
+                            >
+                              정답
+                            </button>
+                            <button
+                              type="button"
+                              className={item.isCorrect === false ? 'btn btn-danger' : 'btn btn-secondary'}
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', flex: 1 }}
+                              onClick={() => handleManualGrade(item.answerId, false)}
+                            >
+                              오답
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {gradingData && gradingData.answers.length === 0 && (
+                      <tr>
+                        <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                          제출된 답안이 존재하지 않습니다.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div style={styles.modalActions}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => gradingRoomId && loadGradingData(gradingRoomId)}
+                disabled={gradingLoading}
+              >
+                새로고침
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleAiGradeInModal}
+                disabled={gradingData?.isAiGradingInProgress}
+              >
+                AI 채점 실행
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setShowGradingModal(false);
+                  setGradingData(null);
+                  setGradingRoomId(null);
+                }}
+              >
+                닫기
+              </button>
+              <button type="button" className="btn btn-primary" onClick={handleFinalizeFromGrading}>
+                채점 확정
               </button>
             </div>
           </div>
@@ -2382,6 +2600,18 @@ const styles: Record<string, React.CSSProperties> = {
     overflowX: 'auto',
     flex: 1,
   },
+  tableScrollFixed: {
+    overflowX: 'auto',
+    overflowY: 'auto',
+    maxHeight: '560px',
+    flex: 1,
+  },
+  stickyThead: {
+    position: 'sticky',
+    top: 0,
+    backgroundColor: 'var(--card-bg)',
+    zIndex: 1,
+  },
   table: {
     width: '100%',
     borderCollapse: 'collapse',
@@ -2552,22 +2782,18 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'var(--primary-light)',
     borderColor: 'var(--primary-border)',
   },
-  examineeAvatar: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '32px',
-    height: '32px',
+  avatarImg: {
+    width: '28px',
+    height: '28px',
     borderRadius: '50%',
-    backgroundColor: 'var(--bg-color)',
-    color: 'var(--text-sub)',
-    fontWeight: 700,
-    fontSize: '0.85rem',
+    objectFit: 'cover',
+    border: '1px solid var(--border-color)',
     flexShrink: 0,
   },
-  examineeAvatarSelected: {
-    backgroundColor: 'var(--primary)',
-    color: '#ffffff',
+  nameWithAvatar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
   },
   examineeInfo: {
     display: 'flex',
@@ -2672,35 +2898,6 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: '2rem',
     fontSize: '0.9rem',
     lineHeight: 1.6,
-  },
-  examSubTitle: {
-    fontSize: '1.1rem',
-    textAlign: 'left',
-    marginBottom: '0.75rem',
-  },
-  participantList: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '0.5rem',
-    marginBottom: '2.5rem',
-  },
-  participantTag: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '0.375rem',
-    background: '#ffffff',
-    border: '1px solid #eaecf0',
-    padding: '0.4rem 0.8rem',
-    borderRadius: '999px',
-    fontSize: '0.825rem',
-    fontWeight: 600,
-    color: '#475467',
-  },
-  statusDot: {
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%',
-    background: '#10b981',
   },
   examWaitActions: {
     display: 'flex',

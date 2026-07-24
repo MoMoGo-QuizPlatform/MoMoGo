@@ -1,9 +1,11 @@
 package com.momogo.core.domain.room.service;
 
 import com.momogo.core.domain.problem.dto.response.GeneratedProblemData;
+import com.momogo.core.domain.room.dto.request.ManualGradeRequest;
 import com.momogo.core.domain.room.dto.request.RoomAnswerSubmitRequest;
 import com.momogo.core.domain.room.dto.request.RoomCreateRequest;
 import com.momogo.core.domain.room.dto.request.RoomProblemDraftAiRequest;
+import com.momogo.core.domain.room.dto.response.RoomGradingResponse;
 import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
 import com.momogo.core.domain.room.dto.response.RoomReportResponse;
 import com.momogo.core.domain.room.dto.response.RoomResponse;
@@ -20,6 +22,8 @@ public interface RoomService {
 
   RoomResponse getRoomDetails(UUID userId, UUID roomId);
 
+  List<RoomResponse> getRoomList(UUID userId, UUID spaceId);
+
   List<RoomProblemResponse> getRoomProblems(UUID userId, UUID roomId);
 
   void submitRoomAnswer(UUID userId, UUID roomId, RoomAnswerSubmitRequest request);
@@ -31,6 +35,10 @@ public interface RoomService {
   byte[] downloadRoomReportPdf(UUID adminUserId, UUID roomId);
 
   void startAiGrading(UUID adminUserId, UUID roomId);
+
+  RoomGradingResponse getRoomGrading(UUID adminUserId, UUID roomId);
+
+  void manualGradeAnswer(UUID adminUserId, UUID roomId, UUID answerId, ManualGradeRequest request);
 
   void saveGradingResults(Map<UUID, Boolean> gradingResults, UUID roomId);
 

@@ -877,7 +877,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                   <div className="card" style={styles.statCard}>
                     <span className="badge badge-success">종합 성과</span>
                     <h3 style={styles.statTitle}>이번 주 평균 정답률</h3>
-                    <div style={styles.statNumber}>{Math.round(dashboardSummary?.weeklyAccuracyRate ?? 0)}%</div>
+                    <div style={styles.statNumber}>{(dashboardSummary?.weeklyAccuracyRate ?? 0).toFixed(1)}%</div>
                     <p style={styles.statDesc}>이번 주 월요일부터 지금까지의 정답률입니다.</p>
                   </div>
                   <div className="card" style={styles.statCard}>
@@ -1050,7 +1050,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                           <tbody>
                           {allUsers.map(u => (
                               <tr key={u.id} style={styles.tr}>
-                                <td style={styles.td}>{u.name}</td>
+                                <td style={styles.td}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <img
+                                      src={u.profileImageUrl || '/basic.png'}
+                                      alt={u.name}
+                                      style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #eaecf0', flexShrink: 0 }}
+                                    />
+                                    <span>{u.name}</span>
+                                  </div>
+                                </td>
                                 <td style={styles.td}>{u.email}</td>
                                 <td style={styles.td}>
                                   <span className="badge badge-info">{u.role}</span>

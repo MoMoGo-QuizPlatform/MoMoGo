@@ -5,8 +5,26 @@ import { SpacePage } from './pages/SpacePage'; // SpacePage 임포트 추가
 import { refresh } from './services/auth';
 import { request, setSessionExpiredHandler } from './services/api';
 import type { UserResponse } from './types/user';
+import type { SpaceResponse } from './types/space';
 
 export type ToastType = 'success' | 'error' | 'info';
+
+type ViewState =
+  | { type: 'dashboard'; initialTab?: 'dashboard' | 'superadmin' | 'mypage' }
+  | { type: 'space'; space: SpaceResponse; tab?: 'problems' | 'exams' | 'dashboard' };
+
+const VIEW_STORAGE_KEY = 'momogo_view';
+
+// 새로고침 시 새로고침 직전 보던 화면(공간/탭)을 그대로 유지하기 위해 sessionStorage에서 복원
+const loadStoredView = (): ViewState => {
+  try {
+    const raw = sessionStorage.getItem(VIEW_STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as ViewState;
+  } catch {
+    // 저장된 값이 손상된 경우 기본 대시보드로 폴백
+  }
+  return { type: 'dashboard' };
+};
 
 export interface Toast {
   id: string;
@@ -20,10 +38,12 @@ const App: React.FC = () => {
   const [toasts, setToasts] = useState<Toast[]>([]);
   // 소셜 로그인 실패 시 백엔드가 리다이렉트로 넘긴 error/code 쿼리 파라미터를 담아 모달로 보여주기 위한 상태
   const [oauthErrorMessage, setOauthErrorMessage] = useState<string | null>(null);
-  // 대시보드와 공간 상세 페이지 뷰 상태 정의
-  const [view, setView] = useState<
-    { type: 'dashboard'; initialTab?: 'dashboard' | 'superadmin' | 'mypage' } | { type: 'space'; space: any }
-  >({ type: 'dashboard' });
+  // 대시보드와 공간 상세 페이지 뷰 상태 정의 (새로고침 복원을 위해 sessionStorage에서 초기값 로드)
+  const [view, setView] = useState<ViewState>(loadStoredView);
+
+  useEffect(() => {
+    sessionStorage.setItem(VIEW_STORAGE_KEY, JSON.stringify(view));
+  }, [view]);
 
   useEffect(() => {
     // 소셜 로그인 실패 리다이렉트(/oauth-callback?error=...&code=...)로 들어온 경우,
@@ -72,6 +92,7 @@ const App: React.FC = () => {
     setSessionExpiredHandler(() => {
       setUser(null);
       setView({ type: 'dashboard' });
+      sessionStorage.removeItem(VIEW_STORAGE_KEY);
       showToast('세션이 만료되었습니다. 다시 로그인해 주세요.', 'error');
     });
     return () => setSessionExpiredHandler(null);
@@ -129,7 +150,11 @@ const App: React.FC = () => {
         <DashboardPage
           user={user}
           initialTab={view.initialTab}
-          onLogout={() => setUser(null)}
+          onLogout={() => {
+            setUser(null);
+            setView({ type: 'dashboard' });
+            sessionStorage.removeItem(VIEW_STORAGE_KEY);
+          }}
           showToast={showToast}
           onEnterSpace={(space) => setView({ type: 'space', space })}
           onUserUpdate={(updatedUser) => setUser(updatedUser)}
@@ -138,6 +163,8 @@ const App: React.FC = () => {
         <SpacePage
           user={user}
           space={view.space}
+          initialTab={view.tab}
+          onTabChange={(tab) => setView((prev) => (prev.type === 'space' ? { ...prev, tab } : prev))}
           onBack={(tab = 'dashboard') => setView({ type: 'dashboard', initialTab: tab })}
           showToast={showToast}
         />

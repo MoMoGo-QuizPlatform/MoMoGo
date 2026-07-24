@@ -1,9 +1,11 @@
 package com.momogo.api.room;
 
 import com.momogo.core.domain.problem.dto.response.GeneratedProblemData;
+import com.momogo.core.domain.room.dto.request.ManualGradeRequest;
 import com.momogo.core.domain.room.dto.request.RoomAnswerSubmitRequest;
 import com.momogo.core.domain.room.dto.request.RoomCreateRequest;
 import com.momogo.core.domain.room.dto.request.RoomProblemDraftAiRequest;
+import com.momogo.core.domain.room.dto.response.RoomGradingResponse;
 import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
 import com.momogo.core.domain.room.dto.response.RoomReportResponse;
 import com.momogo.core.domain.room.dto.response.RoomResponse;
@@ -20,6 +22,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -49,6 +52,21 @@ public class RoomController {
 
     RoomResponse response = roomService.createRoom(userId, spaceId, request);
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
+  }
+
+  /**
+   * 공간 내 평가 시험방 목록 조회 (최근 생성 순)
+   * @param userId 유저 아이디
+   * @param spaceId 공간 아이디
+   * @return 평가 시험방 목록
+   */
+  @GetMapping("/spaces/{spaceId}/rooms")
+  public ResponseEntity<List<RoomResponse>> getRoomList(
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID userId,
+      @PathVariable UUID spaceId
+  ) {
+    List<RoomResponse> response = roomService.getRoomList(userId, spaceId);
+    return ResponseEntity.ok(response);
   }
 
   /**
@@ -111,6 +129,39 @@ public class RoomController {
       @Valid @RequestBody RoomAnswerSubmitRequest request
   ) {
     roomService.submitRoomAnswer(userId, roomId, request);
+    return ResponseEntity.ok().build();
+  }
+
+  /**
+   * 채점 검토 화면 조회 (응시자별 문제별 제출 답안/모범 정답/현재 정오 판정)
+   * @param adminUserId 관리자 유저 아이디
+   * @param roomId 평가 시험 아이디
+   * @return 채점 검토 데이터
+   */
+  @GetMapping("/rooms/{roomId}/grading")
+  public ResponseEntity<RoomGradingResponse> getRoomGrading(
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID adminUserId,
+      @PathVariable UUID roomId
+  ) {
+    return ResponseEntity.ok(roomService.getRoomGrading(adminUserId, roomId));
+  }
+
+  /**
+   * 답안 한 건 수동 채점(정오 판정 오버라이드)
+   * @param adminUserId 관리자 유저 아이디
+   * @param roomId 평가 시험 아이디
+   * @param answerId 답안 아이디
+   * @param request 수동 채점 요청 DTO
+   * @return 성공 여부
+   */
+  @PatchMapping("/rooms/{roomId}/grading/{answerId}")
+  public ResponseEntity<Void> manualGradeAnswer(
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID adminUserId,
+      @PathVariable UUID roomId,
+      @PathVariable UUID answerId,
+      @Valid @RequestBody ManualGradeRequest request
+  ) {
+    roomService.manualGradeAnswer(adminUserId, roomId, answerId, request);
     return ResponseEntity.ok().build();
   }
 
