@@ -37,8 +37,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -277,6 +277,8 @@ public class UserServiceImpl implements UserService {
         UserSearchCondition condition = new UserSearchCondition(
                 request.nameLike(),
                 request.emailLike(),
+                request.spaceNameLike(),
+                request.role(),
                 request.cursor(),
                 request.idAfter(),
                 request.sortDirection(),
@@ -303,7 +305,9 @@ public class UserServiceImpl implements UserService {
                 default -> lastUser.getCreatedAt();
             };
 
-            nextCursor = sortTime != null ? sortTime.toString() : null;
+            if (sortTime != null) {
+                nextCursor = sortTime.truncatedTo(ChronoUnit.MICROS).toString();
+            }
             nextIdAfter = lastUser.getId();
         }
 
