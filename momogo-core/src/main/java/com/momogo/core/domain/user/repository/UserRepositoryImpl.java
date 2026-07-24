@@ -17,9 +17,11 @@ import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 
+import static com.momogo.core.domain.space.entity.QSpace.space;
 import static com.momogo.core.domain.user.entity.QUser.user;
 
 @Slf4j
@@ -34,9 +36,12 @@ public class UserRepositoryImpl implements UserRepositoryCustom {
     public List<User> findAllByCursor(UserSearchCondition condition, Pageable pageable) {
         return queryFactory
                 .selectFrom(user)
+                .leftJoin(user.space, space).fetchJoin()
                 .where(
                         nameLike(condition.nameLike()),
                         emailLike(condition.emailLike()),
+                        spaceNameLike(condition.spaceNameLike()),
+                        roleEq(condition.role()),
                         // 정렬 기준에 따라 활성/탈퇴 회원을 동적으로 분기하여 필터링
                         filterBySortBy(condition.sortBy()),
                         cursorCondition(condition.sortBy(), condition.cursor(), condition.idAfter(), condition.sortDirection())
@@ -51,21 +56,32 @@ public class UserRepositoryImpl implements UserRepositoryCustom {
         Long count = queryFactory
                 .select(user.count())
                 .from(user)
+                .leftJoin(user.space, space)
                 .where(
                         nameLike(condition.nameLike()),
                         emailLike(condition.emailLike()),
+                        spaceNameLike(condition.spaceNameLike()),
+                        roleEq(condition.role()),
                         filterBySortBy(condition.sortBy())
                 )
                 .fetchOne();
         return count != null ? count : 0L;
     }
 
+    private BooleanExpression roleEq(UserRole role) {
+        return role != null ? user.role.eq(role) : null;
+    }
+
+    private BooleanExpression spaceNameLike(String spaceNameLike) {
+        return spaceNameLike != null && !spaceNameLike.isBlank() ? space.name.containsIgnoreCase(spaceNameLike) : null;
+    }
+
     private BooleanExpression nameLike(String nameLike) {
-        return nameLike != null && !nameLike.isBlank() ? user.name.contains(nameLike) : null;
+        return nameLike != null && !nameLike.isBlank() ? user.name.containsIgnoreCase(nameLike) : null;
     }
 
     private BooleanExpression emailLike(String emailLike) {
-        return emailLike != null && !emailLike.isBlank() ? user.email.contains(emailLike) : null;
+        return emailLike != null && !emailLike.isBlank() ? user.email.containsIgnoreCase(emailLike) : null;
     }
 
     private DateTimePath<OffsetDateTime> getSortPath(String sortBy) {
@@ -84,7 +100,7 @@ public class UserRepositoryImpl implements UserRepositoryCustom {
 
         final OffsetDateTime cursorTime;
         try {
-            cursorTime = OffsetDateTime.parse(cursor);
+            cursorTime = OffsetDateTime.parse(cursor).truncatedTo(ChronoUnit.MICROS);
         } catch (DateTimeParseException e) {
             log.warn("유효하지 않은 형식의 커서 전달됨: {}", cursor);
             return null;
@@ -101,13 +117,17 @@ public class UserRepositoryImpl implements UserRepositoryCustom {
                 .or(sortPath.eq(cursorTime).and(user.id.lt(idAfter)));
     }
 
-    // 계정을  삭제하지 않은 유저는 deletedAt = null이므로
-    // Super Admin이 deletedAt을 필터 조건으로 사용했을 경우 deletedAt != null인 삭제 요청한 유저만 확인할 수 있다.
+    // 계정을 삭제하지 않은 유저는 deletedAt = null이므로
+    // deletedAt을 필터 조건으로 사용했을 경우 deletedAt != null인 삭제 요청한 유저만 확인한다.
+    // updatedAt 정렬 시에는 활성 유저만 확인하고, createdAt 정렬 시에는 탈퇴 유저를 포함한 전체 회원을 조회한다.
     private BooleanExpression filterBySortBy(String sortBy) {
         if ("deletedAt".equals(sortBy)) {
             return user.deletedAt.isNotNull();
         }
-        return user.deletedAt.isNull();
+        if ("updatedAt".equals(sortBy)) {
+            return user.deletedAt.isNull();
+        }
+        return null;
     }
 
     // 1차 정렬 조건 필드와 2차 순서 보장용 고유 ID(UUID) 정렬을 결합하여 복합 정렬 순서 정의

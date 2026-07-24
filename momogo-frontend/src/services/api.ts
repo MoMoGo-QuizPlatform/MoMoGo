@@ -141,11 +141,12 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     }
   }
 
-  // URL 파라미터 조립
+  // URL 파라미터 조립 (ISO-8601 커서 등 + 기호가 포함된 파라미터의 %2B 인코딩 보장)
   let url = resolvedPath;
   if (params) {
     const searchParams = new URLSearchParams(params);
-    url += `?${searchParams.toString()}`;
+    const queryString = searchParams.toString().replace(/\+/g, '%2B');
+    url += `?${queryString}`;
   }
 
   const defaultHeaders: Record<string, string> = {

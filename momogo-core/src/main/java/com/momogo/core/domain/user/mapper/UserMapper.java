@@ -17,8 +17,9 @@ public abstract class UserMapper {
     @Value("${app.file.base-url}")
     protected String fileBaseUrl;
 
-    @Mapping(target = "banned", source = "isBanned")
     @Mapping(target = "profileImageUrl", source = "profileImageUrl", qualifiedByName = "resolveImageUrl")
+    @Mapping(target = "spaceId", source = "space.id")
+    @Mapping(target = "spaceName", source = "space.name")
     public abstract UserResponse toResponse(User user);
 
     // 이미지 파일명을 클라이언트가 접근할 수 있는 완전한 URL 형태로 변환합니다.

@@ -51,7 +51,7 @@ public class MoMoGoUserDetails implements UserDetails, OAuth2User {
     @Override
     public boolean isAccountNonLocked() {
         // 계정 정지(밴) 상태인 경우 잠금(Locked) 처리
-        return !Boolean.TRUE.equals(userResponse.banned());
+        return !Boolean.TRUE.equals(userResponse.isBanned());
     }
 
     @Override
