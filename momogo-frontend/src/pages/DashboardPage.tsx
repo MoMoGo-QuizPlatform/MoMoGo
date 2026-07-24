@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import type { UserResponse } from '../types/user';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import type { UserResponse, UserCursorResponse, UserSortByType, SortDirectionType } from '../types/user';
 import { PASSWORD_REGEX, PASSWORD_INVALID_MESSAGE } from '../types/user';
 import type { SpaceResponse, SpaceCreateRequest } from '../types/space';
 import { request, getAccessToken, connectNotificationSse } from '../services/api';
@@ -71,7 +71,41 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
   // 슈퍼관리자용 상태 목록
   const [allUsers, setAllUsers] = useState<UserResponse[]>([]);
   const [userCursor, setUserCursor] = useState<string | null>(null);
+  const [userNextIdAfter, setUserNextIdAfter] = useState<string | null>(null);
   const [userHasNext, setUserHasNext] = useState(false);
+  const [userTotalCount, setUserTotalCount] = useState<number | null>(null);
+  const [overallUserTotalCount, setOverallUserTotalCount] = useState<number | null>(null);
+  const [userLoadingMore, setUserLoadingMore] = useState(false);
+  const userSentinelRef = useRef<HTMLDivElement | null>(null);
+
+  const userCursorRef = useRef<string | null>(null);
+  const userNextIdAfterRef = useRef<string | null>(null);
+  const userHasNextRef = useRef<boolean>(false);
+  const userLoadingMoreRef = useRef<boolean>(false);
+
+  // 슈퍼관리자 유저 필터링 상태
+  const [userSearchType, setUserSearchType] = useState<'name' | 'email' | 'role' | 'space'>('name');
+  const [userSearchKeyword, setUserSearchKeyword] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState<'ALL' | 'USER' | 'ADMIN' | 'SUPER_ADMIN'>('ALL');
+  const [userSortBy, setUserSortBy] = useState<UserSortByType>('createdAt');
+  const [userSortDirection, setUserSortDirection] = useState<SortDirectionType>('DESCENDING');
+
+  const userSortByRef = useRef<UserSortByType>('createdAt');
+  const userSortDirectionRef = useRef<SortDirectionType>('DESCENDING');
+  const userSearchTypeRef = useRef<'name' | 'email' | 'role' | 'space'>('name');
+  const userSearchKeywordRef = useRef<string>('');
+  const userRoleFilterRef = useRef<'ALL' | 'USER' | 'ADMIN' | 'SUPER_ADMIN'>('ALL');
+
+  userCursorRef.current = userCursor;
+  userNextIdAfterRef.current = userNextIdAfter;
+  userHasNextRef.current = userHasNext;
+  userLoadingMoreRef.current = userLoadingMore;
+  userSortByRef.current = userSortBy;
+  userSortDirectionRef.current = userSortDirection;
+  userSearchTypeRef.current = userSearchType;
+  userSearchKeywordRef.current = userSearchKeyword;
+  userRoleFilterRef.current = userRoleFilter;
+
   const [categories, setCategories] = useState<CategoryResponse[]>([]);
 
   // 신규 카테고리 상태
@@ -441,7 +475,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
 
       // 4. 슈퍼관리자 권한인 경우 관련 데이터 미리 조회
       if (user.role === 'SUPER_ADMIN') {
-        await loadSuperAdminUsers(null);
+        await loadSuperAdminUsers(null, null);
         await loadSuperAdminCategories();
         await loadSuperAdminSpaces();
         await loadSuperAdminProblems();
@@ -453,29 +487,184 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
     }
   };
 
-  // 슈퍼관리자 유저 목록 페이징 조회 (요구사항 7)
-  const loadSuperAdminUsers = async (cursor: string | null) => {
+  // 슈퍼관리자 유저 목록 페이징 및 필터 조회
+  const loadSuperAdminUsers = async (
+    cursorVal: string | null = null,
+    idAfterVal: string | null = null,
+    overrideFilters?: {
+      searchType?: 'name' | 'email' | 'role' | 'space';
+      searchKeyword?: string;
+      role?: 'ALL' | 'USER' | 'ADMIN' | 'SUPER_ADMIN';
+      sortBy?: UserSortByType;
+      sortDirection?: SortDirectionType;
+    }
+  ) => {
+    if (cursorVal && userLoadingMore) return;
     try {
-      const params: Record<string, string> = { size: '20' };
-      if (cursor) {
-        params.cursor = cursor;
+      if (!cursorVal) {
+        userCursorRef.current = null;
+        userNextIdAfterRef.current = null;
+        userHasNextRef.current = false;
+        setUserCursor(null);
+        setUserNextIdAfter(null);
+        setUserHasNext(false);
+        setAllUsers([]);
+      } else {
+        setUserLoadingMore(true);
       }
-      const data = await request<any>('/api/super-admin/users', {
+
+      const filters = {
+        searchType: overrideFilters?.searchType || userSearchTypeRef.current,
+        searchKeyword: overrideFilters?.searchKeyword !== undefined ? overrideFilters.searchKeyword : userSearchKeywordRef.current,
+        role: overrideFilters?.role || userRoleFilterRef.current,
+        sortBy: overrideFilters?.sortBy || userSortByRef.current,
+        sortDirection: overrideFilters?.sortDirection || userSortDirectionRef.current,
+      };
+
+      const params: Record<string, string> = {
+        limit: '20',
+        sortBy: filters.sortBy,
+        sortDirection: filters.sortDirection,
+      };
+
+      if (filters.searchType === 'role') {
+        if (filters.role && filters.role !== 'ALL') {
+          params.role = filters.role;
+        }
+      } else {
+        const trimmedKeyword = filters.searchKeyword.trim();
+        if (trimmedKeyword) {
+          if (filters.searchType === 'name') {
+            params.nameLike = trimmedKeyword;
+          } else if (filters.searchType === 'email') {
+            params.emailLike = trimmedKeyword;
+          } else if (filters.searchType === 'space') {
+            params.spaceNameLike = trimmedKeyword;
+          }
+        }
+      }
+
+      if (cursorVal && idAfterVal) {
+        params.cursor = cursorVal;
+        params.idAfter = idAfterVal;
+      }
+
+      const data = await request<UserCursorResponse<UserResponse>>('/api/super-admin/users', {
         method: 'GET',
         params,
       });
 
-      const list: UserResponse[] = Array.isArray(data) ? data : (data?.values || data?.content || data?.data || []);
-      if (cursor) {
-        setAllUsers(prev => [...prev, ...list]);
+      const list: UserResponse[] = data?.data || (Array.isArray(data) ? data : []);
+
+      if (cursorVal) {
+        setAllUsers(prev => {
+          const existingIds = new Set(prev.map(u => u.id));
+          const newItems = list.filter(u => !existingIds.has(u.id));
+          return [...prev, ...newItems];
+        });
       } else {
         setAllUsers(list);
+        if (typeof data?.totalCount === 'number' && data.totalCount >= 0) {
+          setUserTotalCount(data.totalCount);
+          const isUnfiltered = !filters.searchKeyword.trim() && filters.role === 'ALL';
+          if (isUnfiltered || overallUserTotalCount === null) {
+            setOverallUserTotalCount(data.totalCount);
+          }
+        }
       }
-      if (data?.nextCursor) setUserCursor(data.nextCursor);
-      if (typeof data?.hasNext === 'boolean') setUserHasNext(data.hasNext);
+
+      setUserCursor(data?.nextCursor || null);
+      setUserNextIdAfter(data?.nextIdAfter || null);
+      setUserHasNext(!!data?.hasNext);
     } catch (err: any) {
       console.error('유저 목록 조회 실패:', err.message);
+    } finally {
+      setUserLoadingMore(false);
     }
+  };
+
+  // 슈퍼관리자 다음 유저 목록 로드 함수
+  const loadNextUserPage = useCallback(() => {
+    if (
+      userHasNextRef.current &&
+      !userLoadingMoreRef.current &&
+      userCursorRef.current &&
+      userNextIdAfterRef.current
+    ) {
+      loadSuperAdminUsers(userCursorRef.current, userNextIdAfterRef.current);
+    }
+  }, []);
+
+  // 슈퍼관리자 유저 자동 무한 스크롤 (IntersectionObserver + Capture Scroll + Viewport Check)
+  useEffect(() => {
+    const sentinel = userSentinelRef.current;
+
+    const checkSentinelInView = () => {
+      if (!userSentinelRef.current || !userHasNextRef.current || userLoadingMoreRef.current) return;
+      const rect = userSentinelRef.current.getBoundingClientRect();
+      if (rect.top <= window.innerHeight + 400 && rect.bottom >= 0) {
+        loadNextUserPage();
+      }
+    };
+
+    let observer: IntersectionObserver | null = null;
+    if (sentinel) {
+      observer = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting) {
+            checkSentinelInView();
+          }
+        },
+        { rootMargin: '400px' }
+      );
+      observer.observe(sentinel);
+    }
+
+    window.addEventListener('scroll', checkSentinelInView, true);
+    const timer = setTimeout(checkSentinelInView, 150);
+
+    return () => {
+      if (observer && sentinel) {
+        observer.unobserve(sentinel);
+      }
+      window.removeEventListener('scroll', checkSentinelInView, true);
+      clearTimeout(timer);
+    };
+  }, [loadNextUserPage, allUsers.length]);
+
+  // 유저 검색 실행 핸들러
+  const handleUserSearch = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    userSearchTypeRef.current = userSearchType;
+    userSearchKeywordRef.current = userSearchKeyword;
+    userRoleFilterRef.current = userRoleFilter;
+    loadSuperAdminUsers(null, null, {
+      searchType: userSearchType,
+      searchKeyword: userSearchKeyword,
+      role: userRoleFilter,
+    });
+  };
+
+  // 유저 필터링 조건 초기화 핸들러
+  const handleUserFilterReset = () => {
+    setUserSearchType('name');
+    setUserSearchKeyword('');
+    setUserRoleFilter('ALL');
+    setUserSortBy('createdAt');
+    setUserSortDirection('DESCENDING');
+    userSearchTypeRef.current = 'name';
+    userSearchKeywordRef.current = '';
+    userRoleFilterRef.current = 'ALL';
+    userSortByRef.current = 'createdAt';
+    userSortDirectionRef.current = 'DESCENDING';
+    setUserTotalCount(null);
+    loadSuperAdminUsers(null, null, {
+      searchType: 'name',
+      searchKeyword: '',
+      role: 'ALL',
+      sortBy: 'createdAt',
+      sortDirection: 'DESCENDING',
+    });
   };
 
   // 슈퍼관리자 카테고리 전체 조회
@@ -492,7 +681,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
 
   // 유저 밴 처리 연동 (요구사항 7)
   const handleToggleUserBan = (targetUser: UserResponse) => {
-    const nextBannedState = !targetUser.banned;
+    const nextBannedState = !targetUser.isBanned;
     openConfirm(
         '회원 상태 변경',
         `[${targetUser.name}] 님을 ${nextBannedState ? '영구 정지(Ban)' : '정지 해제'} 처리하시겠습니까?`,
@@ -505,7 +694,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
 
             showToast('회원 정지 상태가 변경되었습니다.', 'success');
             setAllUsers(prev =>
-                prev.map(u => (u.id === targetUser.id ? { ...u, banned: nextBannedState } : u))
+                prev.map(u => (u.id === targetUser.id ? { ...u, isBanned: nextBannedState } : u))
             );
           } catch (err: any) {
             showToast(err.message || '상태 변경 처리에 실패했습니다.', 'error');
@@ -965,6 +1154,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
               <section style={styles.adminConsoleContainer}>
                 {/* 슈퍼관리자 전용 대시보드 통계 카드 (요구사항 15) */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                  <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid #3b82f6' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>전체 가입 회원</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1d2939', marginTop: '0.25rem' }}>
+                      {overallUserTotalCount !== null ? `${overallUserTotalCount}명` : userTotalCount !== null ? `${userTotalCount}명` : `${allUsers.length}명`}
+                    </div>
+                  </div>
                   <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid #6366f1' }}>
                     <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>전체 생성 공간</div>
                     <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1d2939', marginTop: '0.25rem' }}>{superSpaces.length}개</div>
@@ -973,13 +1168,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                     <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>전체 출제 문제</div>
                     <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1d2939', marginTop: '0.25rem' }}>{superProblems.length}개</div>
                   </div>
-                  <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid #3b82f6' }}>
-                    <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>전체 가입 회원</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1d2939', marginTop: '0.25rem' }}>{allUsers.length}명</div>
-                  </div>
                   <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid #ef4444' }}>
-                    <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>영구 정지(Ban) 유저</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#ef4444', marginTop: '0.25rem' }}>{allUsers.filter(u => u.banned).length}명</div>
+                    <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>영구 정지 유저</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#ef4444', marginTop: '0.25rem' }}>{allUsers.filter(u => u.isBanned).length}명</div>
                   </div>
                 </div>
 
@@ -993,7 +1184,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                       }}
                       onClick={() => setSuperadminSubTab('users')}
                   >
-                    가입 회원 관리
+                    전체 사용자 관리
                   </button>
                   <button
                       className="btn"
@@ -1035,81 +1226,402 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
 
                 {superadminSubTab === 'users' && (
                     <div className="card" style={styles.adminContentCard}>
-                      <h3 style={styles.adminContentTitle}>서비스 전체 가입 계정 목록</h3>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem' }}>
+                        <div>
+                          <h3 style={{ ...styles.adminContentTitle, margin: 0 }}>전체 사용자 목록</h3>
+                        </div>
+                        <span className="badge badge-info" style={{ fontSize: '0.85rem', padding: '0.4rem 0.75rem' }}>
+                          총 {userTotalCount !== null ? `${userTotalCount}명 검색됨` : `${allUsers.length}명 표시중`}
+                        </span>
+                      </div>
+
+                      {/* 프리미엄 유저 검색 및 QueryDSL 필터 바 */}
+                      <form
+                        onSubmit={handleUserSearch}
+                        style={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: '0.75rem',
+                          alignItems: 'flex-end',
+                          backgroundColor: '#ffffff',
+                          padding: '1rem 1.25rem',
+                          borderRadius: '12px',
+                          marginBottom: '1.25rem',
+                          border: '1px solid #e2e8f0',
+                          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.03)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>검색 조건</label>
+                          <select
+                            className="input"
+                            value={userSearchType}
+                            onChange={(e) => {
+                              const newType = e.target.value as 'name' | 'email' | 'role';
+                              setUserSearchType(newType);
+                              if (newType === 'role') {
+                                loadSuperAdminUsers(null, null, { searchType: 'role', searchKeyword: '' });
+                              }
+                            }}
+                            style={{
+                              width: '115px',
+                              height: '38px',
+                              padding: '0 1.85rem 0 0.75rem',
+                              fontSize: '0.85rem',
+                              fontWeight: 500,
+                              borderRadius: '8px',
+                              border: '1px solid #cbd5e1',
+                              backgroundColor: '#ffffff',
+                              color: '#1e293b',
+                              appearance: 'none',
+                              WebkitAppearance: 'none',
+                              backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                              backgroundRepeat: 'no-repeat',
+                              backgroundPosition: 'right 0.55rem center',
+                              backgroundSize: '1rem',
+                              cursor: 'pointer',
+                              outline: 'none',
+                              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
+                            }}
+                          >
+                            <option value="name">이름</option>
+                            <option value="email">이메일</option>
+                            <option value="space">소속 공간</option>
+                            <option value="role">역할</option>
+                          </select>
+                        </div>
+
+                        {userSearchType === 'role' ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: '1 1 200px', minWidth: '180px', maxWidth: '280px' }}>
+                            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>역할 선택</label>
+                            <select
+                              className="input"
+                              value={userRoleFilter}
+                              onChange={(e) => {
+                                const val = e.target.value as 'ALL' | 'USER' | 'ADMIN' | 'SUPER_ADMIN';
+                                setUserRoleFilter(val);
+                                loadSuperAdminUsers(null, null, { searchType: 'role', role: val });
+                              }}
+                              style={{
+                                width: '100%',
+                                height: '38px',
+                                padding: '0 1.85rem 0 0.75rem',
+                                fontSize: '0.85rem',
+                                fontWeight: 500,
+                                borderRadius: '8px',
+                                border: '1px solid #cbd5e1',
+                                backgroundColor: '#ffffff',
+                                color: '#1e293b',
+                                appearance: 'none',
+                                WebkitAppearance: 'none',
+                                backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                                backgroundRepeat: 'no-repeat',
+                                backgroundPosition: 'right 0.55rem center',
+                                backgroundSize: '1rem',
+                                cursor: 'pointer',
+                                outline: 'none',
+                                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
+                              }}
+                            >
+                              <option value="ALL">전체</option>
+                              <option value="USER">일반 유저</option>
+                              <option value="ADMIN">공간 관리자</option>
+                              <option value="SUPER_ADMIN">최고 관리자</option>
+                            </select>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: '1 1 260px', minWidth: '220px', maxWidth: '360px' }}>
+                            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>검색어</label>
+                            <input
+                              type="text"
+                              className="input"
+                              placeholder={
+                                userSearchType === 'name'
+                                  ? '검색할 이름을 입력하세요...'
+                                  : userSearchType === 'email'
+                                  ? '검색할 이메일을 입력하세요...'
+                                  : '검색할 소속 공간 이름을 입력하세요...'
+                              }
+                              value={userSearchKeyword}
+                              onChange={(e) => setUserSearchKeyword(e.target.value)}
+                              style={{
+                                width: '100%',
+                                height: '38px',
+                                padding: '0 0.85rem',
+                                fontSize: '0.85rem',
+                                fontWeight: 500,
+                                borderRadius: '8px',
+                                border: '1px solid #cbd5e1',
+                                backgroundColor: '#ffffff',
+                                color: '#1e293b',
+                                outline: 'none',
+                                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
+                              }}
+                            />
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>정렬 기준</label>
+                          <select
+                            className="input"
+                            value={userSortBy}
+                            onChange={(e) => {
+                              const val = e.target.value as UserSortByType;
+                              setUserSortBy(val);
+                              userSortByRef.current = val;
+                              loadSuperAdminUsers(null, null, { sortBy: val });
+                            }}
+                            style={{
+                              width: '115px',
+                              height: '38px',
+                              padding: '0 1.85rem 0 0.75rem',
+                              fontSize: '0.85rem',
+                              fontWeight: 500,
+                              borderRadius: '8px',
+                              border: '1px solid #cbd5e1',
+                              backgroundColor: '#ffffff',
+                              color: '#1e293b',
+                              appearance: 'none',
+                              WebkitAppearance: 'none',
+                              backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                              backgroundRepeat: 'no-repeat',
+                              backgroundPosition: 'right 0.55rem center',
+                              backgroundSize: '1rem',
+                              cursor: 'pointer',
+                              outline: 'none',
+                              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
+                            }}
+                          >
+                            <option value="createdAt">가입 시간</option>
+                            <option value="updatedAt">수정 시간</option>
+                            <option value="deletedAt">탈퇴 시간</option>
+                          </select>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>정렬 순서</label>
+                          <select
+                            className="input"
+                            value={userSortDirection}
+                            onChange={(e) => {
+                              const val = e.target.value as SortDirectionType;
+                              setUserSortDirection(val);
+                              userSortDirectionRef.current = val;
+                              loadSuperAdminUsers(null, null, { sortDirection: val });
+                            }}
+                            style={{
+                              width: '175px',
+                              height: '38px',
+                              padding: '0 1.85rem 0 0.75rem',
+                              fontSize: '0.85rem',
+                              fontWeight: 500,
+                              borderRadius: '8px',
+                              border: '1px solid #cbd5e1',
+                              backgroundColor: '#ffffff',
+                              color: '#1e293b',
+                              appearance: 'none',
+                              WebkitAppearance: 'none',
+                              backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                              backgroundRepeat: 'no-repeat',
+                              backgroundPosition: 'right 0.55rem center',
+                              backgroundSize: '1rem',
+                              cursor: 'pointer',
+                              outline: 'none',
+                              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
+                            }}
+                          >
+                            <option value="DESCENDING">내림차순 (최신 순)</option>
+                            <option value="ASCENDING">오름차순 (오래된 순)</option>
+                          </select>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '0.4rem', marginLeft: 'auto' }}>
+                          <button
+                            type="submit"
+                            style={{
+                              height: '38px',
+                              padding: '0 1rem',
+                              fontSize: '0.85rem',
+                              fontWeight: 600,
+                              borderRadius: '8px',
+                              backgroundColor: '#4f46e5',
+                              color: '#ffffff',
+                              border: 'none',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.35rem',
+                              boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)',
+                            }}
+                          >
+                            <span>🔍</span> 검색
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleUserFilterReset}
+                            style={{
+                              height: '38px',
+                              padding: '0 0.85rem',
+                              fontSize: '0.85rem',
+                              fontWeight: 600,
+                              borderRadius: '8px',
+                              backgroundColor: '#f1f5f9',
+                              color: '#475569',
+                              border: '1px solid #cbd5e1',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.35rem',
+                            }}
+                          >
+                            <span>🔄</span> 초기화
+                          </button>
+                        </div>
+                      </form>
+
                       <div style={styles.tableWrapper}>
                         <table style={styles.adminTable}>
                           <thead>
                           <tr>
-                            <th style={styles.th}>이름</th>
-                            <th style={styles.th}>이메일</th>
-                            <th style={styles.th}>역할 권한</th>
-                            <th style={styles.th}>정지 상태</th>
-                            <th style={styles.th}>유저 정지</th>
+                            <th style={{ ...styles.th, width: '13%' }}>이름</th>
+                            <th style={{ ...styles.th, width: '25%' }}>이메일</th>
+                            <th style={{ ...styles.th, width: '18%' }}>소속 공간</th>
+                            <th style={{ ...styles.th, width: '18%' }}>
+                              {userSortBy === 'deletedAt' ? '탈퇴일시' : userSortBy === 'updatedAt' ? '수정일시' : '가입일시'}
+                            </th>
+                            <th style={{ ...styles.th, width: '11%' }}>역할 권한</th>
+                            <th style={{ ...styles.th, width: '75px' }}>정지 상태</th>
+                            <th style={{ ...styles.th, width: '75px' }}>유저 정지</th>
                           </tr>
                           </thead>
                           <tbody>
-                          {allUsers.map(u => (
-                              <tr key={u.id} style={styles.tr}>
-                                <td style={styles.td}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <img
-                                      src={u.profileImageUrl || '/basic.png'}
-                                      alt={u.name}
-                                      style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #eaecf0', flexShrink: 0 }}
-                                    />
-                                    <span>{u.name}</span>
-                                  </div>
-                                </td>
-                                <td style={styles.td}>{u.email}</td>
-                                <td style={styles.td}>
-                                  <span className="badge badge-info">{u.role}</span>
-                                </td>
-                                <td style={styles.td}>
-                                  {u.banned ? (
-                                      <span className="badge badge-danger">정지 상태</span>
-                                  ) : (
-                                      <span className="badge badge-success">정상 이용</span>
-                                  )}
-                                </td>
-                                <td style={styles.td}>
-                                  {u.role === 'SUPER_ADMIN' ? (
-                                      <span style={styles.disabledText}>변경 불가</span>
-                                  ) : (
-                                      <div
-                                          role="switch"
-                                          aria-checked={u.banned}
-                                          style={styles.banSwitch}
-                                          onClick={() => handleToggleUserBan(u)}
-                                      >
+                          {allUsers.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} style={{ ...styles.td, textAlign: 'center', color: '#6b7280', padding: '2rem' }}>
+                                검색 조건에 해당하는 회원 데이터가 없습니다.
+                              </td>
+                            </tr>
+                          ) : (
+                            allUsers.map(u => {
+                              const targetDateStr = userSortBy === 'deletedAt' ? u.deletedAt : userSortBy === 'updatedAt' ? u.updatedAt : u.createdAt;
+                              let formattedDate = '-';
+                              if (targetDateStr) {
+                                try {
+                                  formattedDate = new Date(targetDateStr).toLocaleString('ko-KR', {
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  });
+                                } catch {
+                                  formattedDate = targetDateStr;
+                                }
+                              }
+
+                              return (
+                                <tr key={u.id} style={styles.tr}>
+                                  <td style={styles.td}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                      <img
+                                        src={u.profileImageUrl || '/basic.png'}
+                                        alt={u.name}
+                                        style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #eaecf0', flexShrink: 0 }}
+                                      />
+                                      <span>{u.name}</span>
+                                    </div>
+                                  </td>
+                                  <td style={{ ...styles.td, wordBreak: 'break-all' }}>{u.email}</td>
+                                  <td style={styles.td}>
+                                    {u.spaceName ? (
+                                      <span style={{ fontWeight: 600, color: '#4f46e5', backgroundColor: '#eef2ff', padding: '0.2rem 0.55rem', borderRadius: '6px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                        <span>🏠</span> {u.spaceName}
+                                      </span>
+                                    ) : (
+                                      <span style={{ color: '#94a3b8', fontSize: '0.8rem', fontStyle: 'italic' }}>
+                                        미소속
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td style={{ ...styles.td, fontSize: '0.825rem', color: '#475467' }}>{formattedDate}</td>
+                                  <td style={styles.td}>
+                                    <span className="badge badge-info">
+                                      {u.role === 'SUPER_ADMIN' ? '최고 관리자' : u.role === 'ADMIN' ? '공간 관리자' : '일반 유저'}
+                                    </span>
+                                  </td>
+                                  <td style={styles.td}>
+                                    {u.deletedAt ? (
+                                        <span className="badge" style={{ backgroundColor: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1' }}>탈퇴 완료</span>
+                                    ) : u.isBanned ? (
+                                        <span className="badge badge-danger">정지 상태</span>
+                                    ) : (
+                                        <span className="badge badge-success">정상 이용</span>
+                                    )}
+                                  </td>
+                                  <td style={styles.td}>
+                                    {u.role === 'SUPER_ADMIN' || u.deletedAt ? (
+                                        <span style={styles.disabledText}>변경 불가</span>
+                                    ) : (
                                         <div
-                                            style={{
-                                              ...styles.banSwitchTrack,
-                                              backgroundColor: u.banned ? '#ef4444' : '#d0d5dd',
-                                            }}
-                                        />
-                                        <div
-                                            style={{
-                                              ...styles.banSwitchKnob,
-                                              transform: u.banned ? 'translateX(20px)' : 'translateX(0)',
-                                            }}
-                                        />
-                                      </div>
-                                  )}
-                                </td>
-                              </tr>
-                          ))}
+                                            role="switch"
+                                            aria-checked={u.isBanned}
+                                            style={styles.banSwitch}
+                                            onClick={() => handleToggleUserBan(u)}
+                                        >
+                                          <div
+                                              style={{
+                                                ...styles.banSwitchTrack,
+                                                backgroundColor: u.isBanned ? '#ef4444' : '#d0d5dd',
+                                              }}
+                                          />
+                                          <div
+                                              style={{
+                                                ...styles.banSwitchKnob,
+                                                transform: u.isBanned ? 'translateX(20px)' : 'translateX(0)',
+                                              }}
+                                          />
+                                        </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
                           </tbody>
                         </table>
                       </div>
 
                       {userHasNext && (
-                          <button
-                              className="btn btn-secondary"
-                              style={styles.moreLoadBtn}
-                              onClick={() => loadSuperAdminUsers(userCursor)}
+                          <div
+                              ref={userSentinelRef}
+                              style={{
+                                  padding: userLoadingMore ? '1rem' : '0.5rem',
+                                  textAlign: 'center',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '8px',
+                                  minHeight: '24px',
+                              }}
                           >
-                            가입 회원 목록 더 불러오기
-                          </button>
+                            {userLoadingMore && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#6366f1', fontSize: '0.85rem', fontWeight: 500 }}>
+                                  <span
+                                      style={{
+                                        width: '14px',
+                                        height: '14px',
+                                        border: '2px solid #6366f1',
+                                        borderRightColor: 'transparent',
+                                        borderRadius: '50%',
+                                        display: 'inline-block',
+                                        animation: 'spin 0.75s linear infinite'
+                                      }}
+                                  />
+                                  <span>사용자 목록을 불러오는 중...</span>
+                                </div>
+                            )}
+                          </div>
                       )}
                     </div>
                 )}
@@ -2076,14 +2588,19 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'transparent',
     border: 'none',
     color: '#475467',
-    padding: '0.5rem 1rem',
-    fontSize: '0.9rem',
+    padding: '0.55rem 1.1rem',
+    fontSize: '0.925rem',
     fontWeight: 600,
+    fontFamily: "'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif",
+    letterSpacing: '-0.015em',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
   },
   adminSubTabActive: {
-    color: '#6366f1',
-    borderBottom: '2px solid #6366f1',
+    color: '#4f46e5',
+    borderBottom: '2.5px solid #4f46e5',
     borderRadius: '0',
+    fontWeight: 700,
   },
   adminContentCard: {
     display: 'flex',
@@ -2092,9 +2609,11 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '2rem',
   },
   adminContentTitle: {
-    fontSize: '1.125rem',
+    fontSize: '1.2rem',
     fontWeight: 700,
-    color: '#1d2939',
+    color: '#0f172a',
+    fontFamily: "'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif",
+    letterSpacing: '-0.025em',
   },
   demoBadge: {
     marginLeft: '0.5rem',
@@ -2110,28 +2629,37 @@ const styles: Record<string, React.CSSProperties> = {
   tableWrapper: {
     width: '100%',
     overflowX: 'auto',
-    border: '1px solid #eaecf0',
-    borderRadius: '8px',
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.02)',
   },
   adminTable: {
     width: '100%',
+    tableLayout: 'fixed',
     borderCollapse: 'collapse',
     textAlign: 'left',
     fontSize: '0.875rem',
   },
   th: {
-    backgroundColor: '#f9fafb',
-    padding: '0.75rem 1rem',
+    backgroundColor: '#f8fafc',
+    padding: '0.85rem 1.1rem',
     fontWeight: 600,
-    color: '#475467',
-    borderBottom: '1px solid #eaecf0',
+    color: '#475569',
+    borderBottom: '1px solid #e2e8f0',
+    fontFamily: "'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif",
+    letterSpacing: '-0.015em',
+    fontSize: '0.85rem',
   },
   tr: {
-    borderBottom: '1px solid #eaecf0',
+    borderBottom: '1px solid #f1f5f9',
+    transition: 'background-color 0.15s ease',
   },
   td: {
-    padding: '1rem',
-    color: '#1d2939',
+    padding: '0.95rem 1.1rem',
+    color: '#1e293b',
+    fontFamily: "'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif",
+    letterSpacing: '-0.015em',
+    fontSize: '0.875rem',
   },
   disabledText: {
     color: '#98a2b3',

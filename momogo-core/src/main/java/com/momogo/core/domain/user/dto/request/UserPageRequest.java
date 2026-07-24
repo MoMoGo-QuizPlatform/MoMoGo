@@ -1,5 +1,6 @@
 package com.momogo.core.domain.user.dto.request;
 
+import com.momogo.core.domain.user.entity.enums.UserRole;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
@@ -11,6 +12,8 @@ public record UserPageRequest(
 
         String nameLike,
         String emailLike,
+        String spaceNameLike,
+        UserRole role,
         String cursor, // 가입일(OffsetDateTime) 문자열
         UUID idAfter,  // 보조 식별자 유저 ID
 

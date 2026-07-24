@@ -64,17 +64,17 @@ public class OAuth2UserDetailsService extends DefaultOAuth2UserService {
                 .orElseGet(() -> registerSocialUser(attributes, socialType));
 
         return new MoMoGoUserDetails(
-                new UserResponse(
-                        user.getId(),
-                        user.getEmail(),
-                        user.getName(),
-                        user.getProfileImageUrl(),
-                        user.getRole(),
-                        user.getSocial(),
-                        user.getIsBanned(),
-                        user.getCreatedAt(),
-                        user.getDeletedAt()
-                ),
+                UserResponse.builder()
+                        .id(user.getId())
+                        .email(user.getEmail())
+                        .name(user.getName())
+                        .profileImageUrl(user.getProfileImageUrl())
+                        .role(user.getRole())
+                        .social(user.getSocial())
+                        .isBanned(user.getIsBanned())
+                        .createdAt(user.getCreatedAt())
+                        .deletedAt(user.getDeletedAt())
+                        .build(),
                 user.getPassword(),
                 attributes.attributes()
         );

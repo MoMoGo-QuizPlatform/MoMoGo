@@ -226,17 +226,13 @@ public class JwtTokenProvider {
                 role = UserRole.valueOf(roleString);
             }
 
-            UserResponse userResponse = new UserResponse(
-                    userId,
-                    userEmail,
-                    name,
-                    null,
-                    role,
-                    null,
-                    false,
-                    null,
-                    null
-            );
+            UserResponse userResponse = UserResponse.builder()
+                    .id(userId)
+                    .email(userEmail)
+                    .name(name)
+                    .role(role)
+                    .isBanned(false)
+                    .build();
 
             log.info("[TokenProvider] parseAccessToken 완료: UserResponse 생성");
             return new MoMoGoUserDetails(userResponse, null);
