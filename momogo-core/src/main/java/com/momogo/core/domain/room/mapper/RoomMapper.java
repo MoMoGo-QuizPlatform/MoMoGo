@@ -15,6 +15,8 @@ public interface RoomMapper {
   @Mapping(target = "spaceId", source = "space.id")
   RoomResponse toResponse(Room room);
 
+  List<RoomResponse> toResponseList(List<Room> rooms);
+
   @Mapping(target = "roomId", source = "room.id")
   RoomProblemResponse toProblemResponse(RoomProblem roomProblem);
 

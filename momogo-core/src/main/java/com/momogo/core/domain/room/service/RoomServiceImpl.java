@@ -2,9 +2,14 @@ package com.momogo.core.domain.room.service;
 
 import com.lowagie.text.Document;
 import com.lowagie.text.DocumentException;
+import com.lowagie.text.Element;
 import com.lowagie.text.Font;
+import com.lowagie.text.PageSize;
 import com.lowagie.text.Paragraph;
+import com.lowagie.text.Rectangle;
 import com.lowagie.text.pdf.BaseFont;
+import com.lowagie.text.pdf.PdfPCell;
+import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.problem.dto.response.GeneratedProblemData;
@@ -12,11 +17,14 @@ import com.momogo.core.domain.problem.entity.ProblemCategory;
 import com.momogo.core.domain.problem.exception.ProblemErrorCode;
 import com.momogo.core.domain.problem.repository.ProblemCategoryRepository;
 import com.momogo.core.domain.problem.service.ProblemGenerationService;
+import com.momogo.core.domain.room.dto.request.ManualGradeRequest;
 import com.momogo.core.domain.room.dto.request.ProblemAnswerRequest;
 import com.momogo.core.domain.room.dto.request.RoomProblemDraftAiRequest;
 import com.momogo.core.domain.room.dto.request.RoomAnswerSubmitRequest;
 import com.momogo.core.domain.room.dto.request.RoomCreateRequest;
+import com.momogo.core.domain.room.dto.response.AnswerGradingItem;
 import com.momogo.core.domain.room.dto.response.ProblemGradeReport;
+import com.momogo.core.domain.room.dto.response.RoomGradingResponse;
 import com.momogo.core.domain.room.dto.response.RoomProblemResponse;
 import com.momogo.core.domain.room.dto.response.RoomReportResponse;
 import com.momogo.core.domain.room.dto.response.RoomResponse;
@@ -40,11 +48,14 @@ import com.momogo.core.domain.space.repository.SpaceRepository;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.repository.UserRepository;
+import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -168,6 +179,28 @@ public class RoomServiceImpl implements RoomService{
   }
 
   @Override
+  public List<RoomResponse> getRoomList(UUID userId, UUID spaceId) {
+    log.info("[RoomService] 시험방 목록 조회 - userId: {}, spaceId: {}", userId, spaceId);
+
+    // 공간 존재 검증
+    if (!spaceRepository.existsById(spaceId)) {
+      throw new BusinessException(SpaceErrorCode.SPACE_NOT_FOUND);
+    }
+
+    // 권한 검증 - 요청 유저가 해당 공간 소속 멤버가 맞는지 확인
+    User user = userRepository.findById(userId)
+        .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
+
+    if (user.getSpace() == null || !user.getSpace().getId().equals(spaceId)) {
+      throw new BusinessException(SpaceErrorCode.NOT_SPACE_MEMBER);
+    }
+
+    List<Room> rooms = roomRepository.findAllBySpaceIdOrderByCreatedAtDesc(spaceId);
+
+    return roomMapper.toResponseList(rooms);
+  }
+
+  @Override
   public List<RoomProblemResponse> getRoomProblems(UUID userId, UUID roomId) {
     log.info("[RoomService] 시험 문제지 조회 - userId: {}, roomId: {}", userId, roomId);
 
@@ -180,10 +213,19 @@ public class RoomServiceImpl implements RoomService{
       throw new BusinessException(RoomErrorCode.INVALID_ACCESS_BEFORE_START);
     }
 
+    // 상태 검증 - 이미 마감된 시험은 재입장 차단
+    if (Boolean.TRUE.equals(room.getIsEnded())) {
+      throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
+    }
+
     // 응시 대상 유저 자격 검증 (RoomUser 매핑 테이블 존재 확인)
     RoomUserId roomUserId = new RoomUserId(roomId, userId);
-    if (!roomUserRepository.existsById(roomUserId)) {
-      throw new BusinessException(RoomErrorCode.NOT_ROOM_PARTICIPANT);
+    RoomUser roomUser = roomUserRepository.findById(roomUserId)
+        .orElseThrow(() -> new BusinessException(RoomErrorCode.NOT_ROOM_PARTICIPANT));
+
+    // 상태 검증 - 이미 답안을 제출한 응시자의 재입장(재조회) 차단
+    if (Boolean.TRUE.equals(roomUser.getIsAttended())) {
+      throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
     }
 
     // 문제 목록 조회 및 정렬 반환
@@ -274,6 +316,11 @@ public class RoomServiceImpl implements RoomService{
       throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
     }
 
+    // AI 채점이 아직 진행 중이면 확정 차단 (채점 결과 검토 전 확정 방지)
+    if (Boolean.TRUE.equals(room.getIsAiGradingInProgress())) {
+      throw new BusinessException(RoomErrorCode.AI_GRADING_IN_PROGRESS);
+    }
+
     // 시험 문제 목록 및 응시자 목록 조회
     List<RoomProblem> roomProblems = roomProblemRepository.findByRoomIdOrderByProblemOrder(roomId);
     List<RoomUser> roomUsers = roomUserRepository.findAllByRoomId(roomId);
@@ -319,14 +366,16 @@ public class RoomServiceImpl implements RoomService{
           UserRoomAnswer ans = problemAnswerMap.get(problem.getId());
 
           if (ans != null) {
-            String userAnswer = ans.getUserAnswer() != null ? ans.getUserAnswer().trim() : "";
-            String correctAnswer = problem.getCorrectAnswer() != null ? problem.getCorrectAnswer().trim() : "";
-            Boolean isCorrect = userAnswer.equals(correctAnswer);
+            // AI 채점 또는 관리자 수동 채점으로 이미 정오 판정이 끝난 답안은 그 결과를 그대로 신뢰하고,
+            // 아직 판정되지 않은(null) 답안만 문자열 완전 일치로 기본 채점한다.
+            if (ans.getIsCorrect() == null) {
+              String userAnswer = ans.getUserAnswer() != null ? ans.getUserAnswer().trim() : "";
+              String correctAnswer = problem.getCorrectAnswer() != null ? problem.getCorrectAnswer().trim() : "";
+              ans.grade(userAnswer.equals(correctAnswer));
+              answersToUpdate.add(ans);
+            }
 
-            // 개별 답안 엔티티에 정답 오답 판정 결과를 주입하고 일괄 업데이트 대상에 추가
-            ans.grade(isCorrect);
-            answersToUpdate.add(ans);
-            if (isCorrect) {
+            if (Boolean.TRUE.equals(ans.getIsCorrect())) {
               correctCount++;
             }
           }
@@ -435,6 +484,7 @@ public class RoomServiceImpl implements RoomService{
           user.getId(),
           user.getName(),
           user.getEmail(),
+          user.getProfileImageUrl(),
           roomUser.getIsAttended(),
           roomUser.getScore(),
           problemGrades
@@ -455,39 +505,89 @@ public class RoomServiceImpl implements RoomService{
 
     // OpenPDF 라이브러리를 활용해 바이너리 스트림 생성
     try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-      Document document = new Document();
+      Document document = new Document(PageSize.A4, 40, 40, 50, 50);
       PdfWriter.getInstance(document, out);
 
       document.open();
 
-      // 한글 폰트 세팅 - 내장 한글 고딕 폰트 지정
-      BaseFont baseFont = BaseFont.createFont("HYGoThic-Medium", "UniKS-UCS2-H", BaseFont.NOT_EMBEDDED);
-      Font fontTitle = new Font(baseFont, 16, Font.BOLD);
-      Font fontBody = new Font(baseFont, 11, Font.NORMAL);
+      // 브랜드 컬러 및 한글 폰트 세팅 - 내장 한글 고딕 폰트 지정
+      Color primaryColor = new Color(99, 102, 241);
+      Color headerBg = new Color(238, 238, 253);
+      Color rowAltBg = new Color(247, 247, 250);
+      Color borderColor = new Color(220, 220, 230);
 
-      // PDF 타이틀 및 기본 정보 기재
-      document.add(new Paragraph("==================================================", fontBody));
-      document.add(new Paragraph("             MoMoGo Exam Evaluation Report        ", fontTitle));
-      document.add(new Paragraph("==================================================", fontBody));
-      document.add(new Paragraph(" ", fontBody));
-      document.add(new Paragraph("Exam Room: " + report.roomName(), fontBody));
-      document.add(new Paragraph("Room ID: " + report.roomId().toString(), fontBody));
-      document.add(new Paragraph(" ", fontBody));
-      document.add(new Paragraph("------------------ Statistics ------------------", fontBody));
-      document.add(new Paragraph("Total Applicants : " + report.totalApplicants(), fontBody));
-      document.add(new Paragraph("Attended Count   : " + report.attendedCount(), fontBody));
-      document.add(new Paragraph("Average Score    : " + report.averageScore(), fontBody));
-      document.add(new Paragraph("Maximum Score    : " + report.maxScore(), fontBody));
-      document.add(new Paragraph("-------------------------------------------------", fontBody));
-      document.add(new Paragraph(" ", fontBody));
+      // PDF 뷰어가 CJK 시스템 폰트를 갖고 있지 않으면 글자가 안 보이는 문제가 있어(NOT_EMBEDDED 폰트 한계)
+      // 폰트 파일 자체를 PDF에 임베드한다.
+      BaseFont baseFontRegular = loadEmbeddedKoreanFont("/fonts/NanumGothic-Regular.ttf");
+      BaseFont baseFontBold = loadEmbeddedKoreanFont("/fonts/NanumGothic-Bold.ttf");
 
-      // 응시자 목록 헤더 추가
-      document.add(new Paragraph("Taker Grade Matrix:", fontBody));
-      for (TakerGradeReport grade : report.takerGrades()) {
-        String status = Boolean.TRUE.equals(grade.isAttended()) ? "Attended" : "Absent";
-        document.add(new Paragraph(String.format(" - %s (%s) | Status: %s | Score: %d",
-            grade.name(), grade.email(), status, grade.score()), fontBody));
+      Font fontTitle = new Font(baseFontBold, 20, Font.NORMAL, Color.WHITE);
+      Font fontSectionTitle = new Font(baseFontBold, 13, Font.NORMAL, primaryColor);
+      Font fontLabel = new Font(baseFontRegular, 10, Font.NORMAL, Color.GRAY);
+      Font fontValue = new Font(baseFontBold, 14, Font.NORMAL, Color.DARK_GRAY);
+      Font fontTableHeader = new Font(baseFontBold, 11, Font.NORMAL, Color.WHITE);
+      Font fontTableBody = new Font(baseFontRegular, 11, Font.NORMAL, Color.DARK_GRAY);
+
+      // 상단 타이틀 배너 (시험방 이름 표시 - ID가 아닌 실제 이름)
+      PdfPTable titleBanner = new PdfPTable(1);
+      titleBanner.setWidthPercentage(100);
+      PdfPCell titleCell = new PdfPCell(new Paragraph(report.roomName(), fontTitle));
+      titleCell.setBackgroundColor(primaryColor);
+      titleCell.setBorder(Rectangle.NO_BORDER);
+      titleCell.setPadding(16f);
+      titleCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+      titleBanner.addCell(titleCell);
+      document.add(titleBanner);
+
+      Paragraph subtitle = new Paragraph("MoMoGo 정기 평가시험 결과 리포트", fontLabel);
+      subtitle.setAlignment(Element.ALIGN_CENTER);
+      subtitle.setSpacingBefore(8f);
+      subtitle.setSpacingAfter(20f);
+      document.add(subtitle);
+
+      // 요약 통계 카드 (4열)
+      document.add(new Paragraph("통계 요약", fontSectionTitle));
+      document.add(new Paragraph(" ", fontLabel));
+
+      PdfPTable statTable = new PdfPTable(4);
+      statTable.setWidthPercentage(100);
+      statTable.setSpacingAfter(20f);
+      addStatCell(statTable, "총 응시 대상", report.totalApplicants() + "명", headerBg, borderColor, fontLabel, fontValue);
+      addStatCell(statTable, "실제 응시 인원", report.attendedCount() + "명", headerBg, borderColor, fontLabel, fontValue);
+      addStatCell(statTable, "평균 점수", String.format("%.1f점", report.averageScore()), headerBg, borderColor, fontLabel, fontValue);
+      addStatCell(statTable, "최고 점수", report.maxScore() + "점", headerBg, borderColor, fontLabel, fontValue);
+      document.add(statTable);
+
+      // 응시자별 성적 상세 표
+      document.add(new Paragraph("응시자별 성적", fontSectionTitle));
+      document.add(new Paragraph(" ", fontLabel));
+
+      PdfPTable gradeTable = new PdfPTable(4);
+      gradeTable.setWidthPercentage(100);
+      gradeTable.setWidths(new float[]{3f, 4f, 2f, 2f});
+      gradeTable.setHeaderRows(1);
+
+      for (String header : new String[]{"이름", "이메일", "응시 여부", "점수"}) {
+        PdfPCell headerCell = new PdfPCell(new Paragraph(header, fontTableHeader));
+        headerCell.setBackgroundColor(primaryColor);
+        headerCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        headerCell.setPadding(8f);
+        headerCell.setBorderColor(borderColor);
+        gradeTable.addCell(headerCell);
       }
+
+      int rowIndex = 0;
+      for (TakerGradeReport grade : report.takerGrades()) {
+        boolean isAttended = Boolean.TRUE.equals(grade.isAttended());
+        Color rowBg = rowIndex % 2 == 0 ? Color.WHITE : rowAltBg;
+
+        gradeTable.addCell(buildBodyCell(grade.name(), fontTableBody, rowBg, borderColor, Element.ALIGN_LEFT));
+        gradeTable.addCell(buildBodyCell(grade.email(), fontTableBody, rowBg, borderColor, Element.ALIGN_LEFT));
+        gradeTable.addCell(buildBodyCell(isAttended ? "응시 완료" : "결시", fontTableBody, rowBg, borderColor, Element.ALIGN_CENTER));
+        gradeTable.addCell(buildBodyCell(isAttended ? grade.score() + "점" : "-", fontTableBody, rowBg, borderColor, Element.ALIGN_CENTER));
+        rowIndex++;
+      }
+      document.add(gradeTable);
 
       document.close();
       return out.toByteArray();
@@ -495,6 +595,50 @@ public class RoomServiceImpl implements RoomService{
     } catch (IOException | DocumentException e) {
       log.error("[RoomService] PDF 생성 중 입출력/문서 포맷팅 예외 발생 - roomId: {}", roomId, e);
       throw new BusinessException(RoomErrorCode.REPORT_GENERATION_FAILED);
+    }
+  }
+
+  // 요약 통계 카드 한 칸(라벨 + 값) 생성 헬퍼
+  private void addStatCell(PdfPTable table, String label, String value, Color bg, Color border, Font labelFont, Font valueFont) {
+    PdfPTable inner = new PdfPTable(1);
+    inner.setWidthPercentage(100);
+
+    PdfPCell labelCell = new PdfPCell(new Paragraph(label, labelFont));
+    labelCell.setBorder(Rectangle.NO_BORDER);
+    labelCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+    labelCell.setPaddingBottom(4f);
+    inner.addCell(labelCell);
+
+    PdfPCell valueCell = new PdfPCell(new Paragraph(value, valueFont));
+    valueCell.setBorder(Rectangle.NO_BORDER);
+    valueCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+    inner.addCell(valueCell);
+
+    PdfPCell outer = new PdfPCell(inner);
+    outer.setBackgroundColor(bg);
+    outer.setBorderColor(border);
+    outer.setPadding(12f);
+    table.addCell(outer);
+  }
+
+  // 응시자 성적 표 본문 셀 생성 헬퍼
+  private PdfPCell buildBodyCell(String text, Font font, Color bg, Color border, int align) {
+    PdfPCell cell = new PdfPCell(new Paragraph(text, font));
+    cell.setBackgroundColor(bg);
+    cell.setBorderColor(border);
+    cell.setHorizontalAlignment(align);
+    cell.setPadding(8f);
+    return cell;
+  }
+
+  // PDF 리포트용 한글 폰트를 클래스패스 리소스에서 읽어 PDF에 임베드(NOT_EMBEDDED 시스템 폰트 의존 문제 회피)
+  private BaseFont loadEmbeddedKoreanFont(String resourcePath) throws IOException, DocumentException {
+    try (InputStream fontStream = getClass().getResourceAsStream(resourcePath)) {
+      if (fontStream == null) {
+        throw new IOException("PDF 리포트용 폰트 리소스를 찾을 수 없습니다: " + resourcePath);
+      }
+      byte[] fontBytes = fontStream.readAllBytes();
+      return BaseFont.createFont(resourcePath, BaseFont.IDENTITY_H, BaseFont.EMBEDDED, true, fontBytes, null);
     }
   }
 
@@ -523,6 +667,64 @@ public class RoomServiceImpl implements RoomService{
 
     // Spring Event 발행
     eventPublisher.publishEvent(new StartAiGradingEvent(roomId));
+  }
+
+  @Override
+  public RoomGradingResponse getRoomGrading(UUID adminUserId, UUID roomId) {
+
+    log.info("[RoomService] 채점 검토 화면 조회 - adminUserId: {}, roomId: {}", adminUserId, roomId);
+
+    // 방 존재 및 관리자 권한 검증
+    Room room = findRoomOrThrow(roomId);
+    validateSpaceAdmin(adminUserId, room);
+
+    // 응시자별 문제별 제출 답안 전체 조회 (문제 순서 -> 응시자 이름 순 정렬)
+    List<UserRoomAnswer> answers = userRoomAnswerRepository.findByRoomProblemRoomId(roomId);
+    List<AnswerGradingItem> items = answers.stream()
+        .sorted(Comparator
+            .comparing((UserRoomAnswer a) -> a.getRoomProblem().getProblemOrder())
+            .thenComparing(a -> a.getUser().getName()))
+        .map(a -> new AnswerGradingItem(
+            a.getId(),
+            a.getUser().getId(),
+            a.getUser().getName(),
+            a.getUser().getProfileImageUrl(),
+            a.getRoomProblem().getId(),
+            a.getRoomProblem().getProblemOrder(),
+            a.getRoomProblem().getName(),
+            a.getUserAnswer(),
+            a.getRoomProblem().getCorrectAnswer(),
+            a.getIsCorrect()
+        ))
+        .toList();
+
+    return new RoomGradingResponse(room.getId(), room.getName(), room.getIsAiGradingInProgress(), items);
+  }
+
+  @Override
+  @Transactional
+  public void manualGradeAnswer(UUID adminUserId, UUID roomId, UUID answerId, ManualGradeRequest request) {
+
+    log.info("[RoomService] 수동 채점 오버라이드 - adminUserId: {}, roomId: {}, answerId: {}, isCorrect: {}",
+        adminUserId, roomId, answerId, request.isCorrect());
+
+    // 방 존재 및 관리자 권한 검증
+    Room room = findRoomOrThrow(roomId);
+    validateSpaceAdmin(adminUserId, room);
+
+    // 이미 채점 확정(마감)된 시험방은 수동 채점 변경 불가
+    if (Boolean.TRUE.equals(room.getIsEnded())) {
+      throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
+    }
+
+    // 답안 존재 검증 및 해당 방 소속 여부 검증
+    UserRoomAnswer answer = userRoomAnswerRepository.findById(answerId)
+        .orElseThrow(() -> new BusinessException(RoomErrorCode.PROBLEM_NOT_FOUND));
+    if (!answer.getRoomProblem().getRoom().getId().equals(roomId)) {
+      throw new BusinessException(RoomErrorCode.PROBLEM_NOT_FOUND);
+    }
+
+    answer.grade(request.isCorrect());
   }
 
   @Override

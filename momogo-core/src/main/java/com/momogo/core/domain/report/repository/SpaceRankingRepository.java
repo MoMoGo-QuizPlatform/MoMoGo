@@ -23,7 +23,7 @@ public class SpaceRankingRepository {
   public List<SpaceRankingResponse> findRankingBySpaceId(UUID spaceId, OffsetDateTime periodStart) {
     return queryFactory
         .select(Projections.constructor(SpaceRankingResponse.class,
-            user.id, user.name, userProblem.count()))
+            user.id, user.name, user.profileImageUrl, userProblem.count()))
         .from(userProblem)
         .join(userProblem.user, user)
         .where(
@@ -31,7 +31,7 @@ public class SpaceRankingRepository {
             userProblem.isSolved.isTrue(),
             userProblem.createdAt.goe(periodStart)
         )
-        .groupBy(user.id, user.name)
+        .groupBy(user.id, user.name, user.profileImageUrl)
         .orderBy(userProblem.count().desc())
         .fetch();
   }

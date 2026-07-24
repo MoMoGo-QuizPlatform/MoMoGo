@@ -178,6 +178,12 @@ public class ReportServiceImpl implements ReportService {
 
     Room room = roomUser.getRoom();
 
+    // 같은 방에서 동시에 응시 중인 다른 유저가 있을 수 있으므로, 채점 확정(방 마감) 전에는
+    // 정답/해설을 노출하지 않는다 (먼저 제출한 유저의 화면을 통한 컨닝 방지).
+    if (!Boolean.TRUE.equals(room.getIsEnded())) {
+      throw new BusinessException(RoomErrorCode.REPORT_NOT_READY);
+    }
+
     List<RoomProblem> roomProblems = roomProblemRepository.findByRoomIdOrderByProblemOrder(roomId);
     List<UserRoomAnswer> myAnswers = userRoomAnswerRepository.findByRoomProblemRoomIdAndUserId(roomId, userId);
     Map<UUID, UserRoomAnswer> answerByProblemId = myAnswers.stream()

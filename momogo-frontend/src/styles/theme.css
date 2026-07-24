@@ -224,6 +224,8 @@ h1, h2, h3, h4 {
   padding: 2rem;
   width: 100%;
   max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
   box-shadow: var(--modal-shadow);
   border: 1px solid var(--border-color);
   display: flex;
