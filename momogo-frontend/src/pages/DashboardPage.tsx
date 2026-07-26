@@ -16,6 +16,12 @@ interface DashboardPageProps {
 
 const DEFAULT_AVATAR = '/basic.png';
 
+// 프로필 이미지 로드 실패(마이그레이션 이전 로컬 경로 등) 시 깨진 이미지 아이콘 대신 기본 아바타로 대체
+const handleAvatarError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+  e.currentTarget.onerror = null;
+  e.currentTarget.src = DEFAULT_AVATAR;
+};
+
 interface NotificationItem {
   id: string;
   title: string;
@@ -981,6 +987,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                     src={profilePreview || (removeProfileImage ? DEFAULT_AVATAR : savedProfilePreview || user.profileImageUrl || DEFAULT_AVATAR)}
                     alt={user.name}
                     style={styles.headerAvatar}
+                    onError={handleAvatarError}
                   />
                   <span style={styles.headerUserName}>{user.name}</span>
                   {user.role && (
@@ -997,6 +1004,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                         src={profilePreview || (removeProfileImage ? DEFAULT_AVATAR : savedProfilePreview || user.profileImageUrl || DEFAULT_AVATAR)}
                         alt={user.name}
                         style={styles.menuAvatar}
+                        onError={handleAvatarError}
                       />
                       <div>
                         <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{user.name}</div>
@@ -1528,6 +1536,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                                         src={u.profileImageUrl || '/basic.png'}
                                         alt={u.name}
                                         style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #eaecf0', flexShrink: 0 }}
+                                        onError={handleAvatarError}
                                       />
                                       <span>{u.name}</span>
                                     </div>
@@ -1871,6 +1880,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                         src={profilePreview || (removeProfileImage ? DEFAULT_AVATAR : savedProfilePreview || user.profileImageUrl || DEFAULT_AVATAR)}
                         alt="Profile"
                         style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #eaecf0' }}
+                        onError={handleAvatarError}
                       />
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
                         <span style={{ fontSize: '1.125rem', fontWeight: '600', color: 'var(--text)', display: 'flex', alignItems: 'center' }}>
@@ -2322,6 +2332,8 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: '2rem',
+    flexWrap: 'wrap',
+    gap: '1rem',
   },
   welcomeTitle: {
     fontSize: '1.75rem',
@@ -2339,6 +2351,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '1rem',
     position: 'relative',
+    flexWrap: 'wrap',
   },
   notiTriggerBtn: {
     position: 'relative',

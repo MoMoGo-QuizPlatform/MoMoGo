@@ -54,7 +54,8 @@ public class ProblemController {
   @GetMapping
   public ResponseEntity<ProblemCursorResponse> getProblems(
       @PathVariable UUID spaceId,
-      @Valid ProblemSearchRequest request) {
+      @Valid ProblemSearchRequest request,
+      @AuthenticationPrincipal(expression = "userResponse.id") UUID userId) {
 
     return ResponseEntity.ok(
         problemService.getProblems(
@@ -64,7 +65,8 @@ public class ProblemController {
             request.contentKeyword(),
             request.cursor(),
             request.cursorId(),
-            request.size()
+            request.size(),
+            userId
         )
     );
   }

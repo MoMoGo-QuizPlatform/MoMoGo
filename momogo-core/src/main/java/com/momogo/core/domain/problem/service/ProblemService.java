@@ -30,6 +30,7 @@ public interface ProblemService {
    * @param cursor          다음 커서 일자
    * @param cursorId        다음 커서 ID (서브)
    * @param size            조회하고자 하는 사이즈
+   * @param userId          현재 로그인한 유저 ID (문제별 풀이 여부 표시용)
    */
   ProblemCursorResponse getProblems(
       UUID spaceId,
@@ -38,7 +39,8 @@ public interface ProblemService {
       String contentKeyword,
       OffsetDateTime cursor,
       UUID cursorId,
-      int size
+      int size,
+      UUID userId
   );
 
   /**

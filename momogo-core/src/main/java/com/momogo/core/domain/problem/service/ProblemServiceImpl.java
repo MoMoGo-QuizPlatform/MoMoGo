@@ -26,6 +26,7 @@ import com.momogo.core.domain.user.repository.UserProblemRepository;
 import com.momogo.core.domain.user.repository.UserRepository;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -110,7 +111,8 @@ public class ProblemServiceImpl implements ProblemService {
       String contentKeyword,
       OffsetDateTime cursor,
       UUID cursorId,
-      int size) {
+      int size,
+      UUID userId) {
 
     if ((cursor == null) != (cursorId == null)) {
       throw new BusinessException(ProblemErrorCode.INVALID_CURSOR);
@@ -127,8 +129,20 @@ public class ProblemServiceImpl implements ProblemService {
 
     Problem last = hasNext ? content.getLast() : null;
 
+    List<UUID> problemIds = content.stream().map(Problem::getId).toList();
+    Set<UUID> solvedProblemIds = problemIds.isEmpty()
+        ? Set.of()
+        : Set.copyOf(userProblemRepository.findSolvedProblemIds(userId, problemIds));
+
+    List<ProblemResponse> responseList = problemMapper.toResponseList(content).stream()
+        .map(r -> new ProblemResponse(
+            r.id(), r.spaceId(), r.categoryId(), r.categoryName(), r.name(), r.content(),
+            r.explanation(), r.createdAt(), r.updatedAt(), solvedProblemIds.contains(r.id())
+        ))
+        .toList();
+
     return new ProblemCursorResponse(
-        problemMapper.toResponseList(content),
+        responseList,
         hasNext,
         last != null ? last.getCreatedAt() : null,
         last != null ? last.getId() : null

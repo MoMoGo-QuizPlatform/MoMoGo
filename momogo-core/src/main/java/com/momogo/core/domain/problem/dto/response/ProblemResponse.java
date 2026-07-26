@@ -17,5 +17,6 @@ public record ProblemResponse(
     String content,
     String explanation,
     OffsetDateTime createdAt,
-    OffsetDateTime updatedAt
+    OffsetDateTime updatedAt,
+    boolean isSolved
 ) {}

@@ -23,7 +23,9 @@ interface ProblemResponse {
   content: string;
   correctAnswer: string;
   explanation: string;
-  category: CategoryResponse | null;
+  categoryId: string | null;
+  categoryName: string | null;
+  isSolved: boolean;
 }
 
 // 문제 편집용 단건 조회 응답 (정답 포함, ADMIN 전용 API)
@@ -152,6 +154,12 @@ interface SpaceRankingResponse {
   profileImageUrl: string | null;
   solvedCount: number;
 }
+
+// 프로필 이미지 로드 실패(마이그레이션 이전 로컬 경로 등) 시 깨진 이미지 아이콘 대신 기본 아바타로 대체
+const handleAvatarError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+  e.currentTarget.onerror = null;
+  e.currentTarget.src = '/basic.png';
+};
 
 export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showToast, initialTab, onTabChange }) => {
   const [activeTab, setActiveTabState] = useState<'problems' | 'exams' | 'dashboard'>(initialTab ?? 'problems');
@@ -1024,7 +1032,7 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
       {/* 본문 레이아웃 */}
       <main className="main-layout">
         {/* 공간 페이지 상단바 (요구사항 2, 2-1, 14) */}
-        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '1px solid #eaecf0' }}>
+        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '1px solid #eaecf0', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1d2939', margin: 0 }}>{space.name}</h1>
             <p style={{ fontSize: '0.875rem', color: '#667085', margin: '4px 0 0 0' }}>{space.description}</p>
@@ -1046,9 +1054,10 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                 onClick={() => setShowUserMenu(!showUserMenu)}
               >
                 <img 
-                  src={user.profileImageUrl || '/basic.png'} 
-                  alt={user.name} 
-                  style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #eaecf0' }} 
+                  src={user.profileImageUrl || '/basic.png'}
+                  alt={user.name}
+                  style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #eaecf0' }}
+                  onError={handleAvatarError}
                 />
                 <span style={{ fontWeight: 600, fontSize: '0.875rem', color: '#1d2939' }}>{user.name}</span>
                 {user.role && (
@@ -1073,9 +1082,10 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                 }} className="card">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingBottom: '8px' }}>
                     <img 
-                      src={user.profileImageUrl || '/basic.png'} 
-                      alt={user.name} 
-                      style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #eaecf0' }} 
+                      src={user.profileImageUrl || '/basic.png'}
+                      alt={user.name}
+                      style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #eaecf0' }}
+                      onError={handleAvatarError}
                     />
                     <div>
                       <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{user.name}</div>
@@ -1139,11 +1149,20 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
             ) : (
               <div style={styles.problemGrid}>
                 {problems.map(prob => (
-                  <div key={prob.id} className="card" style={styles.problemCard}>
+                  <div
+                    key={prob.id}
+                    className="card"
+                    style={{ ...styles.problemCard, opacity: prob.isSolved ? 0.75 : 1 }}
+                  >
                     <div>
-                      <span className="badge badge-info" style={{ marginBottom: '0.5rem' }}>
-                        {prob.category?.name || '미분류'}
-                      </span>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                        <span className="badge badge-info">
+                          {prob.categoryName || '미분류'}
+                        </span>
+                        <span className={prob.isSolved ? 'badge badge-success' : 'badge'} style={prob.isSolved ? undefined : styles.badgeUnsolved}>
+                          {prob.isSolved ? '풀이완료' : '미풀이'}
+                        </span>
+                      </div>
                       <h3 style={styles.problemTitleText}>{prob.name}</h3>
                       <p style={styles.problemContentText}>{prob.content}</p>
                     </div>
@@ -1351,7 +1370,7 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                           <td><strong>{i + 1}등{medal}</strong></td>
                           <td>
                             <div style={styles.nameWithAvatar}>
-                              <img src={r.profileImageUrl || '/basic.png'} alt={r.userName} style={styles.avatarImg} />
+                              <img src={r.profileImageUrl || '/basic.png'} alt={r.userName} style={styles.avatarImg} onError={handleAvatarError} />
                               <span>{r.userName}{isMe ? ' (나)' : ''}</span>
                             </div>
                           </td>
@@ -1704,7 +1723,7 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
               연습 문제 풀기
             </h3>
             <div style={styles.solvingCard}>
-              <span className="badge badge-info">{solvingProblem.category?.name || '미분류'}</span>
+              <span className="badge badge-info">{solvingProblem.categoryName || '미분류'}</span>
               <h4 style={{ margin: '0.5rem 0', color: '#1d2939' }}>{solvingProblem.name}</h4>
               <p style={{ color: '#475467', lineHeight: 1.5, background: '#f9fafb', padding: '1rem', borderRadius: '8px' }}>
                 {solvingProblem.content}
@@ -1951,6 +1970,7 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                             flexShrink: 0,
                             border: selected ? '2px solid var(--primary)' : '1px solid var(--border-color)',
                           }}
+                          onError={handleAvatarError}
                         />
                         <div style={styles.examineeInfo}>
                           <span style={styles.examineeName}>{u.name}</span>
@@ -2243,7 +2263,7 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                     <tr key={i}>
                       <td>
                         <div style={styles.nameWithAvatar}>
-                          <img src={grade.profileImageUrl || '/basic.png'} alt={grade.name} style={styles.avatarImg} />
+                          <img src={grade.profileImageUrl || '/basic.png'} alt={grade.name} style={styles.avatarImg} onError={handleAvatarError} />
                           <span>{grade.name}</span>
                         </div>
                       </td>
@@ -2488,7 +2508,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   problemGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))',
     gap: '1.5rem',
   },
   problemCard: {
@@ -2496,6 +2516,17 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     justifyContent: 'space-between',
     minHeight: '220px',
+  },
+  badgeUnsolved: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '0.25rem 0.75rem',
+    borderRadius: '9999px',
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    backgroundColor: '#f2f4f7',
+    color: '#475467',
+    border: '1px solid #e4e7ec',
   },
   problemTitleText: {
     fontSize: '1.15rem',
@@ -2526,7 +2557,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   examGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))',
     gap: '1.5rem',
   },
   examCard: {
