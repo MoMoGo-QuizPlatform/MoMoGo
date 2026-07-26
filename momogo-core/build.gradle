@@ -26,6 +26,10 @@ dependencies {
     // PDF 라이브러리
     implementation 'com.github.librepdf:openpdf:2.2.2'
 
+    // S3 프로필 이미지 저장용
+    implementation platform('software.amazon.awssdk:bom:2.29.52')
+    implementation 'software.amazon.awssdk:s3'
+
     // 인프라 테스트용 Testcontainers
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.testcontainers:junit-jupiter'

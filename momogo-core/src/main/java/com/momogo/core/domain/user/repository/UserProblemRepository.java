@@ -3,6 +3,7 @@ package com.momogo.core.domain.user.repository;
 import com.momogo.core.domain.user.entity.UserProblem;
 import com.momogo.core.domain.user.entity.UserProblemId;
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -29,4 +30,8 @@ public interface UserProblemRepository extends JpaRepository<UserProblem, UserPr
 
     @EntityGraph(attributePaths = {"problem", "problem.category"})
     List<UserProblem> findAllByUser_IdAndProblem_Space_IdOrderByCreatedAtDesc(UUID userId, UUID spaceId);
+
+    // 문제 목록에 유저별 풀이 여부(isSolved) 배지를 표시하기 위해, 주어진 문제 목록 중 이미 푼 문제 ID만 조회
+    @Query("select up.problem.id from UserProblem up where up.user.id = :userId and up.problem.id in :problemIds and up.isSolved = true")
+    List<UUID> findSolvedProblemIds(@Param("userId") UUID userId, @Param("problemIds") Collection<UUID> problemIds);
 }

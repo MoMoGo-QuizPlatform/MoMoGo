@@ -14,9 +14,11 @@ import org.mapstruct.Mapping;
 public interface ProblemMapper {
 
   // Problem → ProblemResponse 변환
+  // isSolved는 Problem 엔티티에 없는 값(유저별 풀이 이력)이라 서비스 레이어에서 별도로 채워 넣는다.
   @Mapping(source = "space.id", target = "spaceId")
   @Mapping(source = "category.id", target = "categoryId")
   @Mapping(source = "category.name", target = "categoryName")
+  @Mapping(target = "isSolved", ignore = true)
   ProblemResponse toResponse(Problem problem);
 
   // List<Problem> → List<ProblemResponse> 변환
