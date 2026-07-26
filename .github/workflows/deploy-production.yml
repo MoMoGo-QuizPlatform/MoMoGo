@@ -1,4 +1,4 @@
-name: Deploy to EC2 (Single Instance)
+name: Deploy to EC2 (Single Instance - Smart Cache & Skip)
 
 on:
   push:
@@ -7,8 +7,8 @@ on:
 
 env:
   AWS_REGION: ap-northeast-2
-  S3_BUCKET: momogo-app-storage-2026
-  EC2_TAG_NAME: momogo-app-1
+  S3_BUCKET: momogo-s3
+  EC2_TAG_NAME: momogo-app
 
 jobs:
   deploy:
@@ -17,7 +17,28 @@ jobs:
       - name: 체크아웃
         uses: actions/checkout@v6
 
-      - name: JDK 21 설치
+      # 🔥 [핵심 추가] 변경된 파일 폴더 감지 스텝
+      - name: 파일 변경 사항 감지
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'momogo-api/**'
+              - 'momogo-realtime/**'
+              - 'momogo-batch/**'
+              - 'momogo-core/**'
+              - 'momogo-ai/**'
+              - 'build.gradle'
+              - 'settings.gradle'
+            frontend:
+              - 'momogo-frontend/**'
+
+      # ==========================================
+      # 1. 백엔드 빌드 (백엔드 변경 시에만 실행)
+      # ==========================================
+      - name: JDK 21 설치 및 캐싱
+        if: steps.filter.outputs.backend == 'true'
         uses: actions/setup-java@v5
         with:
           java-version: '21'
@@ -25,50 +46,102 @@ jobs:
           cache: 'gradle'
 
       - name: 실행 권한 부여
+        if: steps.filter.outputs.backend == 'true'
         run: chmod +x gradlew
 
-      - name: 빌드 (5개 모듈 전체, 그중 api/realtime/batch만 실행 jar 생성됨)
+      - name: 백엔드 빌드
+        if: steps.filter.outputs.backend == 'true'
         run: ./gradlew clean build -x test
 
+      # ==========================================
+      # 2. 프론트엔드 빌드 (프론트엔드 변경 시에만 실행)
+      # ==========================================
+      - name: Node.js 20 설치 및 캐싱
+        if: steps.filter.outputs.frontend == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'momogo-frontend/package-lock.json'
+
+      - name: 프론트엔드 빌드 및 압축
+        if: steps.filter.outputs.frontend == 'true'
+        run: |
+          cd momogo-frontend
+          npm ci
+          npm run build
+          tar -czvf frontend-dist.tar.gz -C dist .
+          cd ..
+
+      # ==========================================
+      # 3. AWS 인증 및 S3 업로드 (변경이 하나라도 있을 때)
+      # ==========================================
       - name: AWS 자격 증명 설정
+        if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: jar 3개 S3 업로드
+      - name: S3 업로드 (변경된 것만 선택적 업로드)
+        if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true'
         run: |
-          API_JAR=$(find momogo-api/build/libs -name "*.jar" ! -name "*plain*" | head -n 1)
-          RT_JAR=$(find momogo-realtime/build/libs -name "*.jar" ! -name "*plain*" | head -n 1)
-          BATCH_JAR=$(find momogo-batch/build/libs -name "*.jar" ! -name "*plain*" | head -n 1)
+          if [ "${{ steps.filter.outputs.backend }}" == "true" ]; then
+            API_JAR=$(find momogo-api/build/libs -name "*.jar" ! -name "*plain*" | head -n 1)
+            RT_JAR=$(find momogo-realtime/build/libs -name "*.jar" ! -name "*plain*" | head -n 1)
+            BATCH_JAR=$(find momogo-batch/build/libs -name "*.jar" ! -name "*plain*" | head -n 1)
+            aws s3 cp "$API_JAR" "s3://${{ env.S3_BUCKET }}/deploy/api.jar"
+            aws s3 cp "$RT_JAR" "s3://${{ env.S3_BUCKET }}/deploy/realtime.jar"
+            aws s3 cp "$BATCH_JAR" "s3://${{ env.S3_BUCKET }}/deploy/batch.jar"
+          fi
 
-          aws s3 cp "$API_JAR" "s3://${{ env.S3_BUCKET }}/deploy/api.jar"
-          aws s3 cp "$RT_JAR" "s3://${{ env.S3_BUCKET }}/deploy/realtime.jar"
-          aws s3 cp "$BATCH_JAR" "s3://${{ env.S3_BUCKET }}/deploy/batch.jar"
+          if [ "${{ steps.filter.outputs.frontend }}" == "true" ]; then
+            aws s3 cp "momogo-frontend/frontend-dist.tar.gz" "s3://${{ env.S3_BUCKET }}/deploy/frontend-dist.tar.gz"
+          fi
 
-      - name: SSM으로 EC2 배포 트리거 (3개 서비스 순차 재시작)
+      # ==========================================
+      # 4. SSM EC2 배포 실행 (변경된 부분만 선택적 재시작)
+      # ==========================================
+      - name: SSM으로 EC2 배포 트리거
+        if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true'
         run: |
           INSTANCE_ID=$(aws ec2 describe-instances \
             --filters "Name=tag:Name,Values=${{ env.EC2_TAG_NAME }}" "Name=instance-state-name,Values=running" \
             --query "Reservations[0].Instances[0].InstanceId" --output text)
 
+          # 백엔드/프론트엔드 동적 스크립트 구성
+          COMMANDS=()
+
+          if [ "${{ steps.filter.outputs.backend }}" == "true" ]; then
+            COMMANDS+=("aws s3 cp s3://${{ env.S3_BUCKET }}/deploy/api.jar /home/ec2-user/api.jar")
+            COMMANDS+=("aws s3 cp s3://${{ env.S3_BUCKET }}/deploy/realtime.jar /home/ec2-user/realtime.jar")
+            COMMANDS+=("aws s3 cp s3://${{ env.S3_BUCKET }}/deploy/batch.jar /home/ec2-user/batch.jar")
+            COMMANDS+=("sudo systemctl restart momogo-api")
+            COMMANDS+=("sudo systemctl restart momogo-realtime")
+            COMMANDS+=("sudo systemctl restart momogo-batch")
+          fi
+
+          if [ "${{ steps.filter.outputs.frontend }}" == "true" ]; then
+            COMMANDS+=("aws s3 cp s3://${{ env.S3_BUCKET }}/deploy/frontend-dist.tar.gz /home/ec2-user/frontend-dist.tar.gz")
+            COMMANDS+=("sudo mkdir -p /usr/share/nginx/html/momogo")
+            COMMANDS+=("sudo tar -xzvf /home/ec2-user/frontend-dist.tar.gz -C /usr/share/nginx/html/momogo/")
+            COMMANDS+=("sudo systemctl reload nginx")
+          fi
+
+          # JSON 배열 포맷팅 후 SSM 명령 전달
+          JSON_COMMANDS=$(jq -n --argjson cmds "$(printf '%s\n' "${COMMANDS[@]}" | jq -R . | jq -s .)" '$cmds')
+
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --parameters 'commands=[
-              "aws s3 cp s3://${{ env.S3_BUCKET }}/deploy/api.jar /home/ec2-user/api.jar",
-              "aws s3 cp s3://${{ env.S3_BUCKET }}/deploy/realtime.jar /home/ec2-user/realtime.jar",
-              "aws s3 cp s3://${{ env.S3_BUCKET }}/deploy/batch.jar /home/ec2-user/batch.jar",
-              "sudo systemctl restart momogo-api",
-              "sudo systemctl restart momogo-realtime",
-              "sudo systemctl restart momogo-batch"
-            ]' \
+            --parameters "{\"commands\": $JSON_COMMANDS}" \
             --query "Command.CommandId" --output text)
 
           aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID"
 
-      - name: 배포 결과 확인 (api 헬스체크만 대표로, realtime/batch는 EC2 안에서 systemctl status로 확인)
+      - name: 배포 결과 확인
+        if: steps.filter.outputs.backend == 'true'
         run: |
           sleep 15
           curl -f http://${{ secrets.ALB_DNS_NAME }}/actuator/health
