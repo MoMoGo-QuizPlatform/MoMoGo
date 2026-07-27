@@ -101,3 +101,5 @@ $RECYCLE.BIN/
 # User Profile Uploads (사용자 프로필 업로드 폴더 제외)
 uploads/
 
+# Added by code-review-graph
+.code-review-graph/
