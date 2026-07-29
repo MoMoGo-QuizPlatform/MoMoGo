@@ -33,4 +33,10 @@ public class UserProblem extends BaseCreatedTimeEntity {
 
     @Column(name = "user_answer", columnDefinition = "TEXT")
     private String userAnswer;
+
+    // 재시도 시 최신 제출 결과로 갱신
+    public void updateAttempt(Boolean isSolved, String userAnswer) {
+        this.isSolved = isSolved;
+        this.userAnswer = userAnswer;
+    }
 }

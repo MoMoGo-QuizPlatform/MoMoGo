@@ -6,6 +6,8 @@
 .env
 .env.local
 .env.*.local
+application-dev.yaml
+application-prod.yaml
 
 # Build & Dependency Directories (빌드 결과물)
 .gradle/
@@ -17,6 +19,7 @@ out/
 
 # Test Results & Logs (테스트 결과물 및 로그/메모리 덤프)
 /k6/results/
+k6/**/results/
 *.log
 hs_err_pid*
 replay_pid*
@@ -95,3 +98,27 @@ $RECYCLE.BIN/
 # Gradle wrapper 관련 설정은 제외되지 않도록 강제 적용
 !gradle-wrapper.jar
 !gradle-wrapper.properties
+
+# User Profile Uploads (사용자 프로필 업로드 폴더 제외)
+uploads/
+
+# Added by code-review-graph
+.code-review-graph/
+
+# AI Assistant & Extra Tool Configs
+.ai-tools-config/
+.claude/
+.codebuddy/
+.cursorrules
+.gemini/
+.kiro/
+.mcp.json
+.qoder/
+.windsurfrules
+AGENTS.MD
+CLAUDE.md
+CODEBUDDY.md
+GEMINI.md
+QODER.md
+diff.txt
+opencode.jsonc

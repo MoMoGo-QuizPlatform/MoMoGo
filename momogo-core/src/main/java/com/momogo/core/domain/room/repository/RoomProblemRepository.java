@@ -6,5 +6,7 @@ import org.springframework.stereotype.Repository;
 import java.util.UUID;
 
 @Repository
-public interface RoomProblemRepository extends JpaRepository<RoomProblem, UUID> {
+public interface RoomProblemRepository extends JpaRepository<RoomProblem, UUID>, RoomProblemRepositoryCustom {
+
+  long countByRoomId(UUID roomId);
 }

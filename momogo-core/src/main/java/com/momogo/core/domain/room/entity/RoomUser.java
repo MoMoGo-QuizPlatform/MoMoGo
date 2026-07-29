@@ -33,4 +33,21 @@ public class RoomUser extends BaseCreatedTimeEntity {
     @Builder.Default
     @Column(name = "score")
     private Integer score = 0;
+
+    // 정적 팩토리 생성 메소드
+    public static RoomUser of(Room room, User user) {
+        return RoomUser.builder()
+            .room(room)
+            .user(user)
+            .build();
+    }
+
+    public void attend() {
+        this.isAttended = true;
+    }
+
+    // 점수 갱신
+    public void updateScore(Integer score) {
+        this.score = score;
+    }
 }

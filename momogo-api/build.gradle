@@ -6,12 +6,14 @@ bootJar { enabled = true }
 jar { enabled = false }
 
 dependencies {
-    implementation project(':momogo-core') // 🌟 core 모듈의 엔티티와 레포지토리를 참조
+    implementation project(':momogo-core') // core 모듈의 엔티티와 레포지토리를 참조
+    implementation project(':momogo-ai') // AI 문제 생성 서비스 호출 관련 필요 (momogo-ai를 의존)
 
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.16'
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
 
     // Spring Integration (HTTP 및 JPA 연동 파트)
     implementation 'org.springframework.boot:spring-boot-starter-integration'

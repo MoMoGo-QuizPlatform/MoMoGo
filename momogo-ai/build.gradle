@@ -1,0 +1,19 @@
+plugins {
+    id 'org.springframework.boot'
+    id 'java-library'
+}
+
+// 독립 실행 모듈 X, bootJar 비활성화
+bootJar { enabled = false }
+jar { enabled = true }
+
+dependencies {
+    // core 모듈의 엔티티와 공통 예외를 사용
+    api project(':momogo-core')
+
+    // Spring AI - OpenAI 연동
+//    implementation 'org.springframework.ai:spring-ai-starter-model-openai:1.0.7'
+
+    // Google AI Starter Gemini 연동
+    implementation 'org.springframework.ai:spring-ai-starter-model-google-genai:1.1.7'
+}

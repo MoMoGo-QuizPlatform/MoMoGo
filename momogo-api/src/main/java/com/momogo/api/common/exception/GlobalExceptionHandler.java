@@ -4,11 +4,13 @@ import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.ErrorCode;
 import com.momogo.core.common.exception.ErrorResponse;
 import com.momogo.core.common.exception.GlobalErrorCode;
+import com.momogo.core.domain.problem.exception.ProblemErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @Slf4j
 @RestControllerAdvice
@@ -41,6 +44,32 @@ public class GlobalExceptionHandler {
             response = ErrorResponse.of(code, e.getMessage(), request.getRequestURI());
         }
 
+        return ResponseEntity.status(code.getHttpStatus()).body(response);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException e, HttpServletRequest request) {
+        String message = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+
+        if (message.contains("uq_problem_category_name")) {
+            ErrorCode code = ProblemErrorCode.CATEGORY_NAME_DUPLICATED;
+            log.warn("카테고리 이름 중복 : path={}", request.getRequestURI());
+            return ResponseEntity.status(code.getHttpStatus())
+                .body(ErrorResponse.of(code, code.getMessage(), request.getRequestURI()));
+        }
+
+        ErrorCode code = GlobalErrorCode.INTERNAL_SERVER_ERROR;
+        log.error("데이터 무결성 예외 발생 : message={}, path={}", e.getMessage(), request.getRequestURI(), e);
+        return ResponseEntity.status(code.getHttpStatus())
+            .body(ErrorResponse.of(code, code.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException e, HttpServletRequest request) {
+        ErrorCode code = GlobalErrorCode.FILE_UPLOAD_FAILED;
+        log.warn("업로드 파일 용량 초과 : path={}", request.getRequestURI());
+
+        ErrorResponse response = ErrorResponse.of(code, "업로드 가능한 파일 용량(10MB)을 초과했습니다.", request.getRequestURI());
         return ResponseEntity.status(code.getHttpStatus()).body(response);
     }
 

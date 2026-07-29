@@ -1,85 +1,147 @@
-#name: Production CD (Deploy to AWS ECS)
-#
-#on:
-#  push:
-#    tags:
-#      - 'v*.*.*'       # 정식 버전 태그 허용
-#      - '!*-rc.*'       # rc 태그는 프로덕션에서 무시
-#
-#env:
-#  AWS_REGION: ap-northeast-2                   # 리전 (서울)
-#  ECR_REPOSITORY: sb08/mopl                    # AWS ECR 리포지토리 이름
-#  ECS_SERVICE: mopl-task-service               # AWS ECS 서비스 이름
-#  ECS_CLUSTER: mopl                            # AWS ECS 클러스터 이름
-#  ECS_TASK_DEFINITION: ./task-definition.json  # ECS 태스크 정의서 파일 경로
-#  CONTAINER_NAME: mopl-app               # 태스크 정의서 안에 있는 컨테이너 이름
-#
-#jobs:
-#  deploy:
-#    runs-on: ubuntu-latest
-#    environment: production
-#
-#    steps:
-#      - name: 체크아웃
-#        uses: actions/checkout@v6
-#
-#      - name: JDK 21 설치
-#        uses: actions/setup-java@v5
-#        with:
-#          java-version: '21'
-#          distribution: 'temurin'
-#          cache: 'gradle'
-#
-#      - name: 실행 권한 부여
-#        run: chmod +x gradlew
-#
-#      - name: 빌드 (테스트는 CI에서 했으므로 생략)
-#        run: ./gradlew clean build -x test
-#
-#      - name: AWS 자격 증명 설정
-#        uses: aws-actions/configure-aws-credentials@v4
-#        with:
-#          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-#          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-#          aws-region: ${{ env.AWS_REGION }}
-#
-#      - name: Amazon ECR 로그인
-#        id: login-ecr
-#        uses: aws-actions/amazon-ecr-login@v2
-#
-#      - name: 도커 이미지 빌드 및 ECR에 푸시
-#        id: build-image
-#        env:
-#          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-#          IMAGE_TAG: ${{ github.ref_name }}
-#        run: |
-#          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-#          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-#          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
-#
-#      - name: 새로운 이미지 ID로 태스크 정의서 렌더링
-#        id: task-def
-#        uses: aws-actions/amazon-ecs-render-task-definition@v1
-#        with:
-#          task-definition: ${{ env.ECS_TASK_DEFINITION }}
-#          container-name: ${{ env.CONTAINER_NAME }}
-#          image: ${{ steps.build-image.outputs.image }}
-#
-#      - name: AWS ECS에 배포 (새로운 태스크 정의 적용)
-#        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-#        with:
-#          task-definition: ${{ steps.task-def.outputs.task-definition }}
-#          service: ${{ env.ECS_SERVICE }}
-#          cluster: ${{ env.ECS_CLUSTER }}
-#          wait-for-service-stability: true
-#
-#      - name: Discord 알림
-#        if: always()
-#        uses: sarisia/actions-status-discord@v1
-#        with:
-#          webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
-#          status: ${{ job.status }}
-#          title: "프로덕션 CD 배포 결과 (${{ github.ref_name }})"
-#          description: |
-#            태그 `${{ github.ref_name }}` 기반 실제 서버 배포가 완료되었습니다.
-#            by ${{ github.actor }}
+name: Deploy to EC2 (Single Instance - Smart Cache & Skip)
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: ap-northeast-2
+  S3_BUCKET: momogo-s3
+  EC2_TAG_NAME: momogo-app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@v6
+
+      # 🔥 [핵심 추가] 변경된 파일 폴더 감지 스텝
+      - name: 파일 변경 사항 감지
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'momogo-api/**'
+              - 'momogo-realtime/**'
+              - 'momogo-batch/**'
+              - 'momogo-core/**'
+              - 'momogo-ai/**'
+              - 'build.gradle'
+              - 'settings.gradle'
+            frontend:
+              - 'momogo-frontend/**'
+
+      # ==========================================
+      # 1. 백엔드 빌드 (백엔드 변경 시에만 실행)
+      # ==========================================
+      - name: JDK 21 설치 및 캐싱
+        if: steps.filter.outputs.backend == 'true'
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: 실행 권한 부여
+        if: steps.filter.outputs.backend == 'true'
+        run: chmod +x gradlew
+
+      - name: 백엔드 빌드
+        if: steps.filter.outputs.backend == 'true'
+        run: ./gradlew clean build -x test
+
+      # ==========================================
+      # 2. 프론트엔드 빌드 (프론트엔드 변경 시에만 실행)
+      # ==========================================
+      - name: Node.js 20 설치 및 캐싱
+        if: steps.filter.outputs.frontend == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'momogo-frontend/package-lock.json'
+
+      - name: 프론트엔드 빌드 및 압축
+        if: steps.filter.outputs.frontend == 'true'
+        run: |
+          cd momogo-frontend
+          npm ci
+          npm run build
+          tar -czvf frontend-dist.tar.gz -C dist .
+          cd ..
+
+      # ==========================================
+      # 3. AWS 인증 및 S3 업로드 (변경이 하나라도 있을 때)
+      # ==========================================
+      - name: AWS 자격 증명 설정
+        if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: S3 업로드 (변경된 것만 선택적 업로드)
+        if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true'
+        run: |
+          if [ "${{ steps.filter.outputs.backend }}" == "true" ]; then
+            API_JAR=$(find momogo-api/build/libs -name "*.jar" ! -name "*plain*" | head -n 1)
+            RT_JAR=$(find momogo-realtime/build/libs -name "*.jar" ! -name "*plain*" | head -n 1)
+            BATCH_JAR=$(find momogo-batch/build/libs -name "*.jar" ! -name "*plain*" | head -n 1)
+            aws s3 cp "$API_JAR" "s3://${{ env.S3_BUCKET }}/deploy/api.jar"
+            aws s3 cp "$RT_JAR" "s3://${{ env.S3_BUCKET }}/deploy/realtime.jar"
+            aws s3 cp "$BATCH_JAR" "s3://${{ env.S3_BUCKET }}/deploy/batch.jar"
+          fi
+
+          if [ "${{ steps.filter.outputs.frontend }}" == "true" ]; then
+            aws s3 cp "momogo-frontend/frontend-dist.tar.gz" "s3://${{ env.S3_BUCKET }}/deploy/frontend-dist.tar.gz"
+          fi
+
+      # ==========================================
+      # 4. SSM EC2 배포 실행 (변경된 부분만 선택적 재시작)
+      # ==========================================
+      - name: SSM으로 EC2 배포 트리거
+        if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true'
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=${{ env.EC2_TAG_NAME }}" "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" --output text)
+
+          # 백엔드/프론트엔드 동적 스크립트 구성
+          COMMANDS=()
+
+          if [ "${{ steps.filter.outputs.backend }}" == "true" ]; then
+            COMMANDS+=("aws s3 cp s3://${{ env.S3_BUCKET }}/deploy/api.jar /home/ec2-user/api.jar")
+            COMMANDS+=("aws s3 cp s3://${{ env.S3_BUCKET }}/deploy/realtime.jar /home/ec2-user/realtime.jar")
+            COMMANDS+=("aws s3 cp s3://${{ env.S3_BUCKET }}/deploy/batch.jar /home/ec2-user/batch.jar")
+            COMMANDS+=("sudo systemctl restart momogo-api")
+            COMMANDS+=("sudo systemctl restart momogo-realtime")
+            COMMANDS+=("sudo systemctl restart momogo-batch")
+          fi
+
+          if [ "${{ steps.filter.outputs.frontend }}" == "true" ]; then
+            COMMANDS+=("aws s3 cp s3://${{ env.S3_BUCKET }}/deploy/frontend-dist.tar.gz /home/ec2-user/frontend-dist.tar.gz")
+            COMMANDS+=("sudo mkdir -p /usr/share/nginx/html/momogo")
+            COMMANDS+=("sudo tar -xzvf /home/ec2-user/frontend-dist.tar.gz -C /usr/share/nginx/html/momogo/")
+            COMMANDS+=("sudo systemctl reload nginx")
+          fi
+
+          # JSON 배열 포맷팅 후 SSM 명령 전달
+          JSON_COMMANDS=$(jq -n --argjson cmds "$(printf '%s\n' "${COMMANDS[@]}" | jq -R . | jq -s .)" '$cmds')
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "{\"commands\": $JSON_COMMANDS}" \
+            --query "Command.CommandId" --output text)
+
+          aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID"
+
+      - name: 배포 결과 확인
+        if: steps.filter.outputs.backend == 'true'
+        run: |
+          sleep 15
+          curl -f http://${{ secrets.ALB_DNS_NAME }}/actuator/health

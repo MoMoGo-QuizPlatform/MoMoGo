@@ -22,29 +22,34 @@ CREATE TABLE "TBL_USER" (
                             "email"            VARCHAR(255)  NOT NULL,
                             "profile_image_url" VARCHAR(500) NULL,
                             "role"             VARCHAR(50)   NOT NULL, -- SUPER_ADMIN, ADMIN, USER
-                            "social"           VARCHAR(50)   NULL,     -- GOOGLE, KAKAO
+                            "social"           VARCHAR(50)   DEFAULT 'NONE' NOT NULL, -- NONE, GOOGLE, KAKAO
                             "is_banned"        BOOLEAN       DEFAULT FALSE NULL,
+                            "temp_password"    VARCHAR(255)  NULL,
+                            "temp_password_expired_at" TIMESTAMPTZ NULL,
                             "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
                             "updated_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
-                            "deleted_at"       TIMESTAMPTZ   NULL      -- 논리 삭제용 유예 기간 필드
+                            "deleted_at"       TIMESTAMPTZ   NULL, -- 논리 삭제용 유예 기간 필드
+                            CONSTRAINT ck_user_role   CHECK ("role" IN ('USER', 'ADMIN', 'SUPER_ADMIN')),
+                            CONSTRAINT ck_social_type CHECK ("social" IN ('NONE','KAKAO', 'GOOGLE'))
 );
 
 -- 문제 카테고리 테이블
 CREATE TABLE "TBL_PROBLEM_CATEGORY" (
                                         "id"               UUID          NOT NULL,
-                                        "space_id"         UUID          NOT NULL,
                                         "name"             VARCHAR(100)  NOT NULL,
-                                        "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL
+                                        "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
+                                        "updated_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL
 );
 
 -- 문제 메타데이터 테이블 (싱글모드 문제은행)
 CREATE TABLE "TBL_PROBLEM" (
                                "id"               UUID          NOT NULL,
+                               "space_id"         UUID          NOT NULL,
                                "category_id"      UUID          NOT NULL,
                                "name"             VARCHAR(255)  NOT NULL,
                                "content"          TEXT          NOT NULL,
                                "explanation"      TEXT          NULL,
-                               "correct_answer"   TEXT          NULL,     -- 정답 레이블 추가
+                               "correct_answer"   TEXT          NOT NULL, -- 정답 레이블 추가
                                "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
                                "updated_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL
 );
@@ -83,6 +88,7 @@ CREATE TABLE "TBL_ROOM_USER" (
 CREATE TABLE "TBL_ROOM_PROBLEM" (
                                     "id"               UUID          NOT NULL,
                                     "room_id"          UUID          NOT NULL,
+                                    "category_id"      UUID          NOT NULL,
                                     "problem_order"    INTEGER       NOT NULL,
                                     "name"             VARCHAR(255)  NULL,
                                     "content"          TEXT          NULL,
@@ -98,6 +104,7 @@ CREATE TABLE "TBL_USER_ROOM_ANSWER" (
                                         "user_id"          UUID          NOT NULL,
                                         "room_problem_id"  UUID          NOT NULL, -- TBL_ROOM_PROBLEM 참조
                                         "is_solved"        BOOLEAN       NOT NULL,
+                                        "is_correct"       BOOLEAN       NULL,     -- 채점 마감 시 정오표 캐싱용 컬럼 추가
                                         "user_answer"      TEXT          NULL,
                                         "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL
 );
@@ -117,9 +124,22 @@ CREATE TABLE "TBL_NOTIFICATION" (
                                     "receiver_id"      UUID          NOT NULL,
                                     "title"            VARCHAR(255)  NOT NULL,
                                     "content"          TEXT          NOT NULL,
+                                    "type"             VARCHAR(50)   NOT NULL,
                                     "is_confirmed"     BOOLEAN       DEFAULT FALSE NULL,
                                     "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
                                     "updated_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL
+);
+
+-- 개인 일간/주간 리포트 테이블
+CREATE TABLE "TBL_PERSONAL_REPORT" (
+                                       "id"               UUID          NOT NULL,
+                                       "user_id"          UUID          NOT NULL,
+                                       "report_type"      VARCHAR(20)   NOT NULL, -- DAILY, WEEKLY
+                                       "report_date"      DATE          NOT NULL,
+                                       "attempted_count"  INTEGER       DEFAULT 0 NULL,
+                                       "solved_count"     INTEGER       DEFAULT 0 NULL,
+                                       "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL,
+                                       CONSTRAINT ck_report_type CHECK ("report_type" IN ('DAILY', 'WEEKLY'))
 );
 
 
@@ -138,6 +158,7 @@ ALTER TABLE "TBL_ROOM_PROBLEM" ADD CONSTRAINT "PK_TBL_ROOM_PROBLEM" PRIMARY KEY 
 ALTER TABLE "TBL_USER_ROOM_ANSWER" ADD CONSTRAINT "PK_TBL_USER_ROOM_ANSWER" PRIMARY KEY ("id");
 ALTER TABLE "TBL_USER_PROBLEM" ADD CONSTRAINT "PK_TBL_USER_PROBLEM" PRIMARY KEY ("user_id", "problem_id");
 ALTER TABLE "TBL_NOTIFICATION" ADD CONSTRAINT "PK_TBL_NOTIFICATION" PRIMARY KEY ("id");
+ALTER TABLE "TBL_PERSONAL_REPORT" ADD CONSTRAINT "PK_TBL_PERSONAL_REPORT" PRIMARY KEY ("id");
 
 
 -- ====================================================
@@ -148,13 +169,14 @@ ALTER TABLE "TBL_NOTIFICATION" ADD CONSTRAINT "PK_TBL_NOTIFICATION" PRIMARY KEY 
 ALTER TABLE "TBL_USER" ADD CONSTRAINT "FK_TBL_SPACE_TO_TBL_USER" FOREIGN KEY ("space_id") REFERENCES "TBL_SPACE" ("id");
 
 -- 카테고리 및 문제 관계
-ALTER TABLE "TBL_PROBLEM_CATEGORY" ADD CONSTRAINT "FK_TBL_SPACE_TO_TBL_PROBLEM_CATEGORY" FOREIGN KEY ("space_id") REFERENCES "TBL_SPACE" ("id");
 ALTER TABLE "TBL_PROBLEM" ADD CONSTRAINT "FK_TBL_PROBLEM_CATEGORY_TO_TBL_PROBLEM" FOREIGN KEY ("category_id") REFERENCES "TBL_PROBLEM_CATEGORY" ("id");
+ALTER TABLE "TBL_PROBLEM" ADD CONSTRAINT "FK_TBL_SPACE_TO_TBL_PROBLEM" FOREIGN KEY ("space_id") REFERENCES "TBL_SPACE" ("id");
 ALTER TABLE "TBL_PROBLEM_COUNTERS" ADD CONSTRAINT "FK_TBL_PROBLEM_TO_TBL_PROBLEM_COUNTERS" FOREIGN KEY ("problem_id") REFERENCES "TBL_PROBLEM" ("id") ON DELETE CASCADE;
 
 -- 방 및 독립 시험지 세팅
 ALTER TABLE "TBL_ROOM" ADD CONSTRAINT "FK_TBL_SPACE_TO_TBL_ROOM" FOREIGN KEY ("space_id") REFERENCES "TBL_SPACE" ("id");
 ALTER TABLE "TBL_ROOM_PROBLEM" ADD CONSTRAINT "FK_TBL_ROOM_TO_TBL_ROOM_PROBLEM" FOREIGN KEY ("room_id") REFERENCES "TBL_ROOM" ("id") ON DELETE CASCADE;
+ALTER TABLE "TBL_ROOM_PROBLEM" ADD CONSTRAINT "FK_TBL_PROBLEM_CATEGORY_TO_TBL_ROOM_PROBLEM" FOREIGN KEY ("category_id") REFERENCES "TBL_PROBLEM_CATEGORY" ("id");
 
 -- 방 참여 유저 맵
 ALTER TABLE "TBL_ROOM_USER" ADD CONSTRAINT "FK_TBL_ROOM_TO_TBL_ROOM_USER" FOREIGN KEY ("room_id") REFERENCES "TBL_ROOM" ("id") ON DELETE CASCADE;
@@ -170,3 +192,40 @@ ALTER TABLE "TBL_USER_PROBLEM" ADD CONSTRAINT "FK_TBL_PROBLEM_TO_TBL_USER_PROBLE
 
 -- 알림 시스템 수신자
 ALTER TABLE "TBL_NOTIFICATION" ADD CONSTRAINT "FK_TBL_USER_TO_TBL_NOTIFICATION" FOREIGN KEY ("receiver_id") REFERENCES "TBL_USER" ("id");
+
+-- 개인 리포트 소유자
+ALTER TABLE "TBL_PERSONAL_REPORT" ADD CONSTRAINT "FK_TBL_USER_TO_TBL_PERSONAL_REPORT" FOREIGN KEY ("user_id") REFERENCES "TBL_USER" ("id");
+
+-- ====================================================
+-- 4. 인덱스(INDEX) 정의 단계
+-- ====================================================
+
+-- 이메일 중복 가입 방지 부분 유니크 인덱스 (탈퇴한 회원의 이메일은 UQ 제약에서 제외하여 재가입 허용)
+CREATE UNIQUE INDEX "UQ_USER_EMAIL_ACTIVE" ON "TBL_USER" ("email") WHERE "deleted_at" IS NULL;
+
+-- 카테고리 이름 유니크 제약 (동시 요청 레이스 컨디션 방어)
+ALTER TABLE "TBL_PROBLEM_CATEGORY" ADD CONSTRAINT "UQ_PROBLEM_CATEGORY_NAME" UNIQUE ("name");
+
+-- 방별 문제 순번 유니크 제약 (동시 생성 요청의 채번 중복 방어)
+ALTER TABLE "TBL_ROOM_PROBLEM" ADD CONSTRAINT "UQ_ROOM_PROBLEM_ROOM_ORDER" UNIQUE ("room_id", "problem_order");
+
+-- 공간별 커서 페이지네이션 성능 인덱스 (space_id 동등 조건 + created_at/id 정렬)
+CREATE INDEX "IDX_TBL_PROBLEM_SPACE_CURSOR"
+    ON "TBL_PROBLEM" ("space_id", "created_at" DESC, "id" DESC);
+-- 알림 목록 조회 성능 최적화를 위한 복합 인덱스
+CREATE INDEX "idx_notification_receiver_confirmed" ON "TBL_NOTIFICATION" ("receiver_id", "is_confirmed");
+
+-- Super_Admin 부분 유니크 인덱스
+CREATE UNIQUE INDEX "UQ_USER_SUPER_ADMIN_ONLY" ON "TBL_USER" ("role") WHERE "role" = 'SUPER_ADMIN' AND "deleted_at" IS NULL;
+
+-- 알림 커서 기반 페이지네이션 조회 성능 최적화를 위한 복합 인덱스
+CREATE INDEX "idx_notification_receiver_cursor" ON "TBL_NOTIFICATION" ("receiver_id", "created_at" DESC, "id" DESC);
+
+-- 한 유저가 동일한 평가 시험의 동일 문항에 중복 제출하는 것을 DB 단에서 원천 차단하는 복합 유니크 제약조건
+ALTER TABLE "TBL_USER_ROOM_ANSWER" ADD CONSTRAINT "UQ_USER_ROOM_ANSWER_USER_PROBLEM" UNIQUE ("user_id", "room_problem_id");
+
+-- 동일 유저의 동일 종류(일간/주간) 리포트가 같은 기준일에 중복 생성되는 것 방지 (배치 재실행 대비), 조회 인덱스로도 사용
+ALTER TABLE "TBL_PERSONAL_REPORT" ADD CONSTRAINT "UQ_PERSONAL_REPORT_USER_TYPE_DATE" UNIQUE ("user_id", "report_type", "report_date");
+
+-- 배치 작업 시 중복 검증 조회를 위한 인덱스
+CREATE INDEX "IDX_PERSONAL_REPORT_TYPE_DATE" ON "TBL_PERSONAL_REPORT" ("report_type", "report_date");

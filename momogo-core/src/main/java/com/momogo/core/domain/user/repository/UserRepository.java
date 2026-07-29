@@ -1,10 +1,34 @@
 package com.momogo.core.domain.user.repository;
 
 import com.momogo.core.domain.user.entity.User;
+import com.momogo.core.domain.user.entity.enums.UserRole;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface UserRepository extends JpaRepository<User, UUID> {
+public interface UserRepository extends JpaRepository<User, UUID>, UserRepositoryCustom {
+
+    List<User> findAllBySpaceId(UUID spaceId);
+
+    Optional<User> findByEmail(String email);
+
+    boolean existsByEmail(String email);
+
+    boolean existsByRole(UserRole role);
+
+    List<User> findAllByDeletedAtBefore(OffsetDateTime threshold);
+
+    Optional<User> findBySpaceIdAndRole(UUID spaceId, UserRole role);
+
+    long countBySpaceIdAndRole(UUID spaceId, UserRole userRole);
+
+    @Query("select u from User u join fetch u.space where u.id = :userId")
+    Optional<User> findByIdWithSpace(@Param("userId") UUID userId);
 }
