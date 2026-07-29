@@ -26,7 +26,7 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
     private final UserMapper userMapper;
 
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String username) {
         log.debug("[MoMoGoUserDetailsService] loadUserByUsername 호출됨, email: {}", EmailFormatter.mask(username));
         return loadUserDetails(username);
@@ -64,11 +64,20 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
                 // 3분 이내 유효한 임시 비밀번호가 존재한다면 검증용 비밀번호로 임시 비밀번호 사용
                 passwordForAuth = user.getTempPassword();
             } else {
-                // 3분 초과하여 만료된 경우 DB의 임시 비밀번호 및 만료 시각 자동 초기화 (Dirty Checking)
-                user.clearTemporaryPassword();
+                // 3분 초과하여 만료된 경우 DB의 임시 비밀번호 및 만료 시각 명시적 초기화
+                clearExpiredTempPassword(user);
             }
         }
 
         return new MoMoGoUserDetails(userResponse, passwordForAuth);
+    }
+
+    /**
+     * 만료된 임시 비밀번호를 DB에서 정리(초기화)합니다.
+     */
+    @Transactional
+    public void clearExpiredTempPassword(User user) {
+        user.clearTemporaryPassword();
+        userRepository.save(user);
     }
 }
