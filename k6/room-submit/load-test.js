@@ -1,7 +1,7 @@
 import http from 'k6/http'; // k6의 HTTP 통신 모듈 (GET, POST 등 전송용)
 import { check, sleep } from 'k6'; // 응답 결과(200 OK 등) 검증 및 요청 간 쉼(sleep) 모듈
 import { Rate, Trend } from 'k6/metrics'; // 에러율(Rate) 및 응답시간(Trend) 커스텀 측정 모듈
-import { BASE_URL, ROOM_ID, obtainAuthToken, getSampleSubmitPayload } from '../config.js'; // 공통 설정 상위 모듈 참조
+import { BASE_URL, ROOM_ID, obtainAuthToken, getSampleSubmitPayload } from './config.js';
 
 /**
  * ============================================================================
@@ -31,10 +31,10 @@ export const options = {
   },
 };
 
-// 3. [setup 단계] 테스트 실행 직전 로그인 API를 1회 호출하여 30분 유효 JWT 토큰을 발급받음
+// 3. [setup 단계] 테스트 실행 직전 로그인 API 및 CSRF 토큰을 발급받음
 export function setup() {
-  const token = obtainAuthToken(); // ../config.js에 정의된 토큰 자동 발급 함수 실행
-  return { authToken: token };      // 발급받은 토큰을 메인 테스트 함수(default)로 전달
+  const authData = obtainAuthToken(); 
+  return authData;     
 }
 
 // 4. [main 단계] 30명의 가상 유저(VU)들이 반복 실행하는 실제 테스트 메인 로직
@@ -45,11 +45,14 @@ export default function (data) {
   // POST로 전달할 주관식 제출 답안 샘플 JSON 생성
   const payload = getSampleSubmitPayload();
 
-  // HTTP 헤더 설정 (Content-Type 및 Bearer JWT 인증 토큰 헤더 적용)
+  // HTTP 헤더 설정 (Content-Type 및 Bearer JWT 인증 토큰 / CSRF 토큰 및 쿠키 적용)
   const params = {
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${data.authToken}`, // setup에서 넘어온 토큰 적용
+      'Authorization': `Bearer ${data.authToken}`, 
+      'X-XSRF-TOKEN': data.csrfToken,
+      'X-CSRF-TOKEN': data.csrfToken,
+      'Cookie': `XSRF-TOKEN=${data.csrfToken}`,
     },
   };
 
@@ -71,4 +74,15 @@ export default function (data) {
 
   // 실제 사용자들이 고민 후 제출하는 현실적인 간격 유도 (1초 휴식)
   sleep(1);
+}
+
+/**
+ * [k6 테스트 완료 후 자동 HTML 리포트 생성 함수]
+ */
+import { htmlReport } from 'https://raw.githubusercontent.com/benc-uk/k6-reporter/main/dist/bundle.js';
+
+export function handleSummary(data) {
+  return {
+    'k6/results/load-test-report.html': htmlReport(data),
+  };
 }

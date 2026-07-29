@@ -1,7 +1,7 @@
 import http from 'k6/http'; // k6의 HTTP 통신 모듈 (GET, POST 등 전송용)
 import { check, sleep } from 'k6'; // 응답 결과 검증(check) 및 요청 간 쉼(sleep) 모듈
 import { Rate, Trend } from 'k6/metrics'; // 에러율(Rate) 및 응답시간(Trend) 커스텀 측정 모듈
-import { BASE_URL, ROOM_ID, obtainAuthToken, getSampleSubmitPayload } from '../config.js'; // 공통 설정 상위 모듈 참조
+import { BASE_URL, ROOM_ID, obtainAuthToken, getSampleSubmitPayload } from './config.js'; // 공통 설정 상위 모듈 참조
 
 /**
  * ============================================================================
@@ -32,25 +32,28 @@ export const options = {
   },
 };
 
-// 3. [setup 단계] 로그인 1회 수행 후 JWT 토큰 발급 (30분 유효 토큰)
+// 3. [setup 단계] 테스트 실행 직전 로그인 API 및 CSRF 토큰을 발급받음
 export function setup() {
-  const token = obtainAuthToken(); // ../config.js의 토큰 발급 함수 호출
-  return { authToken: token };      // default 실행 함수로 파라미터 전달
+  const authData = obtainAuthToken(); 
+  return authData;     
 }
 
-// 4. [main 단계] 가상 유저(VU)들이 반복 실행하는 메인 테스트 로직
+// 4. [main 단계] 가상 유저(VU)들이 반복 실행하는 실제 테스트 메인 로직
 export default function (data) {
-  // 호출할 타겟 답안 제출 API URL 조립
+  // 호출할 답안 제출 API 전용 URL 생성
   const submitUrl = `${BASE_URL}/api/rooms/${ROOM_ID}/submit`;
 
   // POST로 전달할 주관식 제출 답안 샘플 JSON 생성
   const payload = getSampleSubmitPayload();
 
-  // HTTP 헤더 설정 (JSON 타입 명시 + JWT Bearer 인증 토큰 주입)
+  // HTTP 헤더 설정 (Content-Type 및 Bearer JWT 인증 토큰 / CSRF 토큰 및 쿠키 적용)
   const params = {
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${data.authToken}`, // setup에서 넘어온 토큰 적용
+      'Authorization': `Bearer ${data.authToken}`, 
+      'X-XSRF-TOKEN': data.csrfToken,
+      'X-CSRF-TOKEN': data.csrfToken,
+      'Cookie': `XSRF-TOKEN=${data.csrfToken}`,
     },
   };
 
@@ -70,6 +73,17 @@ export default function (data) {
   errorRate.add(!isSuccess);   // 실패 시 에러 비율 카운터 증가
   submitLatency.add(duration); // 지연시간 합산
 
-  // 동시 폭증 상황 유도를 위해 쉬는 시간 최소화 (0.2초 쉬기)
-  sleep(0.2);
+  // 동시  // 제출 요청 간 쉬는 시간 최소화 (0.5초 간격)
+  sleep(0.5);
+}
+
+/**
+ * [k6 테스트 완료 후 자동 HTML 리포트 생성 함수]
+ */
+import { htmlReport } from 'https://raw.githubusercontent.com/benc-uk/k6-reporter/main/dist/bundle.js';
+
+export function handleSummary(data) {
+  return {
+    'k6/results/spike-test-report.html': htmlReport(data),
+  };
 }
