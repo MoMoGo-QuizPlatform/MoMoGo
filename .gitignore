@@ -103,3 +103,21 @@ uploads/
 
 # Added by code-review-graph
 .code-review-graph/
+
+# AI Assistant & Extra Tool Configs
+.ai-tools-config/
+.claude/
+.codebuddy/
+.cursorrules
+.gemini/
+.kiro/
+.mcp.json
+.qoder/
+.windsurfrules
+AGENTS.MD
+CLAUDE.md
+CODEBUDDY.md
+GEMINI.md
+QODER.md
+diff.txt
+opencode.jsonc
