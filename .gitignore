@@ -19,6 +19,7 @@ out/
 
 # Test Results & Logs (테스트 결과물 및 로그/메모리 덤프)
 /k6/results/
+k6/**/results/
 *.log
 hs_err_pid*
 replay_pid*
