@@ -22,6 +22,7 @@ dependencies {
     // HTTP & JSON Utilities (Tomcat이 포함된 spring-boot-starter-web 대신 경량 의존성 사용)
     api 'org.springframework:spring-web'
     api 'com.fasterxml.jackson.core:jackson-annotations'
+    api 'com.fasterxml.jackson.core:jackson-databind'
 
     // PDF 라이브러리
     implementation 'com.github.librepdf:openpdf:2.2.2'
@@ -29,6 +30,10 @@ dependencies {
     // S3 프로필 이미지 저장용
     implementation platform('software.amazon.awssdk:bom:2.29.52')
     implementation 'software.amazon.awssdk:s3'
+
+    // 분산환경 공용 인프라 (Redis, Kafka) - api/realtime/batch가 공통으로 사용
+    api 'org.springframework.boot:spring-boot-starter-data-redis'
+    api 'org.springframework.kafka:spring-kafka'
 
     // 인프라 테스트용 Testcontainers
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
