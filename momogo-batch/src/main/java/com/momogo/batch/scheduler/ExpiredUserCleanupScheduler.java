@@ -3,6 +3,7 @@ package com.momogo.batch.scheduler;
 import com.momogo.core.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -20,6 +21,7 @@ public class ExpiredUserCleanupScheduler {
      * 크론식 구성: 초(0) 분(0) 시(4) 일(*) 월(*) 요일(*)
      */
     @Scheduled(cron = "0 0 4 * * *")
+    @SchedulerLock(name = "expiredUserCleanupJob", lockAtMostFor = "PT30M")
     public void runExpiredUserCleanupJob() {
         log.info("[ExpiredUserCleanupScheduler] 30일 경과 회원 물리 삭제 스케줄 작업 시작");
         try {

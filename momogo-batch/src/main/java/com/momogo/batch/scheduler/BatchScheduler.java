@@ -3,6 +3,7 @@ package com.momogo.batch.scheduler;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobLauncher;
@@ -33,6 +34,7 @@ public class BatchScheduler {
 
   // 매일 00:10 - 어제 하루치 개인 일간 리포트 생성
   @Scheduled(cron = "0 10 0 * * *")
+  @SchedulerLock(name = "dailyReportJob", lockAtMostFor = "PT30M")
   public void runDailyReportJob() {
     try {
       jobLauncher.run(dailyReportJob, new JobParametersBuilder()
@@ -46,6 +48,7 @@ public class BatchScheduler {
 
   // 매주 월요일 00:20 - 지난주 개인 주간 리포트 생성
   @Scheduled(cron = "0 20 0 * * MON")
+  @SchedulerLock(name = "weeklyReportJob", lockAtMostFor = "PT30M")
   public void runWeeklyReportJob() {
     try {
       jobLauncher.run(weeklyReportJob, new JobParametersBuilder()
