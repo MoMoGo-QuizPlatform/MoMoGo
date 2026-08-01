@@ -2,6 +2,8 @@ package com.momogo.api.auth.jwt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.momogo.api.auth.dto.JwtInformation;
+import com.momogo.api.auth.exception.JwtLockAcquisitionException;
+import com.momogo.api.auth.exception.JwtSerializationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
@@ -88,7 +90,7 @@ public class RedisJwtRegistry implements JwtRegistry {
     @Override
     public boolean hasActiveJwtInformationByAccessToken(String accessToken) {
         if (accessToken == null) return false;
-        return redisTemplate.hasKey(KEY_ACCESS_PREFIX + accessToken);
+        return Boolean.TRUE.equals(redisTemplate.hasKey(KEY_ACCESS_PREFIX + accessToken));
     }
 
     /**
@@ -100,7 +102,7 @@ public class RedisJwtRegistry implements JwtRegistry {
     @Override
     public boolean hasActiveJwtInformationByRefreshToken(String refreshToken) {
         if (refreshToken == null) return false;
-        return redisTemplate.hasKey(KEY_REFRESH_PREFIX + refreshToken);
+        return Boolean.TRUE.equals(redisTemplate.hasKey(KEY_REFRESH_PREFIX + refreshToken));
     }
 
     /**
@@ -128,16 +130,7 @@ public class RedisJwtRegistry implements JwtRegistry {
         UUID userId = newJwtInformation.user().id();
 
         executeWithLock(userId, () -> {
-            // 이전 Refresh Token으로 유효한 정보 삭제
-            if (refreshToken != null) {
-                String oldJson = redisTemplate.opsForValue().get(KEY_REFRESH_PREFIX + refreshToken);
-                if (oldJson != null) {
-                    JwtInformation oldInfo = parseJwtInfo(oldJson);
-                    removeIndices(oldInfo);
-                    redisTemplate.opsForList().remove(KEY_USER_PREFIX + userId, 0, oldJson);
-                }
-            }
-            // 락 중복 획득 없이 내부 등록 로직 직접 호출
+            removeSessionByRefreshToken(userId, refreshToken);
             doRegisterJwtInformation(newJwtInformation);
         });
     }
@@ -156,17 +149,52 @@ public class RedisJwtRegistry implements JwtRegistry {
         UUID userId = oldJwtInformation.user().id();
 
         executeWithLock(userId, () -> {
-            // 새로 발급되었던 신규 토큰 제거
-            if (newRefreshToken != null) {
-                String newJson = redisTemplate.opsForValue().get(KEY_REFRESH_PREFIX + newRefreshToken);
-                if (newJson != null) {
-                    removeIndices(parseJwtInfo(newJson));
-                    redisTemplate.opsForList().remove(KEY_USER_PREFIX + userId, 0, newJson);
+            // 새로 발급되었던 신규 토큰 안전 제거
+            removeSessionByRefreshToken(userId, newRefreshToken);
+
+            // 이전 토큰이 세션 목록에 이미 존재하지 않을 때만 원복
+            if (!hasSessionInUserList(userId, oldRefreshToken)) {
+                doRegisterJwtInformation(oldJwtInformation);
+            }
+        });
+    }
+
+    /**
+     * 사용자 세션 목록(List)에서 지정된 Refresh Token을 소유한 세션을 찾아 색인(Index) 및 세션 데이터를 완전히 제거합니다.
+     *
+     * @param userId       대상 사용자 식별자
+     * @param refreshToken 무효화할 Refresh Token
+     */
+    private void removeSessionByRefreshToken(UUID userId, String refreshToken) {
+        if (refreshToken == null) return;
+        String userKey = KEY_USER_PREFIX + userId;
+        List<String> sessions = redisTemplate.opsForList().range(userKey, 0, -1);
+        if (sessions != null) {
+            for (String sessionJson : sessions) {
+                JwtInformation info = parseJwtInfo(sessionJson);
+                if (info != null && refreshToken.equals(info.refreshToken())) {
+                    removeIndices(info);
+                    redisTemplate.opsForList().remove(userKey, 0, sessionJson);
                 }
             }
-            // 이전 토큰 원복
-            doRegisterJwtInformation(oldJwtInformation);
-        });
+        }
+    }
+
+    /**
+     * 사용자 세션 목록(List)에 지정된 Refresh Token 세션이 활성화되어 존재하는지 확인합니다.
+     *
+     * @param userId       대상 사용자 식별자
+     * @param refreshToken 존재 여부를 확인할 Refresh Token
+     * @return 세션 목록에 존재하면 true, 그렇지 않으면 false
+     */
+    private boolean hasSessionInUserList(UUID userId, String refreshToken) {
+        if (refreshToken == null) return false;
+        String userKey = KEY_USER_PREFIX + userId;
+        List<String> sessions = redisTemplate.opsForList().range(userKey, 0, -1);
+        if (sessions == null) return false;
+        return sessions.stream()
+                .map(this::parseJwtInfo)
+                .anyMatch(info -> info != null && refreshToken.equals(info.refreshToken()));
     }
 
     /**
@@ -193,7 +221,7 @@ public class RedisJwtRegistry implements JwtRegistry {
         // 유저 세션 리스트 키에도 TTL 설정 (메모리 누수 방지)
         redisTemplate.expire(userKey, Duration.ofMillis(refreshTokenExpirationMs));
 
-        putIndices(jwtInformation);
+        putIndices(jwtInformation, json);
     }
 
     /**
@@ -204,7 +232,7 @@ public class RedisJwtRegistry implements JwtRegistry {
      * action.run() 작업이 진행 중인 동안 10초마다 Redis 락의 만료 시간(TTL)을 30초로 계속 자동 연장합니다.
      * 작업이 정상 종료(unlock)되거나 서버가 다운되면 락이 자동 해제되어 데드락을 방지합니다.
      * </p>
-
+     *
      * @param userId 락 기준이 될 사용자 식별자
      * @param action 락 획득 후 실행할 임계 영역(Critical Section) 로직
      */
@@ -228,10 +256,12 @@ public class RedisJwtRegistry implements JwtRegistry {
             } else {
                 // 3초 대기 후에도 락 획득에 실패한 경우
                 log.warn("[RedisJwtRegistry] 락 획득 타임아웃 발생 - userId: {}", userId);
+                throw new JwtLockAcquisitionException(userId);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.error("[RedisJwtRegistry] 락 획득 중 인터럽트 발생 - userId: {}", userId, e);
+            throw new JwtLockAcquisitionException(userId, e);
         }
     }
 
@@ -239,9 +269,9 @@ public class RedisJwtRegistry implements JwtRegistry {
      * Access Token 및 Refresh Token 조회를 위한 Redis 색인(Index) Key-Value 데이터를 저장합니다.
      *
      * @param info 등록할 토큰 세션 정보
+     * @param json 직렬화된 세션 JSON 문자열
      */
-    private void putIndices(JwtInformation info) {
-        String json = toJson(info);
+    private void putIndices(JwtInformation info, String json) {
         if (info.accessToken() != null) {
             redisTemplate.opsForValue().set(
                     KEY_ACCESS_PREFIX + info.accessToken(),
@@ -283,7 +313,7 @@ public class RedisJwtRegistry implements JwtRegistry {
         try {
             return objectMapper.writeValueAsString(info);
         } catch (Exception e) {
-            throw new RuntimeException("JWT Info 직렬화 실패", e);
+            throw new JwtSerializationException("JWT Info 직렬화 실패", e);
         }
     }
 
@@ -302,4 +332,3 @@ public class RedisJwtRegistry implements JwtRegistry {
         }
     }
 }
-
