@@ -117,7 +117,8 @@ app:
     password: ${SUPER_ADMIN_PASSWORD}
     name: ${SUPER_ADMIN_NAME}
   jwt:
-    registry: memory
+    registry: redis
+    max-active-count: 1
   file:
     # 클라이언트용 웹 서비스 URL 주소
     base-url: ${APP_FILE_BASE_URL}
