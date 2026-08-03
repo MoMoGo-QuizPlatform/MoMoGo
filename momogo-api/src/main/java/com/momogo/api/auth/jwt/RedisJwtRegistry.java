@@ -2,8 +2,8 @@ package com.momogo.api.auth.jwt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.momogo.api.auth.dto.JwtInformation;
-import com.momogo.api.auth.exception.JwtLockAcquisitionException;
-import com.momogo.api.auth.exception.JwtSerializationException;
+import com.momogo.core.common.exception.AuthErrorCode;
+import com.momogo.core.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
@@ -266,12 +266,12 @@ public class RedisJwtRegistry implements JwtRegistry {
             } else {
                 // 3초 대기 후에도 락 획득에 실패한 경우
                 log.warn("[RedisJwtRegistry] 락 획득 타임아웃 발생 - userId: {}", userId);
-                throw new JwtLockAcquisitionException(userId);
+                throw new BusinessException(AuthErrorCode.LOCK_ACQUISITION_FAILED, "JWT 락 획득 타임아웃 발생 - userId: " + userId);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.error("[RedisJwtRegistry] 락 획득 중 인터럽트 발생 - userId: {}", userId, e);
-            throw new JwtLockAcquisitionException(userId, e);
+            throw new BusinessException(AuthErrorCode.LOCK_ACQUISITION_FAILED, "JWT 락 획득 중 인터럽트 발생 - userId: " + userId, e);
         }
     }
 
@@ -323,7 +323,7 @@ public class RedisJwtRegistry implements JwtRegistry {
         try {
             return objectMapper.writeValueAsString(info);
         } catch (Exception e) {
-            throw new JwtSerializationException("JWT Info 직렬화 실패", e);
+            throw new BusinessException(AuthErrorCode.JWT_SERIALIZATION_FAILED, "JWT Info 직렬화 실패", e);
         }
     }
 

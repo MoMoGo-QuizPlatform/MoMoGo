@@ -29,7 +29,7 @@ public class S3StorageService implements StorageService {
     public S3StorageService(
             ImageFileValidator imageFileValidator,
             @Value("${app.aws.s3-bucket}") String bucket,
-            @Value("${app.aws.region:ap-northeast-2}") String region
+            @Value("${app.aws.region}") String region
     ) {
         this.imageFileValidator = imageFileValidator;
         this.bucket = bucket;
@@ -76,12 +76,24 @@ public class S3StorageService implements StorageService {
             return;
         }
 
-        s3Client.deleteObject(
-                DeleteObjectRequest.builder()
-                        .bucket(bucket)
-                        .key(fileUrl)
-                        .build()
-        );
-        log.info("[S3StorageService] 객체 삭제 완료: {}", fileUrl);
+        String key = fileUrl;
+        if (key.startsWith("http://") || key.startsWith("https://")) {
+            int lastDomainIdx = key.indexOf("/", key.indexOf("//") + 2);
+            if (lastDomainIdx != -1) {
+                key = key.substring(lastDomainIdx + 1);
+            }
+        }
+
+        try {
+            s3Client.deleteObject(
+                    DeleteObjectRequest.builder()
+                            .bucket(bucket)
+                            .key(key)
+                            .build()
+            );
+            log.info("[S3StorageService] 객체 삭제 완료: {}", key);
+        } catch (Exception e) {
+            log.error("[S3StorageService] S3 객체 삭제 실패: {}", fileUrl, e);
+        }
     }
 }

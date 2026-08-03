@@ -112,6 +112,11 @@ jwt:
       same-site: ${JWT_REFRESH_COOKIE_SAME_SITE}
 
 app:
+  storage:
+    type: ${APP_STORAGE_TYPE}
+  aws:
+    s3-bucket: ${AWS_S3_BUCKET}
+    region: ${AWS_REGION}
   super-admin:
     email: ${SUPER_ADMIN_EMAIL}
     password: ${SUPER_ADMIN_PASSWORD}
