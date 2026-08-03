@@ -15,8 +15,7 @@ import java.util.concurrent.Executor;
 
 /**
  * 애플리케이션 비동기 처리(가상 스레드 기반 Executor) 설정 클래스.
- * TaskDecorator 빈이 존재하는 경우, 비동기 스레드 실행 시 컨텍스트(MDC, SecurityContext) 전파를 설정합니다.
- * setConcurrencyLimit을 통해 동시 요청 수를 제한하여 외부 리소스에 과도한 부하가 걸리는 것을 방지
+ * 가상 스레드(Virtual Thread) 환경에서는 호출 스레드 블로킹 방지를 위해 무제한 동시성(Unbounded Concurrency)으로 동작시킵니다.
  */
 @Configuration
 @EnableAsync
@@ -43,11 +42,7 @@ public class AsyncConfig implements AsyncConfigurer {
 
     @Bean(name = DEFAULT_EXECUTOR)
     public Executor defaultExecutor() {
-        SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("default-async-");
-        executor.setVirtualThreads(true);
-        executor.setConcurrencyLimit(100);
-        taskDecoratorProvider.ifAvailable(executor::setTaskDecorator);
-        return executor;
+        return createVirtualThreadExecutor("default-async-");
     }
 
     /**
@@ -55,11 +50,7 @@ public class AsyncConfig implements AsyncConfigurer {
      */
     @Bean(name = MAIL_EXECUTOR)
     public Executor mailExecutor() {
-        SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("mail-async-");
-        executor.setVirtualThreads(true);
-        executor.setConcurrencyLimit(20);
-        taskDecoratorProvider.ifAvailable(executor::setTaskDecorator);
-        return executor;
+        return createVirtualThreadExecutor("mail-async-");
     }
 
     /**
@@ -67,11 +58,7 @@ public class AsyncConfig implements AsyncConfigurer {
      */
     @Bean(name = USER_EXECUTOR)
     public Executor userExecutor() {
-        SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("user-async-");
-        executor.setVirtualThreads(true);
-        executor.setConcurrencyLimit(50);
-        taskDecoratorProvider.ifAvailable(executor::setTaskDecorator);
-        return executor;
+        return createVirtualThreadExecutor("user-async-");
     }
 
     /**
@@ -79,9 +66,15 @@ public class AsyncConfig implements AsyncConfigurer {
      */
     @Bean(name = FILE_EXECUTOR)
     public Executor fileExecutor() {
-        SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("file-async-");
+        return createVirtualThreadExecutor("file-async-");
+    }
+
+    /**
+     * 가상 스레드 기반 Executor 생성 공통 팩토리 메서드 (DRY 원칙 적용)
+     */
+    private Executor createVirtualThreadExecutor(String threadNamePrefix) {
+        SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor(threadNamePrefix);
         executor.setVirtualThreads(true);
-        executor.setConcurrencyLimit(50);
         taskDecoratorProvider.ifAvailable(executor::setTaskDecorator);
         return executor;
     }

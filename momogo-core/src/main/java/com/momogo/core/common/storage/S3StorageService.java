@@ -22,14 +22,11 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 @Slf4j
 @Service
 @ConditionalOnProperty(name = "app.storage.type", havingValue = "s3")
 public class S3StorageService implements StorageService {
-
-    private static final Pattern DIRECTORY_PATTERN = Pattern.compile("^[a-zA-Z0-9/_-]+$");
 
     private final ImageFileValidator imageFileValidator;
     private final S3Client s3Client;
@@ -48,8 +45,6 @@ public class S3StorageService implements StorageService {
 
     @Override
     public String upload(InputStream inputStream, String originalFileName, String contentType, String directory) {
-        validateDirectory(directory);
-
         // try-with-resources 구문으로 원본 inputStream 및 validatedStream 자원 수명주기를 안전하게 관리
         try (InputStream src = inputStream;
              InputStream validatedStream = imageFileValidator.validateImage(src, originalFileName, contentType)) {
@@ -106,12 +101,6 @@ public class S3StorageService implements StorageService {
             } catch (Exception e) {
                 log.warn("[S3StorageService] S3Client 종료 중 예외 발생", e);
             }
-        }
-    }
-
-    private void validateDirectory(String directory) {
-        if (directory == null || directory.isBlank() || directory.contains("..") || !DIRECTORY_PATTERN.matcher(directory).matches()) {
-            throw new BusinessException(GlobalErrorCode.INVALID_INPUT, "유효하지 않은 디렉토리 경로입니다.");
         }
     }
 
