@@ -266,12 +266,12 @@ public class RedisJwtRegistry implements JwtRegistry {
             } else {
                 // 3초 대기 후에도 락 획득에 실패한 경우
                 log.warn("[RedisJwtRegistry] 락 획득 타임아웃 발생 - userId: {}", userId);
-                throw new BusinessException(AuthErrorCode.LOCK_ACQUISITION_FAILED, "JWT 락 획득 타임아웃 발생 - userId: " + userId);
+                throw new BusinessException(AuthErrorCode.LOCK_ACQUISITION_FAILED, "JWT 락 획득 타임아웃 발생");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.error("[RedisJwtRegistry] 락 획득 중 인터럽트 발생 - userId: {}", userId, e);
-            throw new BusinessException(AuthErrorCode.LOCK_ACQUISITION_FAILED, "JWT 락 획득 중 인터럽트 발생 - userId: " + userId, e);
+            throw new BusinessException(AuthErrorCode.LOCK_ACQUISITION_FAILED, "JWT 락 획득 중 인터럽트 발생", e);
         }
     }
 

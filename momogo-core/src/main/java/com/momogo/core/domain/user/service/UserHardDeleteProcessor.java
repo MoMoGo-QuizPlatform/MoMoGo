@@ -1,18 +1,17 @@
 package com.momogo.core.domain.user.service;
 
 import com.momogo.core.common.exception.BusinessException;
-import com.momogo.core.common.storage.StorageService;
+import com.momogo.core.common.storage.event.FileDeleteEvent;
 import com.momogo.core.common.util.UrlUtils;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.exception.UserErrorCode;
 import com.momogo.core.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.UUID;
 
@@ -31,7 +30,7 @@ public class UserHardDeleteProcessor {
     private static final String PROFILE_IMAGE_DIR = "profile";
 
     private final UserRepository userRepository;
-    private final StorageService storageService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void execute(UUID userId) {
@@ -41,20 +40,7 @@ public class UserHardDeleteProcessor {
         String profileImageUrl = user.getProfileImageUrl();
         if (profileImageUrl != null && !profileImageUrl.isBlank()
                 && !UrlUtils.isExternalUrl(user.getProfileImageUrl())) {
-            TransactionSynchronizationManager.registerSynchronization(
-                    new TransactionSynchronization() {
-                        @Override
-                        public void afterCompletion(int status) {
-                            if (status == STATUS_COMMITTED) {
-                                try {
-                                    storageService.delete(PROFILE_IMAGE_DIR + "/" + profileImageUrl);
-                                } catch (Exception e) {
-                                    log.error("[UserHardDeleteProcessor] 회원 탈퇴 프로필 이미지 삭제 실패 - userId: {}, file: {}", userId, profileImageUrl, e);
-                                }
-                            }
-                        }
-                    }
-            );
+            eventPublisher.publishEvent(new FileDeleteEvent(PROFILE_IMAGE_DIR + "/" + profileImageUrl));
         }
         // DB 유저 데이터 물리 삭제
         userRepository.delete(user);

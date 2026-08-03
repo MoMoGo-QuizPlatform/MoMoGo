@@ -40,14 +40,14 @@ server:
 
 app:
   storage:
-    type: ${APP_STORAGE_TYPE}
+    type: ${APP_STORAGE_TYPE:s3}
   aws:
-    s3-bucket: ${AWS_S3_BUCKET}
-    region: ${AWS_REGION}
+    s3-bucket: ${AWS_S3_BUCKET:momogo-s3}
+    region: ${AWS_REGION:ap-northeast-2}
   super-admin:
     email: ${SUPER_ADMIN_EMAIL}
   file:
-    base-url: ${APP_FILE_BASE_URL}
+    base-url: ${APP_FILE_BASE_URL:http://localhost:8080/uploads}
     upload:
       allowed-extensions: jpg,jpeg,png,webp
       allowed-mime-types: image/jpeg,image/png,image/webp

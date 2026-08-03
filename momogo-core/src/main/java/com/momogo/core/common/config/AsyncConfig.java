@@ -16,6 +16,7 @@ import java.util.concurrent.Executor;
 /**
  * 애플리케이션 비동기 처리(가상 스레드 기반 Executor) 설정 클래스.
  * TaskDecorator 빈이 존재하는 경우, 비동기 스레드 실행 시 컨텍스트(MDC, SecurityContext) 전파를 설정합니다.
+ * setConcurrencyLimit을 통해 동시 요청 수를 제한하여 외부 리소스에 과도한 부하가 걸리는 것을 방지
  */
 @Configuration
 @EnableAsync
@@ -25,6 +26,7 @@ public class AsyncConfig implements AsyncConfigurer {
     public static final String DEFAULT_EXECUTOR = "defaultExecutor";
     public static final String MAIL_EXECUTOR = "mailExecutor";
     public static final String USER_EXECUTOR = "userExecutor";
+    public static final String FILE_EXECUTOR = "fileExecutor";
 
     private final GlobalAsyncUncaughtExceptionHandler exceptionHandler;
     private final ObjectProvider<TaskDecorator> taskDecoratorProvider;
@@ -43,6 +45,7 @@ public class AsyncConfig implements AsyncConfigurer {
     public Executor defaultExecutor() {
         SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("default-async-");
         executor.setVirtualThreads(true);
+        executor.setConcurrencyLimit(100);
         taskDecoratorProvider.ifAvailable(executor::setTaskDecorator);
         return executor;
     }
@@ -54,6 +57,7 @@ public class AsyncConfig implements AsyncConfigurer {
     public Executor mailExecutor() {
         SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("mail-async-");
         executor.setVirtualThreads(true);
+        executor.setConcurrencyLimit(20);
         taskDecoratorProvider.ifAvailable(executor::setTaskDecorator);
         return executor;
     }
@@ -65,6 +69,19 @@ public class AsyncConfig implements AsyncConfigurer {
     public Executor userExecutor() {
         SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("user-async-");
         executor.setVirtualThreads(true);
+        executor.setConcurrencyLimit(50);
+        taskDecoratorProvider.ifAvailable(executor::setTaskDecorator);
+        return executor;
+    }
+
+    /**
+     * 파일/Storage 처리 전용 비동기 Executor
+     */
+    @Bean(name = FILE_EXECUTOR)
+    public Executor fileExecutor() {
+        SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("file-async-");
+        executor.setVirtualThreads(true);
+        executor.setConcurrencyLimit(50);
         taskDecoratorProvider.ifAvailable(executor::setTaskDecorator);
         return executor;
     }
