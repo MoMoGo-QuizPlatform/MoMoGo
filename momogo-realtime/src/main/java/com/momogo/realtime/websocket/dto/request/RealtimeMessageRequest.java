@@ -1,6 +1,8 @@
 package com.momogo.realtime.websocket.dto.request;
 
 import com.momogo.realtime.websocket.dto.type.RoomRealtimeStatus;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 /**
@@ -14,7 +16,9 @@ import java.util.UUID;
 public record RealtimeMessageRequest(
     UUID roomId,
     UUID userId,
+    @NotNull(message = "응시 상태(status)는 필수 입력값입니다.")
     RoomRealtimeStatus status,
+    @Min(value = 0, message = "푼 문제 개수(solvedCount)는 0 이상이어야 합니다.")
     int solvedCount,
     Object details
 ) {

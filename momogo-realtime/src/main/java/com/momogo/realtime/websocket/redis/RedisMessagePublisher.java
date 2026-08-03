@@ -1,6 +1,8 @@
 package com.momogo.realtime.websocket.redis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.common.exception.RealtimeErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -29,6 +31,7 @@ public class RedisMessagePublisher {
 
     } catch (Exception e) {
       log.error("[Redis Publisher] 메시지 발행 실패", e);
+      throw new BusinessException(RealtimeErrorCode.REDIS_PUBLISH_FAILED);
     }
   }
 

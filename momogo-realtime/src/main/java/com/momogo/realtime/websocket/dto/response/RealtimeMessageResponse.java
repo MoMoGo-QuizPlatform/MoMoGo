@@ -29,10 +29,10 @@ public record RealtimeMessageResponse(
    * @param request
    * @return
    */
-  public static RealtimeMessageResponse from(RealtimeMessageRequest request) {
+  public static RealtimeMessageResponse of(UUID roomId, UUID userId, RealtimeMessageRequest request) {
     return new RealtimeMessageResponse(
-        request.roomId(),
-        request.userId(),
+        roomId,
+        userId,
         request.status(),
         request.solvedCount(),
         request.details(),
