@@ -1,6 +1,7 @@
 package com.momogo.api.auth.jwt;
 
 import com.momogo.api.auth.dto.JwtInformation;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,32 +22,30 @@ import java.util.concurrent.ConcurrentHashMap;
 @ConditionalOnProperty(name = "app.jwt.registry", havingValue = "memory")
 public class InMemoryJwtRegistry implements JwtRegistry {
 
+    private static final int LOCK_POOL_SIZE = 128;
+
     // 사용자 식별자(UUID)별 활성 토큰 세션 큐 (기기 제한 관리용)
-    private final Map<UUID, Queue<JwtInformation>> origin;
-    
-    // 사용자당 허용할 최대 활성 토큰 세션 수 (중복 로그인 제한 개수)
-    private final int maxActiveJwtCount;
-    
+    private final Map<UUID, Queue<JwtInformation>> origin = new ConcurrentHashMap<>();
+
     // Access Token으로 세션 정보를 즉시 조회하기 위한 인덱스 맵
-    private final Map<String, JwtInformation> tokenIndex;
-    
+    private final Map<String, JwtInformation> tokenIndex = new ConcurrentHashMap<>();
+
     // Refresh Token으로 세션 정보를 즉시 조회하기 위한 인덱스 맵 (조회 최적화용)
-    private final Map<String, JwtInformation> refreshTokenIndex;
+    private final Map<String, JwtInformation> refreshTokenIndex = new ConcurrentHashMap<>();
 
     // 사용자별 동시성 제어를 위한 고정 크기 락 객체 배열 (Striped Lock)
-    private static final int LOCK_POOL_SIZE = 128;
-    private final Object[] locks;
+    private final Object[] locks = initLocks();
 
-    public InMemoryJwtRegistry() {
-        this.origin = new ConcurrentHashMap<>();
-        this.maxActiveJwtCount = 1;
-        this.tokenIndex = new ConcurrentHashMap<>();
-        this.refreshTokenIndex = new ConcurrentHashMap<>();
-        
-        this.locks = new Object[LOCK_POOL_SIZE];
+    // 사용자당 허용할 최대 활성 토큰 세션 수 (중복 로그인 제한 개수)
+    @Value("${app.jwt.max-active-count}")
+    private int maxActiveJwtCount;
+
+    private static Object[] initLocks() {
+        Object[] lockArray = new Object[LOCK_POOL_SIZE];
         for (int i = 0; i < LOCK_POOL_SIZE; i++) {
-            locks[i] = new Object();
+            lockArray[i] = new Object();
         }
+        return lockArray;
     }
 
     /**

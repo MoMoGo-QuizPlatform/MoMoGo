@@ -35,6 +35,9 @@ dependencies {
     api 'org.springframework.boot:spring-boot-starter-data-redis'
     api 'org.springframework.kafka:spring-kafka'
 
+    // Redisson 분산락 라이브러리 추가
+    api 'org.redisson:redisson-spring-boot-starter:3.45.0'
+
     // 인프라 테스트용 Testcontainers
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.testcontainers:junit-jupiter'
