@@ -1,4 +1,4 @@
-package com.momogo.realtime.websocket.pubsub;
+package com.momogo.realtime.websocket.redis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;

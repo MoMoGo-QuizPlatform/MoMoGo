@@ -1,6 +1,8 @@
-package com.momogo.realtime.websocket.pubsub;
+package com.momogo.realtime.websocket.redis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.momogo.realtime.websocket.constant.WebSocketConstants;
+import com.momogo.realtime.websocket.dto.response.RealtimeMessageResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -23,7 +25,12 @@ public class RedisMessageSubscriber {
     try {
       log.info("[Redis Subscriber] 수신된 Pub/Sub 메시지: {}", messageJson);
 
-      // TODO: JSON 메시지를 DTO로 직렬화해서 목적지(/sub/rooms/{roomId})로 웹소켓 브로드캐스팅
+      RealtimeMessageResponse response = objectMapper.readValue(messageJson, RealtimeMessageResponse.class);
+      String destination = WebSocketConstants.SUB_ROOM_PREFIX + response.roomId();
+
+      messagingTemplate.convertAndSend(destination, response);
+      log.info("[WebSocket Broadcast] 목적지({})로 상태 메시지 전파 완료", destination);
+
     } catch (Exception e) {
       log.error("[Redis Subscriber] 메시지 처리 중 오류 발생", e);
     }
