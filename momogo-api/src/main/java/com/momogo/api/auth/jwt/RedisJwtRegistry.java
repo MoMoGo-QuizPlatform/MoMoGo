@@ -53,6 +53,10 @@ public class RedisJwtRegistry implements JwtRegistry {
     @Override
     public void registerJwtInformation(JwtInformation jwtInformation) {
         if (jwtInformation == null) return;
+        if (maxActiveCount <= 0) {
+            log.warn("[RedisJwtRegistry] app.jwt.max-active-count 설정값이 0 이하입니다({}). 세션 등록 및 관리를 수행하지 않습니다.", maxActiveCount);
+            return;
+        }
         UUID userId = jwtInformation.user().id();
 
         executeWithLock(userId, () -> doRegisterJwtInformation(jwtInformation));
@@ -175,6 +179,11 @@ public class RedisJwtRegistry implements JwtRegistry {
      * @param jwtInformation 등록할 토큰 세션 정보
      */
     private void doRegisterJwtInformation(JwtInformation jwtInformation) {
+        if (maxActiveCount <= 0) {
+            log.warn("[RedisJwtRegistry] app.jwt.max-active-count 설정값이 0 이하입니다({}). 세션 등록 및 관리를 수행하지 않습니다.", maxActiveCount);
+            return;
+        }
+
         UUID userId = jwtInformation.user().id();
         String userKey = KEY_USER_PREFIX + userId;
 
@@ -182,9 +191,10 @@ public class RedisJwtRegistry implements JwtRegistry {
         Long size = redisTemplate.opsForList().size(userKey);
         while (size != null && size >= maxActiveCount) {
             String oldSessionJson = redisTemplate.opsForList().leftPop(userKey);
-            if (oldSessionJson != null) {
-                removeIndices(parseJwtInfo(oldSessionJson));
+            if (oldSessionJson == null) {
+                break;
             }
+            removeIndices(parseJwtInfo(oldSessionJson));
             size = redisTemplate.opsForList().size(userKey);
         }
 
