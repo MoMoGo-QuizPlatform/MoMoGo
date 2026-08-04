@@ -44,7 +44,7 @@ public class NotificationEventListener {
   // 평가 시험(방) 생성 -> 대상 유저 전원에게 알림 (Kafka로 비동기 발행, 대량 발송에 따른 동기 DB 쓰기 병목 회피)
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
   public void handleRoomCreated(RoomCreatedEvent event) {
-    notificationKafkaProducer.send(new NotificationEventMessage(
+    notificationKafkaProducer.send(NotificationEventMessage.of(
         event.userIds(),
         "새로운 평가 시험이 생성되었습니다",
         event.name() + " 시험이 생성되었습니다.",
