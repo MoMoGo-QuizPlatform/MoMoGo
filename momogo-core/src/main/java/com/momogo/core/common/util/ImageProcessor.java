@@ -2,6 +2,9 @@ package com.momogo.core.common.util;
 
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
+import lombok.extern.slf4j.Slf4j;
+import net.coobird.thumbnailator.Thumbnails;
+import net.coobird.thumbnailator.geometry.Positions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.unit.DataSize;
@@ -19,15 +22,21 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 프로필 이미지 등 파일 업로드 시 업로드될 파일의 유효성과 보안성을 검증하는 컴포넌트입니다.
+ * 프로필 이미지 등 파일 업로드 시 업로드될 파일의 유효성과 보안성을 검증하고
+ * 검증이 끝난 이미지를 프로필 규격(300*300)으로 리사이징/압축까지 수행하는 컴포넌트입니다.
  * 확장자를 1차 검증하고, 실제 바이트(매직바이트)를 기반으로 ImageIO가 인식하는 실제 이미지 포맷을 감지하여
  * 확장자와 일치하는지 교차 검증합니다. 클라이언트가 전달한 Content-Type 헤더는 신뢰하지 않습니다.
  */
+@Slf4j
 @Component
-public class ImageFileValidator {
+public class ImageProcessor {
+
+    private static final int PROFILE_TARGET_WIDTH = 300;
+    private static final int PROFILE_TARGET_HEIGHT = 300;
+    private static final double OUTPUT_QUALITY = 0.85;
 
     // 픽셀 폭탄(decompression bomb) 방어용 최대 허용 픽셀 수 (예: 4000 x 4000 => 1600만 화소)
-    // 최대 1600만 * 4bytes = 64MB까지
+    // 최대 1600만 * 4bytes 디코딩 기준 최대 약 61MB 메모리 사용
     private static final long MAX_PIXEL_COUNT = 4000L * 4000L;
 
     // 파일 확장자를 ImageIO 표준 포맷명으로 변환하여, 이미지 소스 분석 결과와 대조하기 위한 매핑 테이블
@@ -35,7 +44,6 @@ public class ImageFileValidator {
             "jpg", "jpeg",
             "jpeg", "jpeg",
             "png", "png",
-            "gif", "gif",
             "webp", "webp"
     );
 
@@ -43,14 +51,13 @@ public class ImageFileValidator {
     private static final Map<String, String> FORMAT_TO_MIME_TYPE = Map.of(
             "jpeg", "image/jpeg",
             "png", "image/png",
-            "gif", "image/gif",
             "webp", "image/webp"
     );
 
     private final Set<String> allowedExtensions;
     private final int maxMarkSize;
 
-    public ImageFileValidator(
+    public ImageProcessor(
             @Value("${app.file.upload.allowed-extensions}") List<String> allowedExtensions,
             @Value("${app.file.upload.max-mark-size:10MB}") DataSize maxMarkSize
     ) {
@@ -82,27 +89,48 @@ public class ImageFileValidator {
         byte[] fileBytes = readWithLimit(inputStream, maxMarkSize);
 
         // 3. 실제 바이트 기반 이미지 포맷 감지 및 검증 (contentType 파라미터는 사용하지 않음(변조 방지))
-        String detectedFormat = detectAndValidateFormat(fileBytes);
+        ImageDimension dimension = detectAndValidateFormat(fileBytes);
 
         // 4. 확장자와 실제 감지된 포맷이 일치하는지 교차 검증 (위장 확장자 차단)
         String expectedFormat = EXTENSION_TO_FORMAT.get(ext);
-        if (!expectedFormat.equals(detectedFormat)) {
+        if (!expectedFormat.equals(dimension.format())) {
             throw new BusinessException(
                     GlobalErrorCode.INVALID_INPUT,
                     "파일 내용이 확장자와 일치하지 않습니다.",
-                    "ext=" + ext + ", detectedFormat=" + detectedFormat
+                    "ext=" + ext + ", detectedFormat=" + dimension.format()
             );
         }
 
-        String detectedMimeType = FORMAT_TO_MIME_TYPE.get(detectedFormat);
-        return new ImageValidationResult(new ByteArrayInputStream(fileBytes), detectedMimeType);
+        // 5. 프로필 규격(300 * 300)으로 리사이징 및 압축 수행
+        byte[] resizedBytes = resizeImage(fileBytes, dimension, PROFILE_TARGET_WIDTH, PROFILE_TARGET_HEIGHT);
+
+        String detectedMimeType = FORMAT_TO_MIME_TYPE.get(dimension.format());
+        return new ImageValidationResult(new ByteArrayInputStream(resizedBytes), detectedMimeType);
+    }
+
+    private byte[] resizeImage(byte[] originalBytes, ImageDimension dimension, int targetWidth, int targetHeight) {
+        // 원본의 짧은 변과 목표 규격 중 더 작은 값을 정사각형 한 변으로 사용
+        int targetSize = Math.min(Math.min(dimension.width(), dimension.height()), targetWidth);
+
+        try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+            Thumbnails.of(new ByteArrayInputStream(originalBytes))
+                    .size(targetSize, targetSize)
+                    .crop(Positions.CENTER)
+                    .outputQuality(OUTPUT_QUALITY) // 85% 품질 압축 (용량 절감)
+                    .outputFormat(dimension.format())
+                    .toOutputStream(bos);
+            return bos.toByteArray();
+        } catch (Exception e) {
+            log.error("[ImageProcessor] 이미지 리사이징 실패 - 원본 바이트 유지", e);
+            return originalBytes;
+        }
     }
 
     /**
      * ImageIO 리더를 사용해 실제 이미지 포맷을 감지하고, 디코딩 전에 해상도(픽셀 수) 상한을 검사합니다.
      * 전체 픽셀 디코딩 없이 헤더 수준에서 width/height를 읽어 압축 폭탄(decompression bomb)을 방어합니다.
      */
-    private String detectAndValidateFormat(byte[] fileBytes) {
+    private ImageDimension detectAndValidateFormat(byte[] fileBytes) {
         try (ImageInputStream iis = ImageIO.createImageInputStream(new ByteArrayInputStream(fileBytes))) {
             if (iis == null) {
                 throw new BusinessException(GlobalErrorCode.INVALID_INPUT, "손상되었거나 변조된 이미지 파일입니다.");
@@ -128,7 +156,7 @@ public class ImageFileValidator {
                     throw new BusinessException(GlobalErrorCode.INVALID_INPUT, "이미지 해상도가 허용 범위를 초과했습니다.");
                 }
 
-                return reader.getFormatName().toLowerCase();
+                return new ImageDimension(reader.getFormatName().toLowerCase(), width, height);
             } finally {
                 // 사용이 끝난 reader 객체를 메모리에서 해제
                 reader.dispose();
@@ -171,5 +199,12 @@ public class ImageFileValidator {
      * 검증이 완료된 스트림과, 실제 바이트 기반으로 감지된 신뢰 가능한 Content-Type을 함께 담는 결과 객체.
      */
     public record ImageValidationResult(InputStream inputStream, String detectedContentType) {
+    }
+
+    /**
+     * detectAndValidateFormat()의 반환값으로, 감지된 실제 이미지 포맷명과 픽셀 단위의 가로/세로 크기를 담습니다.
+     * 리사이징 여부(원본이 목표 규격보다 작은지) 판단에 사용됩니다.
+     */
+    private record ImageDimension(String format, int width, int height) {
     }
 }

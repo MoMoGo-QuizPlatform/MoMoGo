@@ -2,7 +2,7 @@ package com.momogo.core.common.storage;
 
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
-import com.momogo.core.common.util.ImageFileValidator;
+import com.momogo.core.common.util.ImageProcessor;
 import com.momogo.core.common.util.UrlUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,14 +22,14 @@ import java.util.UUID;
 @ConditionalOnProperty(name = "app.storage.type", havingValue = "local", matchIfMissing = true)
 public class LocalStorageService implements StorageService {
 
-    private final ImageFileValidator imageFileValidator;
+    private final ImageProcessor imageProcessor;
     private final Path uploadRoot;
 
     public LocalStorageService(
-            ImageFileValidator imageFileValidator,
+            ImageProcessor imageProcessor,
             @Value("${app.file.upload.dir:./uploads}") String uploadDir
     ) {
-        this.imageFileValidator = imageFileValidator;
+        this.imageProcessor = imageProcessor;
         this.uploadRoot = Paths.get(uploadDir).toAbsolutePath().normalize();
         log.info("[LocalStorageService] 파일 저장 절대 경로 지정 완료: {}", this.uploadRoot);
     }
@@ -38,8 +38,8 @@ public class LocalStorageService implements StorageService {
     public String upload(InputStream inputStream, String originalFileName, String contentType, String directory) {
         // try-with-resources 구문으로 원본 inputStream 및 validatedStream 자원 수명주기를 안전하게 관리
         try (InputStream src = inputStream) {
-            ImageFileValidator.ImageValidationResult validationResult =
-                    imageFileValidator.validateImage(src, originalFileName, contentType);
+            ImageProcessor.ImageValidationResult validationResult =
+                    imageProcessor.validateImage(src, originalFileName, contentType);
 
             try (InputStream validatedStream = validationResult.inputStream()) {
                 String extension = "";

@@ -2,7 +2,7 @@ package com.momogo.core.common.storage;
 
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
-import com.momogo.core.common.util.ImageFileValidator;
+import com.momogo.core.common.util.ImageProcessor;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,16 +28,16 @@ import java.util.UUID;
 @ConditionalOnProperty(name = "app.storage.type", havingValue = "s3")
 public class S3StorageService implements StorageService {
 
-    private final ImageFileValidator imageFileValidator;
+    private final ImageProcessor imageProcessor;
     private final S3Client s3Client;
     private final String bucket;
 
     public S3StorageService(
-            ImageFileValidator imageFileValidator,
+            ImageProcessor imageProcessor,
             @Value("${app.aws.s3-bucket}") String bucket,
             @Value("${app.aws.region}") String region
     ) {
-        this.imageFileValidator = imageFileValidator;
+        this.imageProcessor = imageProcessor;
         this.bucket = bucket;
         this.s3Client = S3Client.builder().region(Region.of(region)).build();
         log.info("[S3StorageService] 버킷 지정 완료: {}", bucket);
@@ -46,7 +46,7 @@ public class S3StorageService implements StorageService {
     @Override
     public String upload(InputStream inputStream, String originalFileName, String contentType, String directory) {
         try (InputStream src = inputStream) {
-            ImageFileValidator.ImageValidationResult validationResult = imageFileValidator.validateImage(src, originalFileName, contentType);
+            ImageProcessor.ImageValidationResult validationResult = imageProcessor.validateImage(src, originalFileName, contentType);
             // try-with-resources 구문으로 원본 inputStream 및 validatedStream 자원 수명주기를 안전하게 관리
             try (InputStream validatedStream = validationResult.inputStream()) {
                 String extension = "";
