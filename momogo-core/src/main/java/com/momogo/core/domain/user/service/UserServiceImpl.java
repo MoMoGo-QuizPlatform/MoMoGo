@@ -4,6 +4,8 @@ import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
 import com.momogo.core.common.security.PasswordEncryptor;
 import com.momogo.core.common.storage.StorageService;
+import com.momogo.core.common.storage.event.FileDeleteEvent;
+import com.momogo.core.common.storage.event.FileRollbackDeleteEvent;
 import com.momogo.core.common.util.EmailFormatter;
 import com.momogo.core.common.util.UrlUtils;
 import com.momogo.core.domain.user.dto.UserSearchCondition;
@@ -437,28 +439,14 @@ public class UserServiceImpl implements UserService {
     }
 
     /**
-     * 트랜잭션 종료 상태에 따라 기존/신규 프로필 이미지를 정리합니다.
+     * 트랜잭션 종료 상태(커밋/롤백)에 따라 이벤트를 발행하여 백그라운드에서 비동기로 프로필 이미지를 정리합니다.
      */
     private void registerProfileImageCleanup(String oldImageUrl, String newImageUrl) {
-        TransactionSynchronizationManager.registerSynchronization(
-                new TransactionSynchronization() {
-                    @Override
-                    public void afterCompletion(int status) {
-                        if (status == STATUS_COMMITTED && oldImageUrl != null && !oldImageUrl.isBlank() && !UrlUtils.isExternalUrl(oldImageUrl)) {
-                            try {
-                                storageService.delete(PROFILE_IMAGE_DIR + "/" + oldImageUrl);
-                            } catch (Exception e) {
-                                log.error("[UserService] 기존 프로필 이미지 삭제 실패 - file: {}", oldImageUrl, e);
-                            }
-                        } else if (status == STATUS_ROLLED_BACK && newImageUrl != null && !newImageUrl.isBlank() && !UrlUtils.isExternalUrl(newImageUrl)) {
-                            try {
-                                storageService.delete(PROFILE_IMAGE_DIR + "/" + newImageUrl);
-                            } catch (Exception e) {
-                                log.error("[UserService] 롤백으로 인한 신규 프로필 이미지 삭제 실패 - file: {}", newImageUrl, e);
-                            }
-                        }
-                    }
-                }
-        );
+        if (oldImageUrl != null && !oldImageUrl.isBlank() && !UrlUtils.isExternalUrl(oldImageUrl)) {
+            eventPublisher.publishEvent(new FileDeleteEvent(PROFILE_IMAGE_DIR + "/" + oldImageUrl));
+        }
+        if (newImageUrl != null && !newImageUrl.isBlank() && !UrlUtils.isExternalUrl(newImageUrl)) {
+            eventPublisher.publishEvent(new FileRollbackDeleteEvent(PROFILE_IMAGE_DIR + "/" + newImageUrl));
+        }
     }
 }
