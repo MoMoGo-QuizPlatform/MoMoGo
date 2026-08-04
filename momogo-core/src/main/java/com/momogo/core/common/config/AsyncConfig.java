@@ -2,8 +2,9 @@ package com.momogo.core.common.config;
 
 import com.momogo.core.common.exception.GlobalAsyncUncaughtExceptionHandler;
 import lombok.RequiredArgsConstructor;
-import org.springframework.aop.interceptor.AsyncUncaughtExceptionHandler;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.aop.interceptor.AsyncUncaughtExceptionHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.SimpleAsyncTaskExecutor;
@@ -15,7 +16,8 @@ import java.util.concurrent.Executor;
 
 /**
  * 애플리케이션 비동기 처리(가상 스레드 기반 Executor) 설정 클래스.
- * 가상 스레드(Virtual Thread) 환경에서는 호출 스레드 블로킹 방지를 위해 무제한 동시성(Unbounded Concurrency)으로 동작시킵니다.
+ * 가상 스레드(Virtual Thread) 환경에서도 외부 I/O(S3, SMTP, DB) 및 Connection Pool 자원 고갈을 방지하기 위해
+ * SimpleAsyncTaskExecutor에 Executor별 동시성 상한(Concurrency Limit)을 설정합니다.
  */
 @Configuration
 @EnableAsync
@@ -30,6 +32,18 @@ public class AsyncConfig implements AsyncConfigurer {
     private final GlobalAsyncUncaughtExceptionHandler exceptionHandler;
     private final ObjectProvider<TaskDecorator> taskDecoratorProvider;
 
+    @Value("${app.async.concurrency-limit.default}")
+    private int defaultConcurrencyLimit;
+
+    @Value("${app.async.concurrency-limit.mail}")
+    private int mailConcurrencyLimit;
+
+    @Value("${app.async.concurrency-limit.user}")
+    private int userConcurrencyLimit;
+
+    @Value("${app.async.concurrency-limit.file}")
+    private int fileConcurrencyLimit;
+
     @Override
     public Executor getAsyncExecutor() {
         return defaultExecutor();
@@ -42,7 +56,7 @@ public class AsyncConfig implements AsyncConfigurer {
 
     @Bean(name = DEFAULT_EXECUTOR)
     public Executor defaultExecutor() {
-        return createVirtualThreadExecutor("default-async-");
+        return createVirtualThreadExecutor("default-async-", defaultConcurrencyLimit);
     }
 
     /**
@@ -50,7 +64,7 @@ public class AsyncConfig implements AsyncConfigurer {
      */
     @Bean(name = MAIL_EXECUTOR)
     public Executor mailExecutor() {
-        return createVirtualThreadExecutor("mail-async-");
+        return createVirtualThreadExecutor("mail-async-", mailConcurrencyLimit);
     }
 
     /**
@@ -58,7 +72,7 @@ public class AsyncConfig implements AsyncConfigurer {
      */
     @Bean(name = USER_EXECUTOR)
     public Executor userExecutor() {
-        return createVirtualThreadExecutor("user-async-");
+        return createVirtualThreadExecutor("user-async-", userConcurrencyLimit);
     }
 
     /**
@@ -66,15 +80,16 @@ public class AsyncConfig implements AsyncConfigurer {
      */
     @Bean(name = FILE_EXECUTOR)
     public Executor fileExecutor() {
-        return createVirtualThreadExecutor("file-async-");
+        return createVirtualThreadExecutor("file-async-", fileConcurrencyLimit);
     }
 
     /**
-     * 가상 스레드 기반 Executor 생성 공통 팩토리 메서드 (DRY 원칙 적용)
+     * 가상 스레드 기반 Executor 생성 공통 팩토리 메서드 (DRY 원칙 및 동시성 상한 적용)
      */
-    private Executor createVirtualThreadExecutor(String threadNamePrefix) {
+    private Executor createVirtualThreadExecutor(String threadNamePrefix, int concurrencyLimit) {
         SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor(threadNamePrefix);
         executor.setVirtualThreads(true);
+        executor.setConcurrencyLimit(concurrencyLimit);
         taskDecoratorProvider.ifAvailable(executor::setTaskDecorator);
         return executor;
     }

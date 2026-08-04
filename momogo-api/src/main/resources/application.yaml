@@ -112,6 +112,12 @@ jwt:
       same-site: ${JWT_REFRESH_COOKIE_SAME_SITE}
 
 app:
+  async:
+    concurrency-limit:
+      default: ${APP_ASYNC_CONCURRENCY_DEFAULT:50}
+      mail: ${APP_ASYNC_CONCURRENCY_MAIL:20}
+      user: ${APP_ASYNC_CONCURRENCY_USER:50}
+      file: ${APP_ASYNC_CONCURRENCY_FILE:30}
   storage:
     type: ${APP_STORAGE_TYPE:s3}
   aws:
