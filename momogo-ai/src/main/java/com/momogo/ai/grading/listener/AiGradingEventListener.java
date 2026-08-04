@@ -44,7 +44,7 @@ public class AiGradingEventListener {
   )
   public void handleStartAiGradingEvent(AiGradingEventDto event) {
 
-    log.info("[AiGradingListener] Kafka AI 채점 메시지 수신 - roomId: {}", event.roomId());
+    log.info("[AiGradingListener] Kafka AI 채점 메시지 수신 - eventId: {}, roomId: {}", event.eventId(), event.roomId());
 
     // 해당 시험방의 모든 응시자가 제출한 답안 리스트 전체 조회
     List<UserRoomAnswer> answers = userRoomAnswerRepository.findByRoomProblemRoomId(event.roomId());
@@ -101,6 +101,7 @@ public class AiGradingEventListener {
       } catch (Exception ex) {
         log.error("[AiGradingListener] AI 채점 상태 복구 중 오류 발생 - roomId: {}", event.roomId(), ex);
       }
+      throw e;
     }
   }
 
