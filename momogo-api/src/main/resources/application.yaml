@@ -136,7 +136,7 @@ app:
     upload:
       allowed-extensions: jpg,jpeg,png,webp
       allowed-mime-types: image/jpeg,image/png,image/webp
-      max-mark-size: 10MB
+      max-file-size: 10MB
       # 물리 디스크 저장 경로
       dir: ${APP_FILE_UPLOAD_DIR:./uploads}
   oauth2:

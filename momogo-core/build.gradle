@@ -31,7 +31,7 @@ dependencies {
     implementation platform('software.amazon.awssdk:bom:2.29.52')
     implementation 'software.amazon.awssdk:s3'
     implementation 'com.twelvemonkeys.imageio:imageio-webp:3.12.0'
-    implementation 'net.coobird:thumbnailator:0.4.20'
+    implementation 'net.coobird:thumbnailator:0.4.21'
 
     // 분산환경 공용 인프라 (Redis, Kafka) - api/realtime/batch가 공통으로 사용
     api 'org.springframework.boot:spring-boot-starter-data-redis'

@@ -3,6 +3,7 @@ package com.momogo.core.common.storage;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
 import com.momogo.core.common.util.ImageProcessor;
+import com.momogo.core.common.util.StorageDirectoryValidator;
 import com.momogo.core.common.util.UrlUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,21 +37,18 @@ public class LocalStorageService implements StorageService {
 
     @Override
     public String upload(InputStream inputStream, String originalFileName, String contentType, String directory) {
+        String safeDirectory = StorageDirectoryValidator.validate(directory);
+
         // try-with-resources 구문으로 원본 inputStream 및 validatedStream 자원 수명주기를 안전하게 관리
         try (InputStream src = inputStream) {
             ImageProcessor.ImageValidationResult validationResult =
                     imageProcessor.validateImage(src, originalFileName, contentType);
 
             try (InputStream validatedStream = validationResult.inputStream()) {
-                String extension = "";
-                if (originalFileName != null && originalFileName.contains(".")) {
-                    extension = originalFileName.substring(originalFileName.lastIndexOf("."));
-                }
-
-                String savedFileName = UUID.randomUUID() + extension;
+                String savedFileName = UUID.randomUUID() + validationResult.extension();
 
                 // directory가 uploadRoot 바깥으로 빠져나가지 않는지 검증 (Path Traversal 방지)
-                Path uploadPath = resolveSafely(uploadRoot, directory);
+                Path uploadPath = resolveSafely(uploadRoot, safeDirectory);
                 Files.createDirectories(uploadPath);
 
                 Path targetPath = resolveSafely(uploadPath, savedFileName);

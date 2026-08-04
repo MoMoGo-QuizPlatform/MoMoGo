@@ -3,6 +3,7 @@ package com.momogo.core.common.storage;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
 import com.momogo.core.common.util.ImageProcessor;
+import com.momogo.core.common.util.StorageDirectoryValidator;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,29 +46,23 @@ public class S3StorageService implements StorageService {
 
     @Override
     public String upload(InputStream inputStream, String originalFileName, String contentType, String directory) {
+        String safeDirectory = StorageDirectoryValidator.validate(directory);
+
         try (InputStream src = inputStream) {
             ImageProcessor.ImageValidationResult validationResult = imageProcessor.validateImage(src, originalFileName, contentType);
-            // try-with-resources 구문으로 원본 inputStream 및 validatedStream 자원 수명주기를 안전하게 관리
-            try (InputStream validatedStream = validationResult.inputStream()) {
-                String extension = "";
-                if (originalFileName != null && originalFileName.contains(".")) {
-                    extension = originalFileName.substring(originalFileName.lastIndexOf("."));
-                }
+            String savedFileName = UUID.randomUUID() + validationResult.extension();
+            String key = safeDirectory + "/" + savedFileName;
 
-                String savedFileName = UUID.randomUUID() + extension;
-                String key = directory + "/" + savedFileName;
-
-                byte[] bytes = validatedStream.readAllBytes();
-                s3Client.putObject(
-                        PutObjectRequest.builder()
-                                .bucket(bucket)
-                                .key(key)
-                                .contentType(validationResult.detectedContentType())
-                                .build(),
-                        RequestBody.fromBytes(bytes)
-                );
-                return savedFileName;
-            }
+            byte[] bytes = validationResult.data();
+            s3Client.putObject(
+                    PutObjectRequest.builder()
+                            .bucket(bucket)
+                            .key(key)
+                            .contentType(validationResult.detectedContentType())
+                            .build(),
+                    RequestBody.fromBytes(bytes)
+            );
+            return savedFileName;
         } catch (IOException | SdkException e) {
             log.error("[S3StorageService] S3 파일 업로드 실패 - originalFileName: {}, directory: {}", originalFileName, directory, e);
             throw new BusinessException(

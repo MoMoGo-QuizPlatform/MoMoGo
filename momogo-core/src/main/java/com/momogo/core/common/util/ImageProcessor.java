@@ -55,16 +55,16 @@ public class ImageProcessor {
     );
 
     private final Set<String> allowedExtensions;
-    private final int maxMarkSize;
+    private final int maxFileSize;
 
     public ImageProcessor(
             @Value("${app.file.upload.allowed-extensions}") List<String> allowedExtensions,
-            @Value("${app.file.upload.max-mark-size:10MB}") DataSize maxMarkSize
+            @Value("${app.file.upload.max-file-size:10MB}") DataSize maxFileSize
     ) {
         this.allowedExtensions = allowedExtensions.stream()
                 .map(String::toLowerCase)
                 .collect(Collectors.toUnmodifiableSet());
-        this.maxMarkSize = (int) maxMarkSize.toBytes();
+        this.maxFileSize = (int) maxFileSize.toBytes();
     }
 
     /**
@@ -86,7 +86,7 @@ public class ImageProcessor {
         }
 
         // 2. 업로드 상한 내에서 바이트를 안전하게 복사 (OOM 방지 및 스트림 복제)
-        byte[] fileBytes = readWithLimit(inputStream, maxMarkSize);
+        byte[] fileBytes = readWithLimit(inputStream, maxFileSize);
 
         // 3. 실제 바이트 기반 이미지 포맷 감지 및 검증 (contentType 파라미터는 사용하지 않음(변조 방지))
         ImageDimension dimension = detectAndValidateFormat(fileBytes);
@@ -105,7 +105,7 @@ public class ImageProcessor {
         byte[] resizedBytes = resizeImage(fileBytes, dimension, PROFILE_TARGET_WIDTH, PROFILE_TARGET_HEIGHT);
 
         String detectedMimeType = FORMAT_TO_MIME_TYPE.get(dimension.format());
-        return new ImageValidationResult(new ByteArrayInputStream(resizedBytes), detectedMimeType);
+        return new ImageValidationResult(resizedBytes, detectedMimeType, "." + ext);
     }
 
     private byte[] resizeImage(byte[] originalBytes, ImageDimension dimension, int targetWidth, int targetHeight) {
@@ -196,9 +196,12 @@ public class ImageProcessor {
     }
 
     /**
-     * 검증이 완료된 스트림과, 실제 바이트 기반으로 감지된 신뢰 가능한 Content-Type을 함께 담는 결과 객체.
+     * 검증 및 리사이징이 완료된 바이트 데이터, 감지된 Content-Type, 검증된 확장자(".jpg" 등)를 담는 결과 객체.
      */
-    public record ImageValidationResult(InputStream inputStream, String detectedContentType) {
+    public record ImageValidationResult(byte[] data, String detectedContentType, String extension) {
+        public InputStream inputStream() {
+            return new ByteArrayInputStream(data);
+        }
     }
 
     /**
