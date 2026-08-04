@@ -22,14 +22,12 @@ public class RedisConfig {
     @Value("${spring.data.redis.port:6379}")
     private int port;
 
-    // 운영 서버에서 보안을 위해 Redis에 비밀번호를 걸어 Redisson이 안전하게 접근하기 위함
     @Value("${spring.data.redis.password:}")
     private String password;
 
     @Bean
     public RedisConnectionFactory redisConnectionFactory() {
-        RedisStandaloneConfiguration configuration =
-            new RedisStandaloneConfiguration(host, port);
+        RedisStandaloneConfiguration configuration = new RedisStandaloneConfiguration(host, port);
         if (password != null && !password.isBlank()) {
             configuration.setPassword(password);
         }
