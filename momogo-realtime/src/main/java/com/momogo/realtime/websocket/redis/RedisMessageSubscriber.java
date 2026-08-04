@@ -21,7 +21,7 @@ public class RedisMessageSubscriber {
    * Redis에서 발행된 메시지를 받아 웹소켓 구독자(/sub/...)들에게 전파합니다.
    * @param messageJson
    */
-  public  void handleMessage(String messageJson) {
+  public void handleMessage(String messageJson) {
     try {
       log.info("[Redis Subscriber] 수신된 Pub/Sub 메시지: {}", messageJson);
 

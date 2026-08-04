@@ -29,8 +29,8 @@ public class RoomRealtimeController {
 
     UUID authenticatedUserId = UUID.fromString(principal.getName());
 
-    log.info("[RoomRealtimeController] 시험방({}) 상태 변경 수신 - userId: {}, status: {}",
-        roomId, request.userId(), request.status());
+    log.info("[RoomRealtimeController] 시험방({}) 상태 변경 수신 - authenticatedUserId: {}, status: {}",
+        roomId, authenticatedUserId, request.status());
 
     RealtimeMessageResponse response = RealtimeMessageResponse.of(roomId, authenticatedUserId, request);
     redisMessagePublisher.publish(response);
