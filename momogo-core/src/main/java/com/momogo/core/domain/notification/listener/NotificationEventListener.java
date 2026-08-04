@@ -3,6 +3,8 @@ package com.momogo.core.domain.notification.listener;
 import com.momogo.core.domain.notification.dto.response.NotificationResponse;
 import com.momogo.core.domain.notification.entity.Notification;
 import com.momogo.core.domain.notification.entity.NotificationType;
+import com.momogo.core.domain.notification.event.NotificationEventMessage;
+import com.momogo.core.domain.notification.event.NotificationKafkaProducer;
 import com.momogo.core.domain.notification.mapper.NotificationMapper;
 import com.momogo.core.domain.notification.repository.NotificationRepository;
 import com.momogo.core.domain.notification.sse.NotificationSseService;
@@ -12,10 +14,6 @@ import com.momogo.core.domain.space.event.SpaceUserRoleChangedEvent;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.repository.UserRepository;
-import java.util.Map;
-import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -41,23 +39,17 @@ public class NotificationEventListener {
   private final NotificationRepository notificationRepository;
   private final NotificationMapper notificationMapper;
   private final NotificationSseService notificationSseService;
+  private final NotificationKafkaProducer notificationKafkaProducer;
 
-  // 평가 시험(방) 생성 -> 대상 유저 전원에게 알림
+  // 평가 시험(방) 생성 -> 대상 유저 전원에게 알림 (Kafka로 비동기 발행, 대량 발송에 따른 동기 DB 쓰기 병목 회피)
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-  @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void handleRoomCreated(RoomCreatedEvent event) {
-    Map<UUID, User> userMap = userRepository.findAllById(event.userIds()).stream()
-        .collect(Collectors.toMap(User::getId, Function.identity()));
-
-    for (UUID userId : event.userIds()) {
-      User receiver = userMap.get(userId);
-      if (receiver == null) {
-        log.error("알림 대상 유저를 찾을 수 없음 - userId: {}", userId);
-        continue;
-      }
-      notify(receiver, "새로운 평가 시험이 생성되었습니다",
-          event.name() + " 시험이 생성되었습니다.", NotificationType.NEW_EXAM);
-    }
+    notificationKafkaProducer.send(new NotificationEventMessage(
+        event.userIds(),
+        "새로운 평가 시험이 생성되었습니다",
+        event.name() + " 시험이 생성되었습니다.",
+        NotificationType.NEW_EXAM
+    ));
   }
 
   // 공간 내 권한 변경 -> 변경된 본인에게 알림
