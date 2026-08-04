@@ -160,6 +160,7 @@ public class S3StorageService implements StorageService {
                 Thread.sleep(backoffMs);
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
+                log.warn("[S3StorageService] S3 재시도 대기 중 인터럽트 발생 - 루프 중단: {}", key);
             }
         }
     }
