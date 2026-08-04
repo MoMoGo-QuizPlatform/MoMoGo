@@ -19,9 +19,9 @@ import com.momogo.core.domain.problem.repository.ProblemCategoryRepository;
 import com.momogo.core.domain.problem.service.ProblemGenerationService;
 import com.momogo.core.domain.room.dto.request.ManualGradeRequest;
 import com.momogo.core.domain.room.dto.request.ProblemAnswerRequest;
-import com.momogo.core.domain.room.dto.request.RoomProblemDraftAiRequest;
 import com.momogo.core.domain.room.dto.request.RoomAnswerSubmitRequest;
 import com.momogo.core.domain.room.dto.request.RoomCreateRequest;
+import com.momogo.core.domain.room.dto.request.RoomProblemDraftAiRequest;
 import com.momogo.core.domain.room.dto.response.AnswerGradingItem;
 import com.momogo.core.domain.room.dto.response.ProblemGradeReport;
 import com.momogo.core.domain.room.dto.response.RoomGradingResponse;
@@ -35,8 +35,8 @@ import com.momogo.core.domain.room.entity.RoomUser;
 import com.momogo.core.domain.room.entity.RoomUserId;
 import com.momogo.core.domain.room.entity.UserRoomAnswer;
 import com.momogo.core.domain.room.event.RoomCreatedEvent;
-import com.momogo.core.domain.room.event.StartAiGradingEvent;
 import com.momogo.core.domain.room.exception.RoomErrorCode;
+import com.momogo.core.domain.room.kafka.producer.AiGradingProducer;
 import com.momogo.core.domain.room.mapper.RoomMapper;
 import com.momogo.core.domain.room.repository.RoomProblemRepository;
 import com.momogo.core.domain.room.repository.RoomRepository;
@@ -83,6 +83,7 @@ public class RoomServiceImpl implements RoomService{
   private final ProblemGenerationService problemGenerationService;
   private final RoomMapper roomMapper;
   private final ApplicationEventPublisher eventPublisher;
+  private final AiGradingProducer aiGradingProducer;
 
   // 검증된 타겟 객체들을 묶기 위한 private record
   private record ValidatedRoomTarget(Space space, List<User> targetUsers) {}
@@ -665,8 +666,8 @@ public class RoomServiceImpl implements RoomService{
 
     room.markAiGradingInProgress();
 
-    // Spring Event 발행
-    eventPublisher.publishEvent(new StartAiGradingEvent(roomId));
+    // Kafka Producer 메시지 발행
+    aiGradingProducer.sendAiGradingEvent(roomId, null);
   }
 
   @Override
