@@ -28,7 +28,7 @@ public class S3StorageService implements StorageService {
 
     public S3StorageService(
             ImageFileValidator imageFileValidator,
-            @Value("${app.aws.s3-bucket}") String bucket,
+            @Value("${app.aws.s3-bucket:momogo-s3}") String bucket,
             @Value("${app.aws.region:ap-northeast-2}") String region
     ) {
         this.imageFileValidator = imageFileValidator;

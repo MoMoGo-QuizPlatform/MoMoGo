@@ -112,6 +112,11 @@ jwt:
       same-site: ${JWT_REFRESH_COOKIE_SAME_SITE}
 
 app:
+  storage:
+    type: ${APP_STORAGE_TYPE:local}
+  aws:
+    s3-bucket: ${AWS_S3_BUCKET:momogo-s3}
+    region: ${AWS_REGION:ap-northeast-2}
   super-admin:
     email: ${SUPER_ADMIN_EMAIL}
     password: ${SUPER_ADMIN_PASSWORD}
