@@ -51,7 +51,7 @@ public class S3StorageService implements StorageService {
         try (InputStream src = inputStream) {
             ImageProcessor.ImageValidationResult validationResult = imageProcessor.validateImage(src, originalFileName, contentType);
             String savedFileName = UUID.randomUUID() + validationResult.extension();
-            String key = safeDirectory + "/" + savedFileName;
+            String key = safeDirectory.isEmpty() ? savedFileName : safeDirectory + "/" + savedFileName;
 
             byte[] bytes = validationResult.data();
             s3Client.putObject(

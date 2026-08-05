@@ -31,8 +31,7 @@ import java.util.stream.Collectors;
 @Component
 public class ImageProcessor {
 
-    private static final int PROFILE_TARGET_WIDTH = 300;
-    private static final int PROFILE_TARGET_HEIGHT = 300;
+    private static final int PROFILE_TARGET_SIZE = 300;
     private static final double OUTPUT_QUALITY = 0.85;
 
     // 픽셀 폭탄(decompression bomb) 방어용 최대 허용 픽셀 수 (예: 4000 x 4000 => 1600만 화소)
@@ -55,7 +54,7 @@ public class ImageProcessor {
     );
 
     private final Set<String> allowedExtensions;
-    private final int maxFileSize;
+    private final long maxFileSize;
 
     public ImageProcessor(
             @Value("${app.file.upload.allowed-extensions}") List<String> allowedExtensions,
@@ -64,7 +63,7 @@ public class ImageProcessor {
         this.allowedExtensions = allowedExtensions.stream()
                 .map(String::toLowerCase)
                 .collect(Collectors.toUnmodifiableSet());
-        this.maxFileSize = (int) maxFileSize.toBytes();
+        this.maxFileSize = maxFileSize.toBytes();
     }
 
     /**
@@ -102,15 +101,15 @@ public class ImageProcessor {
         }
 
         // 5. 프로필 규격(300 * 300)으로 리사이징 및 압축 수행
-        byte[] resizedBytes = resizeImage(fileBytes, dimension, PROFILE_TARGET_WIDTH, PROFILE_TARGET_HEIGHT);
+        byte[] resizedBytes = resizeImage(fileBytes, dimension, PROFILE_TARGET_SIZE);
 
         String detectedMimeType = FORMAT_TO_MIME_TYPE.get(dimension.format());
         return new ImageValidationResult(resizedBytes, detectedMimeType, "." + ext);
     }
 
-    private byte[] resizeImage(byte[] originalBytes, ImageDimension dimension, int targetWidth, int targetHeight) {
+    private byte[] resizeImage(byte[] originalBytes, ImageDimension dimension, int profileTargetSize) {
         // 원본의 짧은 변과 목표 규격 중 더 작은 값을 정사각형 한 변으로 사용
-        int targetSize = Math.min(Math.min(dimension.width(), dimension.height()), targetWidth);
+        int targetSize = Math.min(Math.min(dimension.width(), dimension.height()), profileTargetSize);
 
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
             Thumbnails.of(new ByteArrayInputStream(originalBytes))
@@ -121,8 +120,13 @@ public class ImageProcessor {
                     .toOutputStream(bos);
             return bos.toByteArray();
         } catch (Exception e) {
-            log.error("[ImageProcessor] 이미지 리사이징 실패 - 원본 바이트 유지", e);
-            return originalBytes;
+            log.error("[ImageProcessor] 이미지 리사이징 실패 - format: {}, width: {}, height: {}",
+                    dimension.format(), dimension.width(), dimension.height(), e);
+            throw new BusinessException(
+                    GlobalErrorCode.INTERNAL_SERVER_ERROR,
+                    "이미지 리사이징 중 오류가 발생하였습니다.",
+                    "format=" + dimension.format() + ", width=" + dimension.width() + ", height=" + dimension.height()
+            );
         }
     }
 
@@ -172,12 +176,12 @@ public class ImageProcessor {
      * 지정한 바이트 크기 상한(limit) 내에서만 스트림을 읽어 바이트 배열로 반환합니다.
      * 상한을 초과할 경우 즉시 예외를 발생시켜 OOM을 예방합니다.
      */
-    private byte[] readWithLimit(InputStream inputStream, int limit) {
+    private byte[] readWithLimit(InputStream inputStream, long limit) {
         // 읽어들인 조각 바이트들을 하나로 모아 저장할 메모리 스트림을 생성
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[4096];
             int bytesRead;
-            int totalBytes = 0;
+            long totalBytes = 0;
 
             // 스트림의 끝(EOF)에 도달할 때까지 4KB 조각 단위로 계속 읽음
             while ((bytesRead = inputStream.read(buffer)) != -1) {
