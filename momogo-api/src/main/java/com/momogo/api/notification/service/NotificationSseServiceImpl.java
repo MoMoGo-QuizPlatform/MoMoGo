@@ -1,5 +1,7 @@
 package com.momogo.api.notification.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.momogo.api.notification.redis.NotificationSseMessage;
 import com.momogo.api.notification.registry.NotificationEmitterRegistry;
 import com.momogo.core.domain.notification.dto.response.NotificationResponse;
 import com.momogo.core.domain.notification.sse.NotificationSseService;
@@ -7,11 +9,18 @@ import java.io.IOException;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /*
  * NotificationSseService(publish) + NotificationSseConnector(connect) 구현체.
+ *
+ * publish()는 로컬 emitter에 직접 쓰지 않고 Redis 채널로 발행만 한다. 실제 로컬 전송은
+ * NotificationRedisSubscriber가 이 채널을 구독해서 담당한다 - 이 인스턴스에 연결된 유저가
+ * 아니면 조용히 무시되므로, 어느 인스턴스가 publish()를 호출하든 상관없이 그 유저가
+ * 실제로 연결된 인스턴스에서 SSE가 전송된다.
  */
 @Slf4j
 @Service
@@ -22,6 +31,9 @@ public class NotificationSseServiceImpl implements NotificationSseService, Notif
   private static final long TIMEOUT = 30L * 60 * 1000; // 30분
 
   private final NotificationEmitterRegistry emitterRegistry;
+  private final StringRedisTemplate stringRedisTemplate;
+  private final ChannelTopic notificationTopic;
+  private final ObjectMapper objectMapper;
 
   // 클라이언트의 최초 SSE 연결 요청을 처리
   @Override
@@ -41,20 +53,16 @@ public class NotificationSseServiceImpl implements NotificationSseService, Notif
     return emitter;
   }
 
-  // 실제 알림을 SSE로 전송
+  // 알림을 Redis 채널로 발행 (실제 SSE 전송은 NotificationRedisSubscriber가 수행)
   @Override
   public void publish(UUID userId, NotificationResponse notification) {
-    for (SseEmitter emitter : emitterRegistry.findAllByUserId(userId)) {
-      try {
-        emitter.send(SseEmitter.event()
-            .id(notification.id().toString())
-            .name("notifications")
-            .data(notification));
-      } catch (IOException e) {
-        log.warn("SSE 알림 전송 실패 - userId: {}", userId, e);
-        // completeWithError()가 emitter의 onError 콜백을 트리거 -> registry 정리
-        emitter.completeWithError(e);
-      }
+    try {
+      String json = objectMapper.writeValueAsString(new NotificationSseMessage(userId, notification));
+      Long receivers = stringRedisTemplate.convertAndSend(notificationTopic.getTopic(), json);
+      log.info("[NotificationSseServiceImpl] Redis 채널({}) 발행 완료 - userId: {}, 구독 중인 인스턴스 수: {}",
+          notificationTopic.getTopic(), userId, receivers);
+    } catch (Exception e) {
+      log.error("[NotificationSseServiceImpl] Redis 채널 발행 실패 - userId: {}", userId, e);
     }
   }
 }
