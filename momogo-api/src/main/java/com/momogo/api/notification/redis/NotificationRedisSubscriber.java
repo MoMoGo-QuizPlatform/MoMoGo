@@ -31,6 +31,12 @@ public class NotificationRedisSubscriber {
       return;
     }
 
+    if (message == null || message.userId() == null || message.notification() == null
+        || message.notification().id() == null) {
+      log.warn("[NotificationRedisSubscriber] 필수 필드가 없는 Redis 메시지를 무시합니다 - payload: {}", messageJson);
+      return;
+    }
+
     NotificationResponse notification = message.notification();
     var emitters = emitterRegistry.findAllByUserId(message.userId());
     if (emitters.isEmpty()) {
