@@ -18,7 +18,7 @@ public class NotificationKafkaProducer {
   private final KafkaTemplate<String, Object> kafkaTemplate;
 
   public void send(NotificationEventMessage message) {
-    kafkaTemplate.send(KafkaTopics.NOTIFICATION_EVENTS, message)
+    kafkaTemplate.send(KafkaTopics.NOTIFICATION_EVENTS, message.eventId().toString(), message)
         .whenComplete((result, ex) -> {
           if (ex != null) {
             log.error("[NotificationKafkaProducer] 카프카 메시지 전송 실패 - eventId: {}, topic: {}",
