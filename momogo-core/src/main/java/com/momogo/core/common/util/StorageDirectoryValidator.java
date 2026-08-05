@@ -21,6 +21,13 @@ public final class StorageDirectoryValidator {
 
         // 윈도우 경로 구분자(\)를 표준 구분자(/)로 통일
         String normalized = directory.replace("\\", "/");
+        boolean windowsAbsolute = normalized.length() >= 3
+                && Character.isLetter(normalized.charAt(0))
+                && normalized.charAt(1) == ':'
+                && normalized.charAt(2) == '/';
+        if (normalized.startsWith("/") || windowsAbsolute) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT, "허용되지 않는 저장 경로입니다.");
+        }
         // 슬래시(/) 기준으로 전체 경로 세그먼트 분할 (마지막 빈 세그먼트까지 포함)
         String[] segments = normalized.split("/", -1);
 

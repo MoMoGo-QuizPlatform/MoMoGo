@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.unit.DataSize;
 
+import javax.imageio.IIOException;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
@@ -24,6 +25,7 @@ import java.util.stream.Collectors;
 /**
  * 프로필 이미지 등 파일 업로드 시 업로드될 파일의 유효성과 보안성을 검증하고
  * 검증이 끝난 이미지를 프로필 규격(300*300)으로 리사이징/압축까지 수행하는 컴포넌트입니다.
+ * 규격이 작을 경우 강제 확대로 인한 화질 저하를 방지하기 위해 실제 너비, 높이 중 낮은 값의 길이로 리사이징됩니다.
  * 확장자를 1차 검증하고, 실제 바이트(매직바이트)를 기반으로 ImageIO가 인식하는 실제 이미지 포맷을 감지하여
  * 확장자와 일치하는지 교차 검증합니다. 클라이언트가 전달한 Content-Type 헤더는 신뢰하지 않습니다.
  */
@@ -38,7 +40,7 @@ public class ImageProcessor {
     // 최대 1600만 * 4bytes 디코딩 기준 최대 약 61MB 메모리 사용
     private static final long MAX_PIXEL_COUNT = 4000L * 4000L;
 
-    // 파일 확장자를 ImageIO 표준 포맷명으로 변환하여, 이미지 소스 분석 결과와 대조하기 위한 매핑 테이블
+    // 파일 확장자를 ImageIO 표준 포맷명으로 변환하여, 이미지 소스 분석 결과와 대조하기 위한 매핑 테이
     private static final Map<String, String> EXTENSION_TO_FORMAT = Map.of(
             "jpg", "jpeg",
             "jpeg", "jpeg",
@@ -119,13 +121,24 @@ public class ImageProcessor {
                     .outputFormat(dimension.format())
                     .toOutputStream(bos);
             return bos.toByteArray();
+        } catch (IIOException e) {
+            // 헤더는 정상이지만 실제 픽셀 디코딩이 불가능한 경우
+            // 클라이언트가 보낸 입력 자체의 문제이므로 재시도해도 성공하지 않음
+            log.warn("[ImageProcessor] 이미지 디코딩 실패(손상) - format: {}, size: {}",
+                    dimension.format(), targetSize, e);
+            throw new BusinessException(
+                    GlobalErrorCode.INVALID_INPUT,
+                    "이미지를 처리할 수 없습니다. 손상되었거나 지원되지 않는 이미지입니다.",
+                    resizeFailureDetail(dimension, targetSize)
+            );
+
         } catch (Exception e) {
-            log.error("[ImageProcessor] 이미지 리사이징 실패 - format: {}, width: {}, height: {}",
-                    dimension.format(), dimension.width(), dimension.height(), e);
+            log.error("[ImageProcessor] 이미지 리사이징 실패(예기치 못한 오류) - format: {}, size: {}",
+                    dimension.format(), targetSize, e);
             throw new BusinessException(
                     GlobalErrorCode.INTERNAL_SERVER_ERROR,
                     "이미지 리사이징 중 오류가 발생하였습니다.",
-                    "format=" + dimension.format() + ", width=" + dimension.width() + ", height=" + dimension.height()
+                    resizeFailureDetail(dimension, targetSize)
             );
         }
     }
@@ -197,6 +210,16 @@ public class ImageProcessor {
         } catch (Exception e) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT, "파일을 읽는 중 오류가 발생했습니다.");
         }
+    }
+
+    /**
+     * 리사이징 실패 시 예외 detail에 담을 원본/목표 규격 정보 메서드
+     */
+    private String resizeFailureDetail(ImageDimension dimension, int targetSize) {
+        return "format=" + dimension.format()
+                + ", originalWidth=" + dimension.width()
+                + ", originalHeight=" + dimension.height()
+                + ", size=" + targetSize;
     }
 
     /**
