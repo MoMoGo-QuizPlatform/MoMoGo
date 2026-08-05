@@ -16,6 +16,8 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /*
  * NotificationEventListener가 발행한 알림 메시지를 받아 실제 DB 저장을 수행
@@ -49,9 +51,8 @@ public class NotificationKafkaConsumer {
     log.info("[NotificationKafkaConsumer] 카프카 알림 수신 - type: {}, targetCount: {}",
         message.type(), message.userIds().size());
 
-    Boolean isNew = redisTemplate.opsForValue()
-        .setIfAbsent(DEDUP_KEY_PREFIX + message.eventId(), "1", DEDUP_TTL);
-    if (Boolean.FALSE.equals(isNew)) {
+    String dedupKey = DEDUP_KEY_PREFIX + message.eventId();
+    if (Boolean.TRUE.equals(redisTemplate.hasKey(dedupKey))) {
       log.warn("[NotificationKafkaConsumer] 이미 처리된 이벤트, 중복 스킵 - eventId: {}", message.eventId());
       return;
     }
@@ -66,6 +67,16 @@ public class NotificationKafkaConsumer {
         .toList();
 
     List<Notification> saved = notificationRepository.saveAll(notifications);
+
+    // DB 커밋이 확정된 뒤에만 Redis에 처리 완료로 표시한다.
+    // saveAll 실패로 롤백되면 afterCommit이 아예 호출되지 않으므로, Redis에 표시가 안 남아
+    // 카프카 재시도가 정상적으로 다시 처리를 시도할 수 있다.
+    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+      @Override
+      public void afterCommit() {
+        redisTemplate.opsForValue().set(dedupKey, "1", DEDUP_TTL);
+      }
+    });
 
     eventPublisher.publishEvent(new NotificationsPersistedEvent(saved));
   }
