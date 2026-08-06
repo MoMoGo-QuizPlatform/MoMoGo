@@ -121,7 +121,7 @@ public class LocalStorageService implements StorageService {
      * 절대 경로 위장( "../") 경로 조작을 모두 차단합니다.
      */
     private Path resolveSafely(Path base, String relative) {
-        if (relative == null || relative.isBlank()) {
+        if (relative == null) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT, "유효하지 않은 경로입니다.");
         }
         Path resolved = base.resolve(relative).normalize();

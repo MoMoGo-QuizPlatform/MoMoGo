@@ -64,7 +64,7 @@ public class S3StorageService implements StorageService {
             );
 
             String savedFileName = UUID.randomUUID() + validationResult.extension();
-            String key = safeDirectory + "/" + savedFileName;
+            String key = safeDirectory.isEmpty() ? savedFileName : safeDirectory + "/" + savedFileName;
 
             s3Client.putObject(
                     PutObjectRequest.builder()
