@@ -100,13 +100,14 @@ CREATE TABLE "TBL_ROOM_PROBLEM" (
 
 -- 실시간 시험(방) 전용 제출 답안 테이블
 CREATE TABLE "TBL_USER_ROOM_ANSWER" (
-                                        "id"               UUID          NOT NULL,
-                                        "user_id"          UUID          NOT NULL,
-                                        "room_problem_id"  UUID          NOT NULL, -- TBL_ROOM_PROBLEM 참조
-                                        "is_solved"        BOOLEAN       NOT NULL,
-                                        "is_correct"       BOOLEAN       NULL,     -- 채점 마감 시 정오표 캐싱용 컬럼 추가
-                                        "user_answer"      TEXT          NULL,
-                                        "created_at"       TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL
+                                        "id"                  UUID          NOT NULL,
+                                        "user_id"             UUID          NOT NULL,
+                                        "room_problem_id"     UUID          NOT NULL, -- TBL_ROOM_PROBLEM 참조
+                                        "is_solved"           BOOLEAN       NOT NULL,
+                                        "is_correct"          BOOLEAN       NULL,     -- 채점 마감 시 정오표 캐싱용 컬럼 추가
+                                        "is_manually_graded"  BOOLEAN       DEFAULT FALSE NOT NULL, -- 수동 채점 여부 오버라이드 플래그
+                                        "user_answer"         TEXT          NULL,
+                                        "created_at"          TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP NULL
 );
 
 -- 개인별 싱글모드 문제 풀이 이력 테이블

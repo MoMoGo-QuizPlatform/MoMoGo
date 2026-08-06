@@ -40,7 +40,7 @@ public class AiGradingEventListener {
    */
   @KafkaListener(
       topics = KafkaTopics.AI_GRADING_EVENTS,
-      groupId = "momogo-ai-grading-group"
+      groupId = "${app.kafka.ai-grading-group-id:momogo-ai-grading-group}"
   )
   public void handleStartAiGradingEvent(AiGradingEventDto event) {
 

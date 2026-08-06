@@ -725,7 +725,7 @@ public class RoomServiceImpl implements RoomService{
       throw new BusinessException(RoomErrorCode.PROBLEM_NOT_FOUND);
     }
 
-    answer.grade(request.isCorrect());
+    answer.manualGrade(request.isCorrect());
   }
 
   @Override
@@ -733,6 +733,11 @@ public class RoomServiceImpl implements RoomService{
   public void saveGradingResults(Map<UUID, Boolean> gradingResults, UUID roomId) {
     List<UserRoomAnswer> answers = userRoomAnswerRepository.findAllById(gradingResults.keySet());
     for (UserRoomAnswer answer : answers) {
+      // 수동 채점이 이미 완료된 답안은 뒤늦게 도착한 AI 채점 결과로 덮어쓰지 않고 스킵
+      if (Boolean.TRUE.equals(answer.getIsManuallyGraded())) {
+        log.info("[RoomService] 이미 수동 채점 완료된 답안 스킵 - answerId: {}", answer.getId());
+        continue;
+      }
       Boolean isCorrect = gradingResults.get(answer.getId());
       if (isCorrect != null) {
         answer.grade(isCorrect);
