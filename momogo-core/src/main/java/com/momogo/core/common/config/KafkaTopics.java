@@ -7,6 +7,7 @@ package com.momogo.core.common.config;
 public final class KafkaTopics {
 
     public static final String NOTIFICATION_EVENTS = "notification-events";
+    public static final String AI_GRADING_EVENTS = "ai-grading-events";
 
     private KafkaTopics() {
     }
