@@ -1,5 +1,6 @@
 package com.momogo.api.notification.redis;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.concurrent.Executor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,10 +29,14 @@ public class NotificationRedisPubSubConfig {
 
   // Redis 메시지를 수신할 어댑터 설정. Jackson2JsonRedisSerializer로 역직렬화를 위임해
   // subscriber가 수동으로 JSON을 파싱하지 않고 NotificationSseMessage를 바로 받도록 함.
+  // Jackson2JsonRedisSerializer(Class)는 내부적으로 순정 ObjectMapper를 새로 만들어서
+  // JavaTimeModule이 없어 OffsetDateTime(NotificationResponse.createdAt)을 못 읽는다.
+  // 앱이 이미 쓰는(JavaTimeModule 등록된) ObjectMapper 빈을 그대로 주입해 사용한다.
   @Bean
-  public MessageListenerAdapter notificationListenerAdapter(NotificationRedisSubscriber subscriber) {
+  public MessageListenerAdapter notificationListenerAdapter(
+      NotificationRedisSubscriber subscriber, ObjectMapper objectMapper) {
     MessageListenerAdapter adapter = new MessageListenerAdapter(subscriber, "handleMessage");
-    adapter.setSerializer(new Jackson2JsonRedisSerializer<>(NotificationSseMessage.class));
+    adapter.setSerializer(new Jackson2JsonRedisSerializer<>(objectMapper, NotificationSseMessage.class));
     return adapter;
   }
 
