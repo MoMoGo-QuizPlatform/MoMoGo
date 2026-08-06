@@ -26,7 +26,7 @@ public class NotificationSseHeartbeatScheduler {
     for (SseEmitter emitter : emitterRegistry.findAll()) {
       try {
         emitter.send(SseEmitter.event().comment("heartbeat"));
-      } catch (IOException e) {
+      } catch (IOException | IllegalStateException e) {
         log.warn("[NotificationSseHeartbeatScheduler] 하트비트 전송 실패, 연결 정리", e);
         emitter.completeWithError(e);
       }
