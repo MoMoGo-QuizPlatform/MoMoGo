@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import org.springframework.data.jpa.repository.Modifying;
+
 @Repository
 public interface UserRoomAnswerRepository extends JpaRepository<UserRoomAnswer, UUID>  {
 
@@ -16,4 +18,8 @@ public interface UserRoomAnswerRepository extends JpaRepository<UserRoomAnswer, 
 
   @Query("select u from UserRoomAnswer u join fetch u.roomProblem rp where rp.room.id = :roomId and u.user.id = :userId")
   List<UserRoomAnswer> findByRoomProblemRoomIdAndUserId(@Param("roomId") java.util.UUID roomId, @Param("userId") java.util.UUID userId);
+
+  @Modifying(clearAutomatically = true)
+  @Query("update UserRoomAnswer u set u.isCorrect = :isCorrect where u.id = :id and (u.isManuallyGraded = false or u.isManuallyGraded is null)")
+  int updateIsCorrectIfNotManuallyGraded(@Param("id") UUID id, @Param("isCorrect") Boolean isCorrect);
 }

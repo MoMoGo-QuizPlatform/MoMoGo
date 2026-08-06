@@ -120,6 +120,8 @@ app:
       file: ${APP_ASYNC_CONCURRENCY_FILE:30}
   storage:
     type: ${APP_STORAGE_TYPE:s3}
+  kafka:
+    ai-grading-group-id: ${APP_KAFKA_AI_GRADING_GROUP_ID:momogo-ai-grading-group}
   aws:
     s3-bucket: ${AWS_S3_BUCKET:momogo-s3}
     region: ${AWS_REGION:ap-northeast-2}

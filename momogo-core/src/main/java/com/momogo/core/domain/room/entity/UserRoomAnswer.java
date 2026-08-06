@@ -46,6 +46,10 @@ public class UserRoomAnswer extends BaseCreatedTimeEntity {
     @Column(name = "user_answer", columnDefinition = "TEXT")
     private String userAnswer;
 
+    @Builder.Default
+    @Column(name = "is_manually_graded", nullable = false)
+    private Boolean isManuallyGraded = false;
+
     // 정적 팩토리 메서드
     public static UserRoomAnswer of(User user, RoomProblem roomProblem, String userAnswer, Boolean isCorrect) {
         return UserRoomAnswer.builder()
@@ -54,10 +58,16 @@ public class UserRoomAnswer extends BaseCreatedTimeEntity {
             .userAnswer(userAnswer)
             .isSolved(userAnswer != null && !userAnswer.isBlank())
             .isCorrect(isCorrect)
+            .isManuallyGraded(false)
             .build();
     }
 
     public void grade(Boolean isCorrect) {
         this.isCorrect = isCorrect;
+    }
+
+    public void manualGrade(Boolean isCorrect) {
+        this.isCorrect = isCorrect;
+        this.isManuallyGraded = true;
     }
 }
