@@ -37,10 +37,11 @@ public class LocalStorageService implements StorageService {
 
     @Override
     public String upload(InputStream inputStream, String originalFileName, String contentType, String directory) {
-        String safeDirectory = StorageDirectoryValidator.validate(directory);
-
         // try-with-resources 구문으로 원본 inputStream 및 validatedStream 자원 수명주기를 안전하게 관리
         try (InputStream src = inputStream) {
+            // 검증 실패로 예외가 발생하여도 src(inputStream)가 자동으로 close() 되도록 보장한다.
+            String safeDirectory = StorageDirectoryValidator.validate(directory);
+
             ImageProcessor.ImageValidationResult validationResult =
                     imageProcessor.validateImage(src, originalFileName, contentType);
 

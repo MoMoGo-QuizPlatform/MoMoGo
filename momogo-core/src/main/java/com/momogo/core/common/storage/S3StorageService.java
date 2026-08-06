@@ -44,11 +44,14 @@ public class S3StorageService implements StorageService {
         log.info("[S3StorageService] 버킷 지정 완료: {}", bucket);
     }
 
+
     @Override
     public String upload(InputStream inputStream, String originalFileName, String contentType, String directory) {
-        String safeDirectory = StorageDirectoryValidator.validate(directory);
 
         try (InputStream src = inputStream) {
+            // 검증 실패로 예외가 발생하여도 src(inputStream)가 자동으로 close() 되도록 보장한다.
+            String safeDirectory = StorageDirectoryValidator.validate(directory);
+
             ImageProcessor.ImageValidationResult validationResult = imageProcessor.validateImage(src, originalFileName, contentType);
             String savedFileName = UUID.randomUUID() + validationResult.extension();
             String key = safeDirectory + "/" + savedFileName;
