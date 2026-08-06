@@ -33,6 +33,13 @@ public class NotificationEmitterRegistry {
     return emitters.getOrDefault(userId, List.of());
   }
 
+  // 이 인스턴스에 연결된 모든 emitter 조회 (하트비트 브로드캐스트용)
+  public List<SseEmitter> findAll() {
+    return emitters.values().stream()
+        .flatMap(List::stream)
+        .toList();
+  }
+
   // 연결이 정상종료되거나, 타임아웃되거나, 에러가 났을 때 목록에서 제거
   // 유저의 emitter가 다 없어지면 메모리 누수 방지를 위해 그 유저의 key 자체도 지움
   public void remove(UUID userId, SseEmitter emitter) {
