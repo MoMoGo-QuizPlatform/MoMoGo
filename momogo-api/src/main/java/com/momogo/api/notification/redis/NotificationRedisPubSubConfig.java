@@ -10,8 +10,11 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.data.redis.listener.adapter.MessageListenerAdapter;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
 
+/*
+ * 알림 Redis Pub/Sub 채널/리스너/컨테이너 설정.
+ */
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
@@ -23,34 +26,13 @@ public class NotificationRedisPubSubConfig {
     return new ChannelTopic("notification-sse-channel");
   }
 
-  // Redis 메시지를 수신할 어댑터 설정 (subscriber의 handleMessage 메소드를 호출)
+  // Redis 메시지를 수신할 어댑터 설정. Jackson2JsonRedisSerializer로 역직렬화를 위임해
+  // subscriber가 수동으로 JSON을 파싱하지 않고 NotificationSseMessage를 바로 받도록 함.
   @Bean
   public MessageListenerAdapter notificationListenerAdapter(NotificationRedisSubscriber subscriber) {
-    return new MessageListenerAdapter(subscriber, "handleMessage");
-  }
-
-  // 개별 Pub/Sub 메시지 비동기 처리 전용 스레드 풀
-  @Bean(name = "notificationRedisTaskExecutor")
-  public ThreadPoolTaskExecutor notificationRedisTaskExecutor() {
-    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-    executor.setCorePoolSize(10);
-    executor.setMaxPoolSize(50);
-    executor.setQueueCapacity(500);
-    executor.setThreadNamePrefix("notification-redis-task-");
-    executor.initialize();
-    return executor;
-  }
-
-  // Redis SUBSCRIBE 커넥션 유지 전용 독립 스레드 풀
-  @Bean(name = "notificationRedisSubscriptionExecutor")
-  public ThreadPoolTaskExecutor notificationRedisSubscriptionExecutor() {
-    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-    executor.setCorePoolSize(2);
-    executor.setMaxPoolSize(5);
-    executor.setQueueCapacity(10);
-    executor.setThreadNamePrefix("notification-redis-sub-");
-    executor.initialize();
-    return executor;
+    MessageListenerAdapter adapter = new MessageListenerAdapter(subscriber, "handleMessage");
+    adapter.setSerializer(new Jackson2JsonRedisSerializer<>(NotificationSseMessage.class));
+    return adapter;
   }
 
   @Bean

@@ -1,8 +1,11 @@
 package com.momogo.api.notification.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.momogo.api.notification.redis.NotificationSseMessage;
 import com.momogo.api.notification.registry.NotificationEmitterRegistry;
+import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.common.exception.GlobalErrorCode;
 import com.momogo.core.domain.notification.dto.response.NotificationResponse;
 import com.momogo.core.domain.notification.sse.NotificationSseService;
 import java.io.IOException;
@@ -54,15 +57,20 @@ public class NotificationSseServiceImpl implements NotificationSseService, Notif
   }
 
   // 알림을 Redis 채널로 발행 (실제 SSE 전송은 NotificationRedisSubscriber가 수행)
+  // 발행 실패는 여기서 삼키지 않고 그대로 던진다. 호출자(NotificationSsePublishListener,
+  // NotificationEventListener)가 이미 유저 단위로 try/catch하고 있어, 한 명의 발행 실패가
+  // 다른 유저들의 알림 처리를 막지 않으면서도 실패를 호출자가 인지할 수 있다.
   @Override
   public void publish(UUID userId, NotificationResponse notification) {
+    String json;
     try {
-      String json = objectMapper.writeValueAsString(new NotificationSseMessage(userId, notification));
-      Long receivers = stringRedisTemplate.convertAndSend(notificationTopic.getTopic(), json);
-      log.info("[NotificationSseServiceImpl] Redis 채널({}) 발행 완료 - userId: {}, 구독 중인 인스턴스 수: {}",
-          notificationTopic.getTopic(), userId, receivers);
-    } catch (Exception e) {
-      log.error("[NotificationSseServiceImpl] Redis 채널 발행 실패 - userId: {}", userId, e);
+      json = objectMapper.writeValueAsString(new NotificationSseMessage(userId, notification));
+    } catch (JsonProcessingException e) {
+      throw new BusinessException(GlobalErrorCode.SSE_PUBLISH_FAILED, "SSE 메시지 직렬화 실패 - userId: " + userId, e);
     }
+
+    Long receivers = stringRedisTemplate.convertAndSend(notificationTopic.getTopic(), json);
+    log.info("[NotificationSseServiceImpl] Redis 채널({}) 발행 완료 - userId: {}, 구독 중인 인스턴스 수: {}",
+        notificationTopic.getTopic(), userId, receivers);
   }
 }
