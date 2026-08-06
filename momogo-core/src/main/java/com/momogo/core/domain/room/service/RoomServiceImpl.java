@@ -731,16 +731,15 @@ public class RoomServiceImpl implements RoomService{
   @Override
   @Transactional
   public void saveGradingResults(Map<UUID, Boolean> gradingResults, UUID roomId) {
-    List<UserRoomAnswer> answers = userRoomAnswerRepository.findAllById(gradingResults.keySet());
-    for (UserRoomAnswer answer : answers) {
-      // 수동 채점이 이미 완료된 답안은 뒤늦게 도착한 AI 채점 결과로 덮어쓰지 않고 스킵
-      if (Boolean.TRUE.equals(answer.getIsManuallyGraded())) {
-        log.info("[RoomService] 이미 수동 채점 완료된 답안 스킵 - answerId: {}", answer.getId());
-        continue;
-      }
-      Boolean isCorrect = gradingResults.get(answer.getId());
+    for (Map.Entry<UUID, Boolean> entry : gradingResults.entrySet()) {
+      UUID answerId = entry.getKey();
+      Boolean isCorrect = entry.getValue();
       if (isCorrect != null) {
-        answer.grade(isCorrect);
+        // 수동 채점이 수행되지 않은 답안에 대해서만 DB 단에서 원자적으로(Atomic) 정답 반영 (수동 채점 오버라이드 레이스 조건 차단)
+        int updatedCount = userRoomAnswerRepository.updateIsCorrectIfNotManuallyGraded(answerId, isCorrect);
+        if (updatedCount == 0) {
+          log.info("[RoomService] 수동 채점 완료 또는 존재하지 않는 답안 AI 결과 반영 스킵 - answerId: {}", answerId);
+        }
       }
     }
     // 채점 완료 상태 해제
