@@ -2,7 +2,9 @@ package com.momogo.core.common.storage;
 
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
-import com.momogo.core.common.util.ImageFileValidator;
+import com.momogo.core.common.util.storage.ImageProcessor;
+import com.momogo.core.common.util.storage.ImageResizeSpec;
+import com.momogo.core.common.util.storage.StorageDirectoryValidator;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,47 +30,57 @@ import java.util.UUID;
 @ConditionalOnProperty(name = "app.storage.type", havingValue = "s3")
 public class S3StorageService implements StorageService {
 
-    private final ImageFileValidator imageFileValidator;
+    private final ImageProcessor imageProcessor;
     private final S3Client s3Client;
     private final String bucket;
 
     public S3StorageService(
-            ImageFileValidator imageFileValidator,
+            ImageProcessor imageProcessor,
             @Value("${app.aws.s3-bucket}") String bucket,
             @Value("${app.aws.region}") String region
     ) {
-        this.imageFileValidator = imageFileValidator;
+        this.imageProcessor = imageProcessor;
         this.bucket = bucket;
         this.s3Client = S3Client.builder().region(Region.of(region)).build();
         log.info("[S3StorageService] 버킷 지정 완료: {}", bucket);
     }
 
+
     @Override
-    public String upload(InputStream inputStream, String originalFileName, String contentType, String directory) {
-        // try-with-resources 구문으로 원본 inputStream 및 validatedStream 자원 수명주기를 안전하게 관리
-        try (InputStream src = inputStream;
-             InputStream validatedStream = imageFileValidator.validateImage(src, originalFileName, contentType)) {
+    public String upload(InputStream inputStream, String originalFileName, String contentType, String directory, ImageResizeSpec resizeSpec) {
 
-            String extension = "";
-            if (originalFileName != null && originalFileName.contains(".")) {
-                extension = originalFileName.substring(originalFileName.lastIndexOf("."));
-            }
+        try (InputStream src = inputStream) {
+            // 검증 실패로 예외가 발생하여도 src(inputStream)가 자동으로 close() 되도록 보장한다.
+            String safeDirectory = StorageDirectoryValidator.validate(directory);
 
-            String savedFileName = UUID.randomUUID() + extension;
-            String key = directory + "/" + savedFileName;
+            ImageProcessor.ImageValidationResult validationResult = imageProcessor.validateImage(src, originalFileName, contentType);
 
-            byte[] bytes = validatedStream.readAllBytes();
+            byte[] bytes = imageProcessor.resizeImage(
+                    validationResult.data(),
+                    validationResult.format(),
+                    validationResult.width(),
+                    validationResult.height(),
+                    resizeSpec
+            );
+
+            String savedFileName = UUID.randomUUID() + validationResult.extension();
+            String key = safeDirectory.isEmpty() ? savedFileName : safeDirectory + "/" + savedFileName;
+
             s3Client.putObject(
                     PutObjectRequest.builder()
                             .bucket(bucket)
                             .key(key)
-                            .contentType(contentType)
+                            .contentType(validationResult.detectedContentType())
                             .build(),
                     RequestBody.fromBytes(bytes)
             );
             return savedFileName;
-
+        } catch (BusinessException e) {
+            // 검증 실패(잘못된 경로/확장자 등)
+            log.warn("[S3StorageService] 파일 업로드 검증 실패 - originalFileName: {}, directory: {}", originalFileName, directory, e);
+            throw e;
         } catch (IOException | SdkException e) {
+            // 인프라/시스템 오류
             log.error("[S3StorageService] S3 파일 업로드 실패 - originalFileName: {}, directory: {}", originalFileName, directory, e);
             throw new BusinessException(
                     GlobalErrorCode.FILE_UPLOAD_FAILED,

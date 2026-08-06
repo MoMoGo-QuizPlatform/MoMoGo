@@ -8,6 +8,7 @@ import com.momogo.core.common.storage.event.FileDeleteEvent;
 import com.momogo.core.common.storage.event.FileRollbackDeleteEvent;
 import com.momogo.core.common.util.EmailFormatter;
 import com.momogo.core.common.util.UrlUtils;
+import com.momogo.core.common.util.storage.ImageResizeSpec;
 import com.momogo.core.domain.user.dto.UserSearchCondition;
 import com.momogo.core.domain.user.dto.request.ProfileImageUploadRequest;
 import com.momogo.core.domain.user.dto.request.UserCreateRequest;
@@ -135,7 +136,8 @@ public class UserServiceImpl implements UserService {
                         inputStream,
                         profile.originalFilename(),
                         profile.contentType(),
-                        PROFILE_IMAGE_DIR
+                        PROFILE_IMAGE_DIR,
+                        ImageResizeSpec.PROFILE
                 );
 
                 user.updateProfileImage(savedFileName);
