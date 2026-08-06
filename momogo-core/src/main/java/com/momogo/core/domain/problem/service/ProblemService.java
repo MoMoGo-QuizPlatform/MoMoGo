@@ -76,5 +76,5 @@ public interface ProblemService {
    * @param spaceId   공간 ID
    * @param request   AI 문제 자동 생성 요청 DTO
    */
-  List<ProblemResponse> createProblemsByAi(UUID spaceId, ProblemAiCreateRequest request);
+  List<ProblemResponse> createProblemsByAi(UUID spaceId, UUID idempotencyKey, ProblemAiCreateRequest request);
 }

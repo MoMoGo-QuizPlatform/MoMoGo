@@ -40,7 +40,10 @@ public enum ProblemErrorCode implements ErrorCode {
       HttpStatus.SERVICE_UNAVAILABLE, "AI 문제 생성에 실패했습니다. 잠시 후 다시 시도해주세요."),
 
   COUNTER_NOT_FOUND(3010, "COUNTER_NOT_FOUND",
-      HttpStatus.INTERNAL_SERVER_ERROR, "문제 통계 정보를 찾을 수 없습니다.");
+      HttpStatus.INTERNAL_SERVER_ERROR, "문제 통계 정보를 찾을 수 없습니다."),
+
+  DUPLICATE_AI_REQUEST(3011, "DUPLICATE_AI_REQUEST",
+      HttpStatus.CONFLICT, "이미 처리 중인 요청입니다. 잠시 후 다시 시도해주세요.");
 
   private final int numeric;
   private final String errorKey;

@@ -21,9 +21,11 @@ import com.momogo.core.domain.space.exception.SpaceErrorCode;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.repository.UserRepository;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +36,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class RoomProblemServiceImpl implements RoomProblemService {
 
   private final RoomRepository roomRepository;
+
+  private final RedisTemplate<String, Object> redisTemplate;
 
   private final RoomProblemRepository roomProblemRepository;
 
@@ -89,9 +93,11 @@ public class RoomProblemServiceImpl implements RoomProblemService {
 
     RoomProblem roomProblem = getRoomProblem(roomId, roomProblemId);
 
-    ProblemCategory category = request.categoryId() != null ? getCategory(request.categoryId()) : null;
+    ProblemCategory category =
+        request.categoryId() != null ? getCategory(request.categoryId()) : null;
 
-    roomProblem.update(category, null, request.name(), request.content(), request.explanation(), request.correctAnswer());
+    roomProblem.update(category, null, request.name(), request.content(), request.explanation(),
+        request.correctAnswer());
 
     return roomProblemMapper.toResponse(roomProblem);
   }
@@ -123,21 +129,40 @@ public class RoomProblemServiceImpl implements RoomProblemService {
   public List<RoomProblemResponse> createRoomProblemsByAi(
       UUID userId,
       UUID roomId,
+      UUID idempotencyKey,
       RoomProblemAiCreateRequest request) {
 
-    Room room = roomRepository.findByIdWithSpace(roomId)
-        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+    // 같은 idempotencyKey로 들어온 재시도(더블클릭/네트워크 재전송)를 차단
+    // 인스턴스가 여러 대라도 Redis가 공용 상태를 갖고 있어 판단 가능
+    String lockKey = "idem:room-problem-ai:" + idempotencyKey;
 
-    validateAdmin(userId, room);
+    Boolean acquired = redisTemplate.opsForValue()
+        .setIfAbsent(lockKey, "IN_PROGRESS", Duration.ofMinutes(10));
 
-    ProblemCategory category = getCategory(request.categoryId());
+    if (Boolean.FALSE.equals(acquired)) {
+      throw new BusinessException(RoomProblemErrorCode.DUPLICATE_AI_REQUEST);
+    }
 
-    List<GeneratedProblemData> generated = problemGenerationService.generateProblems(
-        request.referenceText(),
-        request.questionCount()
-    );
+    try {
+      Room room = roomRepository.findByIdWithSpace(roomId)
+          .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
 
-    return roomProblemPersister.saveGeneratedProblems(roomId, category, generated);
+      validateAdmin(userId, room);
+
+      ProblemCategory category = getCategory(request.categoryId());
+
+      List<GeneratedProblemData> generated = problemGenerationService.generateProblems(
+          request.referenceText(),
+          request.questionCount()
+      );
+
+      return roomProblemPersister.saveGeneratedProblems(roomId, category, generated);
+    } catch (RuntimeException e) {
+
+      // 실패 시엔 락을 바로 풀어서 정상 재시도를 막지 않음 (TTL 10분까지 기다리게 하면 안 됨)
+      redisTemplate.delete(lockKey);
+      throw e;
+    }
   }
 
 
@@ -170,7 +195,8 @@ public class RoomProblemServiceImpl implements RoomProblemService {
     User user = userRepository.findByIdWithSpace(userId)
         .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
 
-    if (user.getRole() != UserRole.ADMIN || user.getSpace() == null || !user.getSpace().getId().equals(room.getSpace().getId())) {
+    if (user.getRole() != UserRole.ADMIN || user.getSpace() == null
+        || !user.getSpace().getId().equals(room.getSpace().getId())) {
       throw new BusinessException(SpaceErrorCode.NOT_SPACE_ADMIN);
     }
   }

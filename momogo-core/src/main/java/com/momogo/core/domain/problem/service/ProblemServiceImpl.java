@@ -24,12 +24,14 @@ import com.momogo.core.domain.user.entity.UserProblem;
 import com.momogo.core.domain.user.entity.UserProblemId;
 import com.momogo.core.domain.user.repository.UserProblemRepository;
 import com.momogo.core.domain.user.repository.UserRepository;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +44,8 @@ public class ProblemServiceImpl implements ProblemService {
 
   private final ProblemRepository problemRepository;
 
+  private final RedisTemplate<String, Object> redisTemplate;
+
   private final ProblemCategoryRepository categoryRepository;
 
   private final ProblemCountersRepository countersRepository;
@@ -49,7 +53,7 @@ public class ProblemServiceImpl implements ProblemService {
   private final SpaceRepository spaceRepository;
 
   private final ProblemMapper problemMapper;
-  
+
   private final ProblemGenerationService problemGenerationService;
 
   private final ProblemPersister problemPersister;
@@ -251,7 +255,8 @@ public class ProblemServiceImpl implements ProblemService {
 
     String normalizedUserAnswer = request.userAnswer().replaceAll("\\s+", "").toLowerCase();
 
-    String normalizedCorrectAnswer = problem.getCorrectAnswer().replaceAll("\\s+", "").toLowerCase();
+    String normalizedCorrectAnswer = problem.getCorrectAnswer().replaceAll("\\s+",
+        "").toLowerCase();
 
     boolean isSolved = normalizedUserAnswer.contains(normalizedCorrectAnswer);
 
@@ -289,28 +294,45 @@ public class ProblemServiceImpl implements ProblemService {
 
   /**
    * AI 기반 문제 자동 생성 (ADMIN 전용)
-   * @param spaceId   공간 ID
-   * @param request   AI 문제 자동 생성 요청 DTO
+   *
+   * @param spaceId 공간 ID
+   * @param request AI 문제 자동 생성 요청 DTO
    */
   @Override
   @Transactional(propagation = Propagation.NOT_SUPPORTED) // 해당 메서드 자체는 트랜잭션 없이 실행
-  public List<ProblemResponse> createProblemsByAi(UUID spaceId, ProblemAiCreateRequest request) {
-    
-    // 공간 / 카테고리 검증
-    if (!spaceRepository.existsById(spaceId)) {
-      throw new BusinessException(ProblemErrorCode.SPACE_NOT_FOUND);
+  public List<ProblemResponse> createProblemsByAi(UUID spaceId, UUID idempotencyKey,
+      ProblemAiCreateRequest request) {
+
+    String lockKey = "idem:problem-ai:" + idempotencyKey;
+
+    Boolean acquired = redisTemplate.opsForValue()
+        .setIfAbsent(lockKey, "IN_PROGRESS", Duration.ofMinutes(10));
+
+    if (Boolean.FALSE.equals(acquired)) {
+      throw new BusinessException(ProblemErrorCode.DUPLICATE_AI_REQUEST);
     }
 
-    if (!categoryRepository.existsById(request.categoryId())) {
-      throw new BusinessException(ProblemErrorCode.CATEGORY_NOT_FOUND);
+    try {
+
+      // 공간 / 카테고리 검증
+      if (!spaceRepository.existsById(spaceId)) {
+        throw new BusinessException(ProblemErrorCode.SPACE_NOT_FOUND);
+      }
+
+      if (!categoryRepository.existsById(request.categoryId())) {
+        throw new BusinessException(ProblemErrorCode.CATEGORY_NOT_FOUND);
+      }
+
+      // AI 생성 호출 (트랜잭션 밖 - 커넥션 안 잡고 LLM 응답 대기)
+      List<GeneratedProblemData> generated = problemGenerationService.generateProblems(
+          request.referenceText(),
+          request.questionCount()
+      );
+
+      return problemPersister.saveGeneratedProblems(spaceId, request.categoryId(), generated);
+    } catch (RuntimeException e) {
+      redisTemplate.delete(lockKey);
+      throw e;
     }
-    
-    // AI 생성 호출 (트랜잭션 밖 - 커넥션 안 잡고 LLM 응답 대기)
-    List<GeneratedProblemData> generated = problemGenerationService.generateProblems(
-        request.referenceText(),
-        request.questionCount()
-    );
-    
-    return problemPersister.saveGeneratedProblems(spaceId, request.categoryId(), generated);
   }
 }
