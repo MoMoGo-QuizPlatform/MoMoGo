@@ -139,7 +139,10 @@ public class ImageProcessor {
             return bos.toByteArray();
         } catch (Exception e) {
             log.error("[ImageProcessor] 이미지 리사이징 실패 - 원본 바이트 유지", e);
-            return originalBytes;
+            throw new BusinessException(
+                    GlobalErrorCode.INVALID_INPUT,
+                    "이미지 리사이징에 실패했습니다."
+            );
         }
     }
 
