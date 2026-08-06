@@ -2,8 +2,9 @@ package com.momogo.core.common.storage;
 
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
-import com.momogo.core.common.util.ImageProcessor;
-import com.momogo.core.common.util.StorageDirectoryValidator;
+import com.momogo.core.common.util.storage.ImageProcessor;
+import com.momogo.core.common.util.storage.ImageResizeSpec;
+import com.momogo.core.common.util.storage.StorageDirectoryValidator;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -46,17 +47,25 @@ public class S3StorageService implements StorageService {
 
 
     @Override
-    public String upload(InputStream inputStream, String originalFileName, String contentType, String directory) {
+    public String upload(InputStream inputStream, String originalFileName, String contentType, String directory, ImageResizeSpec resizeSpec) {
 
         try (InputStream src = inputStream) {
             // 검증 실패로 예외가 발생하여도 src(inputStream)가 자동으로 close() 되도록 보장한다.
             String safeDirectory = StorageDirectoryValidator.validate(directory);
 
             ImageProcessor.ImageValidationResult validationResult = imageProcessor.validateImage(src, originalFileName, contentType);
+
+            byte[] bytes = imageProcessor.resizeImage(
+                    validationResult.data(),
+                    validationResult.format(),
+                    validationResult.width(),
+                    validationResult.height(),
+                    resizeSpec
+            );
+
             String savedFileName = UUID.randomUUID() + validationResult.extension();
             String key = safeDirectory + "/" + savedFileName;
 
-            byte[] bytes = validationResult.data();
             s3Client.putObject(
                     PutObjectRequest.builder()
                             .bucket(bucket)
@@ -66,7 +75,12 @@ public class S3StorageService implements StorageService {
                     RequestBody.fromBytes(bytes)
             );
             return savedFileName;
+        } catch (BusinessException e) {
+            // 검증 실패(잘못된 경로/확장자 등)
+            log.warn("[S3StorageService] 파일 업로드 검증 실패 - originalFileName: {}, directory: {}", originalFileName, directory, e);
+            throw e;
         } catch (IOException | SdkException e) {
+            // 인프라/시스템 오류
             log.error("[S3StorageService] S3 파일 업로드 실패 - originalFileName: {}, directory: {}", originalFileName, directory, e);
             throw new BusinessException(
                     GlobalErrorCode.FILE_UPLOAD_FAILED,

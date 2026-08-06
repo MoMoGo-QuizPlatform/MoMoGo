@@ -2,14 +2,16 @@ package com.momogo.core.common.storage;
 
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
-import com.momogo.core.common.util.ImageProcessor;
-import com.momogo.core.common.util.StorageDirectoryValidator;
+import com.momogo.core.common.util.storage.ImageProcessor;
+import com.momogo.core.common.util.storage.ImageResizeSpec;
+import com.momogo.core.common.util.storage.StorageDirectoryValidator;
 import com.momogo.core.common.util.UrlUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -36,7 +38,7 @@ public class LocalStorageService implements StorageService {
     }
 
     @Override
-    public String upload(InputStream inputStream, String originalFileName, String contentType, String directory) {
+    public String upload(InputStream inputStream, String originalFileName, String contentType, String directory, ImageResizeSpec resizeSpec) {
         // try-with-resources 구문으로 원본 inputStream 및 validatedStream 자원 수명주기를 안전하게 관리
         try (InputStream src = inputStream) {
             // 검증 실패로 예외가 발생하여도 src(inputStream)가 자동으로 close() 되도록 보장한다.
@@ -45,7 +47,15 @@ public class LocalStorageService implements StorageService {
             ImageProcessor.ImageValidationResult validationResult =
                     imageProcessor.validateImage(src, originalFileName, contentType);
 
-            try (InputStream validatedStream = validationResult.inputStream()) {
+            byte[] bytes = imageProcessor.resizeImage(
+                    validationResult.data(),
+                    validationResult.format(),
+                    validationResult.width(),
+                    validationResult.height(),
+                    resizeSpec
+            );
+
+            try (InputStream validatedStream = new ByteArrayInputStream(bytes)) {
                 String savedFileName = UUID.randomUUID() + validationResult.extension();
 
                 // directory가 uploadRoot 바깥으로 빠져나가지 않는지 검증 (Path Traversal 방지)
@@ -57,8 +67,15 @@ public class LocalStorageService implements StorageService {
 
                 return savedFileName;
             }
+        } catch (BusinessException e) {
+            // 검증 실패(잘못된 경로/확장자/해상도 등)
+            log.warn("[LocalStorageService] 파일 업로드 검증 실패 - originalFileName: {}, directory: {}",
+                    originalFileName, directory, e);
+            throw e;
         } catch (IOException e) {
-            log.error("[LocalStorageService] 파일 업로드 실패 - originalFileName: {}, directory: {}", originalFileName, directory, e);
+            // 디스크 I/O 등 시스템 오류
+            log.error("[LocalStorageService] 파일 업로드 실패 - originalFileName: {}, directory: {}",
+                    originalFileName, directory, e);
             throw new BusinessException(
                     GlobalErrorCode.FILE_UPLOAD_FAILED,
                     "파일 저장 중 시스템 오류가 발생했습니다.",

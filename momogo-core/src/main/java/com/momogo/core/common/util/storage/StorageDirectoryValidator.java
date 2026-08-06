@@ -1,4 +1,4 @@
-package com.momogo.core.common.util;
+package com.momogo.core.common.util.storage;
 
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;

@@ -1,4 +1,4 @@
-package com.momogo.core.common.util;
+package com.momogo.core.common.util.storage;
 
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
@@ -22,17 +22,16 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 프로필 이미지 등 파일 업로드 시 업로드될 파일의 유효성과 보안성을 검증하고
- * 검증이 끝난 이미지를 프로필 규격(300*300)으로 리사이징/압축까지 수행하는 컴포넌트입니다.
+ * 업로드될 파일의 유효성과 보안성을 검증하고, 필요 시 지정된 규격으로
+ * 리사이징/압축을 수행하는 범용 이미지 처리 컴포넌트
  * 확장자를 1차 검증하고, 실제 바이트(매직바이트)를 기반으로 ImageIO가 인식하는 실제 이미지 포맷을 감지하여
  * 확장자와 일치하는지 교차 검증합니다. 클라이언트가 전달한 Content-Type 헤더는 신뢰하지 않습니다.
+ * ImageResizeSpec으로 리사이징 규격을 전달받아, 프로필 이미지 전용 규격 등 특정 도메인에 종속되지 않습니다.
  */
 @Slf4j
 @Component
 public class ImageProcessor {
 
-    private static final int PROFILE_TARGET_WIDTH = 300;
-    private static final int PROFILE_TARGET_HEIGHT = 300;
     private static final double OUTPUT_QUALITY = 0.85;
 
     // 픽셀 폭탄(decompression bomb) 방어용 최대 허용 픽셀 수 (예: 4000 x 4000 => 1600만 화소)
@@ -68,7 +67,8 @@ public class ImageProcessor {
     }
 
     /**
-     * 파일 업로드 시 확장자, 실제 이미지 바이트 무결성, 확장자-실제포맷 일치 여부, 해상도 상한을 일괄 검증합니다.
+     * 검증이 완료되면 완료된 원본 이미지 바이트, 감지된 ContentType/포맷, 확장자,
+     * 원본 가로/세로 픽셀 크기를 담는 결과 객체
      *
      * @param inputStream      파일 데이터 스트림
      * @param originalFilename 원본 파일 이름
@@ -101,23 +101,40 @@ public class ImageProcessor {
             );
         }
 
-        // 5. 프로필 규격(300 * 300)으로 리사이징 및 압축 수행
-        byte[] resizedBytes = resizeImage(fileBytes, dimension, PROFILE_TARGET_WIDTH, PROFILE_TARGET_HEIGHT);
-
         String detectedMimeType = FORMAT_TO_MIME_TYPE.get(dimension.format());
-        return new ImageValidationResult(resizedBytes, detectedMimeType, "." + ext);
+        return new ImageValidationResult(
+                fileBytes,
+                detectedMimeType,
+                "." + ext,
+                dimension.format(),
+                dimension.width(),
+                dimension.height()
+        );
     }
 
-    private byte[] resizeImage(byte[] originalBytes, ImageDimension dimension, int targetWidth, int targetHeight) {
+    /**
+     * 검증 완료된 이미지를 지정된 규격으로 정사각형 중앙 크롭 라사이징 및 압축합니다.
+     * 원본이 목표 규격보다 작은 경우, 원본의 짧은 변을 기준으로 리사이징하여 
+     * 이미지가 억지로 확대되지 않도록 합니다.
+     * 
+     * @param originalBytes 검증이 완료된 원본 이미지 바이트
+     * @param format 감지된 이미지 포맷
+     * @param originalWidth 원본 이미지 가로 픽셀 크기
+     * @param originalHeight 원본 이미지 세로 픽셀 크기
+     * @param spec 목표 리사이징 규격
+     * @return 리사이징 및 압축이 완료된 이미지 바이트 
+     */
+    public byte[] resizeImage(byte[] originalBytes, String format, int originalWidth, int originalHeight, ImageResizeSpec spec) {
+
         // 원본의 짧은 변과 목표 규격 중 더 작은 값을 정사각형 한 변으로 사용
-        int targetSize = Math.min(Math.min(dimension.width(), dimension.height()), targetWidth);
+        int targetSize = Math.min(Math.min(originalWidth, originalHeight), Math.min(spec.width(), spec.height()));
 
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
             Thumbnails.of(new ByteArrayInputStream(originalBytes))
                     .size(targetSize, targetSize)
                     .crop(Positions.CENTER)
                     .outputQuality(OUTPUT_QUALITY) // 85% 품질 압축 (용량 절감)
-                    .outputFormat(dimension.format())
+                    .outputFormat(format)
                     .toOutputStream(bos);
             return bos.toByteArray();
         } catch (Exception e) {
@@ -198,7 +215,14 @@ public class ImageProcessor {
     /**
      * 검증 및 리사이징이 완료된 바이트 데이터, 감지된 Content-Type, 검증된 확장자(".jpg" 등)를 담는 결과 객체.
      */
-    public record ImageValidationResult(byte[] data, String detectedContentType, String extension) {
+    public record ImageValidationResult(
+            byte[] data,
+            String detectedContentType,
+            String extension,
+            String format,
+            int width,
+            int height
+    ) {
         public InputStream inputStream() {
             return new ByteArrayInputStream(data);
         }
