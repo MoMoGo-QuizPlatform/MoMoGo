@@ -1,5 +1,5 @@
 global:
-  scrape_interval: 5s # 5초마다 메트릭 수집 (부하 테스트 모니터링을 위해 조금 짧게 설정)
+  scrape_interval: 5s
   evaluation_interval: 5s
 
 scrape_configs:
@@ -8,18 +8,18 @@ scrape_configs:
     scheme: 'http'
     scrape_interval: 5s
     static_configs:
-      # 로컬에서 호스트 PC의 Spring Boot 서버(8080)에 접근하기 위해 hoost.docker.internal 사용
       - targets: ['host.docker.internal:8080']
         labels:
           env: 'local'
-          application: 'momogo-api'
 
   - job_name: 'momogo-prod-api'
     metrics_path: '/actuator/prometheus'
     scheme: 'http'
     scrape_interval: 5s
+    basic_auth:
+      username: '${PROMETHEUS_USER:?PROMETHEUS_USER is required}'
+      password: '${PROMETHEUS_PASS:?PROMETHEUS_PASS is required}'
     static_configs:
       - targets: ['momogo.kro.kr']
         labels:
           env: 'production'
-          application: 'momogo-api'
