@@ -74,7 +74,7 @@ public class SecurityConfig {
                         .requestMatchers("/", "/index.html").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/info", "/actuator/prometheus").permitAll()
                         .requestMatchers("/actuator/**").hasRole("SUPER_ADMIN")
                         .requestMatchers("/api/super-admin/**").hasRole("SUPER_ADMIN")
 
