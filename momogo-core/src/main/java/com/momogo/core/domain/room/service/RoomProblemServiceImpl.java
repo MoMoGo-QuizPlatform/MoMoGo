@@ -25,12 +25,15 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -81,9 +84,16 @@ public class RoomProblemServiceImpl implements RoomProblemService {
         room, category, request.problemOrder(), request.name(),
         request.content(), request.explanation(), request.correctAnswer());
 
-    RoomProblem saved = roomProblemRepository.save(roomProblem);
-
-    return roomProblemMapper.toResponse(saved);
+    try {
+      RoomProblem saved = roomProblemRepository.saveAndFlush(roomProblem);
+      return roomProblemMapper.toResponse(saved);
+    } catch (DataIntegrityViolationException e) {
+      if (isDuplicateOrderViolation(e)) {
+        log.warn("[RoomProblemService] 방 문제 순번 중복 제약 조건 위반 발생");
+        throw new BusinessException(RoomProblemErrorCode.DUPLICATE_PROBLEM_ORDER);
+      }
+      throw e;
+    }
   }
 
   /**
@@ -119,7 +129,9 @@ public class RoomProblemServiceImpl implements RoomProblemService {
   @Transactional
   public void deleteRoomProblem(UUID userId, UUID roomId, UUID roomProblemId) {
 
-    Room room = getRoom(roomId);
+    // 같은 방에 대한 동시 삭제 요청을 직렬화하기 위해 비관적 락으로 조회 (createRoomProblemsByAi 채번과 동일 패턴)
+    Room room = roomRepository.findByIdForUpdate(roomId)
+        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
 
     validateAdmin(userId, room);
 
@@ -209,5 +221,17 @@ public class RoomProblemServiceImpl implements RoomProblemService {
         || !user.getSpace().getId().equals(room.getSpace().getId())) {
       throw new BusinessException(SpaceErrorCode.NOT_SPACE_ADMIN);
     }
+  }
+
+  /**
+   * DB 제약 조건 예외(DataIntegrityViolationException)가 방 문제 순번 유니크 제약(UQ_ROOM_PROBLEM_ROOM_ORDER) 위반인지 판단합니다.
+   */
+  private boolean isDuplicateOrderViolation(DataIntegrityViolationException e) {
+    Throwable cause = e.getMostSpecificCause();
+    String message = cause.getMessage();
+    if (message == null) {
+      return false;
+    }
+    return message.toLowerCase().contains("uq_room_problem_room_order");
   }
 }

@@ -11,9 +11,12 @@ import com.momogo.core.domain.problem.repository.ProblemCategoryRepository;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -32,14 +35,22 @@ public class ProblemCategoryServiceImpl implements ProblemCategoryService {
 
     String categoryName = request.name();
 
-    // 이름 중복 검사
+    // 이름 중복 검사 (동시 요청 시 이 체크를 통과해도 DB 유니크 제약으로 최종 방어됨 - 아래 catch 참고)
     if (categoryRepository.existsByName(categoryName)) {
       throw new BusinessException(ProblemErrorCode.CATEGORY_NAME_DUPLICATED);
     }
 
-    ProblemCategory savedCategory = categoryRepository.save(ProblemCategory.create(categoryName));
-
-    return categoryMapper.toResponse(savedCategory);
+    try {
+      ProblemCategory savedCategory = categoryRepository.saveAndFlush(
+          ProblemCategory.create(categoryName));
+      return categoryMapper.toResponse(savedCategory);
+    } catch (DataIntegrityViolationException e) {
+      if (isDuplicateNameViolation(e)) {
+        log.warn("[ProblemCategoryService] 카테고리 이름 중복 제약 조건 위반 발생");
+        throw new BusinessException(ProblemErrorCode.CATEGORY_NAME_DUPLICATED);
+      }
+      throw e;
+    }
   }
 
   /**
@@ -73,5 +84,15 @@ public class ProblemCategoryServiceImpl implements ProblemCategoryService {
     return categoryMapper.toResponse(category);
   }
 
-
+  /**
+   * DB 제약 조건 예외(DataIntegrityViolationException)가 카테고리 이름 유니크 제약(UQ_PROBLEM_CATEGORY_NAME) 위반인지 판단합니다.
+   */
+  private boolean isDuplicateNameViolation(DataIntegrityViolationException e) {
+    Throwable cause = e.getMostSpecificCause();
+    String message = cause.getMessage();
+    if (message == null) {
+      return false;
+    }
+    return message.toLowerCase().contains("uq_problem_category_name");
+  }
 }
