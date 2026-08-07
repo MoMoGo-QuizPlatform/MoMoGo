@@ -40,5 +40,5 @@ public interface RoomProblemService {
    * @param roomId        방 ID
    * @param request       AI 문제 생성 DTO
    */
-  List<RoomProblemResponse> createRoomProblemsByAi(UUID userId, UUID roomId, RoomProblemAiCreateRequest request);
+  List<RoomProblemResponse> createRoomProblemsByAi(UUID userId, UUID roomId, UUID idempotencyKey, RoomProblemAiCreateRequest request);
 }

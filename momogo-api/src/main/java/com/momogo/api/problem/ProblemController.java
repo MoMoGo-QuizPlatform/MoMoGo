@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -119,9 +120,10 @@ public class ProblemController {
   @PreAuthorize("hasRole('ADMIN')")
   public ResponseEntity<List<ProblemResponse>> createProblemsByAi(
       @PathVariable UUID spaceId,
+      @RequestHeader("Idempotency-Key") UUID idempotencyKey,
       @RequestBody @Valid ProblemAiCreateRequest request) {
 
-    List<ProblemResponse> response = problemService.createProblemsByAi(spaceId, request);
+    List<ProblemResponse> response = problemService.createProblemsByAi(spaceId, idempotencyKey, request);
 
     return ResponseEntity
         .status(HttpStatus.CREATED)
