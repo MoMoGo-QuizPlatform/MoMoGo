@@ -169,12 +169,9 @@ public class RoomProblemServiceImpl implements RoomProblemService {
       );
 
       return roomProblemPersister.saveGeneratedProblems(roomId, category, generated);
-    } catch (RuntimeException e) {
-
-      // 실패 시엔 락을 바로 풀어서 정상 재시도를 막지 않음 (TTL 10분까지 기다리게 하면 안 됨)
-      // 무조건 delete 대신 내 토큰일 때만 삭제 (TTL 초과로 락이 넘어갔으면 남의 락을 지우지 않음)
+    } finally {
+      // 성공/실패/Error 무관 항상 해제. 무조건 delete 대신 내 토큰일 때만 삭제 (TTL 초과로 락이 넘어갔으면 남의 락을 지우지 않음)
       redisTemplate.execute(UNLOCK_SCRIPT, List.of(lockKey), ownerToken);
-      throw e;
     }
   }
 

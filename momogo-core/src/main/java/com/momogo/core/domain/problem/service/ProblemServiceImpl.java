@@ -342,10 +342,9 @@ public class ProblemServiceImpl implements ProblemService {
       );
 
       return problemPersister.saveGeneratedProblems(spaceId, request.categoryId(), generated);
-    } catch (RuntimeException e) {
-      // 무조건 delete 대신 내 토큰일 때만 삭제 (TTL 초과로 락이 넘어갔으면 남의 락을 지우지 않음)
+    } finally {
+      // 성공/실패/Error 무관 항상 해제. 무조건 delete 대신 내 토큰일 때만 삭제 (TTL 초과로 락이 넘어갔으면 남의 락을 지우지 않음)
       redisTemplate.execute(UNLOCK_SCRIPT, List.of(lockKey), ownerToken);
-      throw e;
     }
   }
 }
