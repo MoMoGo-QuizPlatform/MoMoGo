@@ -32,6 +32,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -61,6 +62,15 @@ public class ProblemServiceImpl implements ProblemService {
   private final UserProblemRepository userProblemRepository;
 
   private final UserRepository userRepository;
+
+  // GET한 값이 내 토큰과 같을 때만 DEL - TTL 만료로 락이 다른 요청에 넘어간 경우 잘못 삭제하는 것 방지
+  private static final RedisScript<Long> UNLOCK_SCRIPT = RedisScript.of("""
+      if redis.call('get', KEYS[1]) == ARGV[1] then
+        return redis.call('del', KEYS[1])
+      else
+        return 0
+      end
+      """, Long.class);
 
   /**
    * 문제 직접 생성
@@ -304,9 +314,11 @@ public class ProblemServiceImpl implements ProblemService {
       ProblemAiCreateRequest request) {
 
     String lockKey = "idem:problem-ai:" + idempotencyKey;
+    // 락 값을 요청 식별 토큰으로 - TTL 만료 후 다른 요청이 같은 키로 락을 새로 잡았을 때 구분하기 위함
+    String ownerToken = UUID.randomUUID().toString();
 
     Boolean acquired = redisTemplate.opsForValue()
-        .setIfAbsent(lockKey, "IN_PROGRESS", Duration.ofMinutes(10));
+        .setIfAbsent(lockKey, ownerToken, Duration.ofMinutes(10));
 
     if (Boolean.FALSE.equals(acquired)) {
       throw new BusinessException(ProblemErrorCode.DUPLICATE_AI_REQUEST);
@@ -331,7 +343,8 @@ public class ProblemServiceImpl implements ProblemService {
 
       return problemPersister.saveGeneratedProblems(spaceId, request.categoryId(), generated);
     } catch (RuntimeException e) {
-      redisTemplate.delete(lockKey);
+      // 무조건 delete 대신 내 토큰일 때만 삭제 (TTL 초과로 락이 넘어갔으면 남의 락을 지우지 않음)
+      redisTemplate.execute(UNLOCK_SCRIPT, List.of(lockKey), ownerToken);
       throw e;
     }
   }
