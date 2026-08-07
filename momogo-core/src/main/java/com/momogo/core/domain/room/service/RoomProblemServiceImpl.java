@@ -119,7 +119,9 @@ public class RoomProblemServiceImpl implements RoomProblemService {
   @Transactional
   public void deleteRoomProblem(UUID userId, UUID roomId, UUID roomProblemId) {
 
-    Room room = getRoom(roomId);
+    // 같은 방에 대한 동시 삭제 요청을 직렬화하기 위해 비관적 락으로 조회 (createRoomProblemsByAi 채번과 동일 패턴)
+    Room room = roomRepository.findByIdForUpdate(roomId)
+        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
 
     validateAdmin(userId, room);
 
