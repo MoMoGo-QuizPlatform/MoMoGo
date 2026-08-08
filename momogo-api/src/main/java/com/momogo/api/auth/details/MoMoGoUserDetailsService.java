@@ -1,12 +1,13 @@
 package com.momogo.api.auth.details;
 
-import com.momogo.core.common.util.EmailFormatter;
 import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.common.util.EmailFormatter;
 import com.momogo.core.domain.user.dto.response.UserResponse;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.exception.UserErrorCode;
 import com.momogo.core.domain.user.mapper.UserMapper;
 import com.momogo.core.domain.user.repository.UserRepository;
+import com.momogo.core.domain.user.service.UserCacheService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -15,7 +16,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
-import java.util.Locale;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -24,21 +24,12 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
 
     private final UserRepository userRepository;
     private final UserMapper userMapper;
+    private final UserCacheService userCacheService;
 
     @Override
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String username) {
         log.debug("[MoMoGoUserDetailsService] loadUserByUsername 호출됨, email: {}", EmailFormatter.mask(username));
-        return loadUserDetails(username);
-    }
-
-    /**
-     * JWT 토큰 검증 시 필터에서 호출하는 메서드입니다.
-     * 유저 정보를 조회합니다.
-     */
-    @Transactional(readOnly = true)
-    public UserDetails loadUserByUsernameForToken(String username) {
-        log.debug("[MoMoGoUserDetailsService] loadUserByUsernameForToken 호출됨, email: {}", EmailFormatter.mask(username));
         return loadUserDetails(username);
     }
 
@@ -70,6 +61,22 @@ public class MoMoGoUserDetailsService implements UserDetailsService {
         }
 
         return new MoMoGoUserDetails(userResponse, passwordForAuth);
+    }
+
+    /**
+     * JWT 토큰 검증 시 필터에서 호출하는 메서드입니다.
+     * Redis 캐시에서 UserResponse를 조회하여 DB 접근 없이 UserDetails를 즉시 반환합니다.
+     */
+    @Transactional(readOnly = true)
+    public UserDetails loadUserByUsernameForToken(String username) {
+        log.debug("[MoMoGoUserDetailsService] loadUserByUsernameForToken 호출됨, email: {}", EmailFormatter.mask(username));
+        String normalizedEmail = EmailFormatter.normalize(username);
+
+        // Redis 캐시에서 UserResponse DTO 조회 (캐시 미스 시 DB 조회 후 Redis 자동 저장)
+        UserResponse userResponse = userCacheService.getUserResponseCached(normalizedEmail);
+
+        // 캐시된 DTO 정보로 UserDetails 즉시 생성하여 리턴 (DB 쿼리 0회)
+        return new MoMoGoUserDetails(userResponse, "");
     }
 
     /**

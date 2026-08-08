@@ -23,7 +23,8 @@ public enum AuthErrorCode implements ErrorCode {
   SOCIAL_LOGIN_FAILED(6011, "SOCIAL_LOGIN_FAILED", HttpStatus.UNAUTHORIZED, "소셜 로그인 인증에 실패했습니다."),
 
   LOCK_ACQUISITION_FAILED(6012, "LOCK_ACQUISITION_FAILED", HttpStatus.SERVICE_UNAVAILABLE, "동시 요청 처리를 위한 락 획득에 실패했습니다. 잠시 후 다시 시도해주세요."),
-  JWT_SERIALIZATION_FAILED(6013, "JWT_SERIALIZATION_FAILED", HttpStatus.INTERNAL_SERVER_ERROR, "JWT 정보 직렬화에 실패했습니다.");
+  JWT_SERIALIZATION_FAILED(6013, "JWT_SERIALIZATION_FAILED", HttpStatus.INTERNAL_SERVER_ERROR, "JWT 정보 직렬화에 실패했습니다."),
+  LOGIN_SERVER_BUSY(6014, "LOGIN_SERVER_BUSY", HttpStatus.SERVICE_UNAVAILABLE, "로그인 요청이 많아 처리가 지연되고 있습니다. 잠시 후 다시 시도해주세요.");
 
   private final int numeric;
   private final String errorKey;

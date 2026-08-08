@@ -10,7 +10,8 @@ dependencies {
     // DB 영속성 및 유효성 검증, 모니터링
     api 'org.springframework.boot:spring-boot-starter-data-jpa'
     api 'org.springframework.boot:spring-boot-starter-validation'
-    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    api 'org.springframework.boot:spring-boot-starter-actuator'
+    api 'io.micrometer:micrometer-registry-prometheus'
     runtimeOnly 'org.postgresql:postgresql'
 
     // QueryDSL (Spring Boot 3.x / Jakarta)

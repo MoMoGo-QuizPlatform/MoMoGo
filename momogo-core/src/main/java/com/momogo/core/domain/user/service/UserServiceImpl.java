@@ -28,14 +28,15 @@ import com.momogo.core.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -59,6 +60,7 @@ public class UserServiceImpl implements UserService {
     private final StorageService storageService;
     private final UserHardDeleteProcessor hardDeleteProcessor;
     private final ApplicationEventPublisher eventPublisher;
+    private final CacheManager cacheManager;
 
     @Value("${app.super-admin.email}")
     private String superAdminEmail;
@@ -69,7 +71,6 @@ public class UserServiceImpl implements UserService {
      * @param request 회원가입 요청 DTO
      * @return 가입 완료된 회원 정보 DTO
      */
-    // TODO: 회원 가입 시 해당 실제 이메일이 존재하는지 검증 로직 구현
     @Override
     @Transactional
     public UserResponse createUser(UserCreateRequest request) {
@@ -118,6 +119,7 @@ public class UserServiceImpl implements UserService {
      */
     @Override
     @Transactional
+    @CacheEvict(value = "user_dtos", key = "T(com.momogo.core.common.util.EmailFormatter).normalize(#result.email())")
     public UserResponse updateUser(UUID userId, UserUpdateRequest request, ProfileImageUploadRequest profile) {
         User user = findActiveUser(userId);
 
@@ -195,6 +197,7 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public void softDeleteUser(UUID userId) {
         User user = findActiveUser(userId);
+        String normalizedEmail = EmailFormatter.normalize(user.getEmail());
 
         // 탈퇴 전, 소속된 공간이 있다면 퇴장 처리
         if (user.getSpace() != null) {
@@ -208,6 +211,12 @@ public class UserServiceImpl implements UserService {
 
         // 유저 논리 삭제
         user.delete();
+
+        // 메서드 바디 내부에서 안전하게 이메일 기반 캐시 제거
+        Cache cache = cacheManager.getCache("user_dtos");
+        if (cache != null) {
+            cache.evict(normalizedEmail);
+        }
 
         // 탈퇴한 유저 세션 만료
         eventPublisher.publishEvent(new UserDeletedEvent(user.getId()));
@@ -242,6 +251,7 @@ public class UserServiceImpl implements UserService {
      */
     @Override
     @Transactional
+    @CacheEvict(value = "user_dtos", key = "T(com.momogo.core.common.util.EmailFormatter).normalize(#email)")
     public void restoreUser(String email, String password) {
         User user = findUserByEmail(email);
 
@@ -366,6 +376,7 @@ public class UserServiceImpl implements UserService {
      */
     @Override
     @Transactional
+    @CacheEvict(value = "user_dtos", key = "T(com.momogo.core.common.util.EmailFormatter).normalize(#result.email())")
     public UserResponse updateUserBannedStatus(UUID userId, boolean banned) {
         User user = findActiveUser(userId);
         if (banned) {

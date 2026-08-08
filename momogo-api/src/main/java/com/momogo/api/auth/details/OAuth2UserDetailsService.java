@@ -1,6 +1,7 @@
 package com.momogo.api.auth.details;
 
 import com.momogo.api.auth.dto.OAuth2Attributes;
+import com.momogo.core.common.util.EmailFormatter;
 import com.momogo.core.domain.user.dto.response.UserResponse;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.SocialType;
@@ -15,8 +16,8 @@ import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import com.momogo.core.common.util.EmailFormatter;
+import com.momogo.core.domain.user.service.UserCacheService;
 
 import java.util.UUID;
 
@@ -27,6 +28,7 @@ public class OAuth2UserDetailsService extends DefaultOAuth2UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UserCacheService userCacheService;
 
     /**
      * 소셜(구글/카카오) 인증이 완료된 후 사용자를 조회하거나 신규 가입을 처리합니다.
@@ -58,23 +60,17 @@ public class OAuth2UserDetailsService extends DefaultOAuth2UserService {
         }
 
         SocialType socialType = SocialType.valueOf(registrationId.toUpperCase());
+        String normalizedEmail = EmailFormatter.normalize(attributes.email());
 
-        User user = userRepository.findByEmail(attributes.email())
+        User user = userRepository.findByEmail(normalizedEmail)
                 .map(existingUser -> validateSocialUser(existingUser, socialType))
                 .orElseGet(() -> registerSocialUser(attributes, socialType));
 
+        // Redis 캐시 등록 및 조회 활용
+        UserResponse userResponse = userCacheService.getUserResponseCached(normalizedEmail);
+
         return new MoMoGoUserDetails(
-                UserResponse.builder()
-                        .id(user.getId())
-                        .email(user.getEmail())
-                        .name(user.getName())
-                        .profileImageUrl(user.getProfileImageUrl())
-                        .role(user.getRole())
-                        .social(user.getSocial())
-                        .isBanned(user.getIsBanned())
-                        .createdAt(user.getCreatedAt())
-                        .deletedAt(user.getDeletedAt())
-                        .build(),
+                userResponse,
                 user.getPassword(),
                 attributes.attributes()
         );
