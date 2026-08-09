@@ -9,6 +9,8 @@ import com.momogo.core.domain.user.exception.UserErrorCode;
 import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
 import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler;
@@ -18,6 +20,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.CredentialsExpiredException;
 import org.springframework.security.authentication.InternalAuthenticationServiceException;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -53,8 +56,11 @@ public class SecurityConfig {
             CustomAuthenticationEntryPoint customAuthenticationEntryPoint,
             OAuth2UserDetailsService oAuth2UserDetailsService,
             OAuth2LoginSuccessHandler oauth2LoginSuccessHandler,
-            OAuth2LoginFailureHandler oauth2LoginFailureHandler
+            OAuth2LoginFailureHandler oauth2LoginFailureHandler,
+            Environment env
     ) throws Exception {
+        boolean isDevOrLocal = env.acceptsProfiles(Profiles.of("local", "dev"));
+
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf
@@ -62,13 +68,24 @@ public class SecurityConfig {
                         .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
                         .ignoringRequestMatchers("/api/auth/sign-in")
                 )
-                .authorizeHttpRequests(auth -> auth
+                .httpBasic(Customizer.withDefaults())
+                .authorizeHttpRequests(auth -> {
+                    auth
                         .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         // 문서 및 소켓 관련
                         .requestMatchers("/", "/index.html").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/info").permitAll();
+
+                    // 개발/로컬 프로필일 때만 k6 부하 테스트 스크랩용 prometheus 엔드포인트 공개, 운영 시 인증 요구
+                    if (isDevOrLocal) {
+                        auth.requestMatchers("/actuator/prometheus").permitAll();
+                    } else {
+                        auth.requestMatchers("/actuator/prometheus").hasAnyRole("METRICS", "SUPER_ADMIN");
+                    }
+
+                    auth
                         .requestMatchers("/actuator/**").hasRole("SUPER_ADMIN")
                         .requestMatchers("/api/super-admin/**").hasRole("SUPER_ADMIN")
 
@@ -99,8 +116,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
 
                         .requestMatchers("/api/**").authenticated()
-                        .anyRequest().authenticated()
-                )
+                        .anyRequest().authenticated();
+                })
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )

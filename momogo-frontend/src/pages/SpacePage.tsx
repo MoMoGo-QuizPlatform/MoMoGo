@@ -418,6 +418,7 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
       setLoading(true);
       await request(`/api/spaces/${space.id}/problems/ai`, {
         method: 'POST',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
         body: JSON.stringify({
           categoryId: aiCategory,
           referenceText: aiRefData,
