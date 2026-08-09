@@ -40,6 +40,11 @@ public class BoundedBCryptPasswordEncoder implements PasswordEncoder {
         if (maxConcurrency < 1) {
             throw new IllegalArgumentException("app.security.bcrypt.max-concurrency 설정값은 최소 1 이상이어야 합니다.");
         }
+        if (acquireTimeoutMs < 0) {
+            throw new IllegalArgumentException(
+                    "app.security.bcrypt.acquire-timeout-ms 설정값은 0 이상이어야 합니다."
+            );
+        }
         this.maxConcurrency = maxConcurrency;
         // fair=true: 먼저 대기한 요청이 먼저 슬롯을 얻도록 보장 (FIFO 큐잉, 기아 상태 방지)
         this.semaphore = new Semaphore(maxConcurrency, true);

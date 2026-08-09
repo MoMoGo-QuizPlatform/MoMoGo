@@ -59,7 +59,6 @@ public class UserSessionEventListener {
         }
     }
 
-    @Async(AsyncConfig.USER_EXECUTOR)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void handleUserCacheEvictEvent(UserCacheEvictEvent event) {
         String normalizedEmail = EmailFormatter.normalize(event.email());
