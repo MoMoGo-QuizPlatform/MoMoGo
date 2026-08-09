@@ -21,6 +21,7 @@ import com.momogo.core.domain.user.entity.enums.SocialType;
 import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.event.PasswordChangedEvent;
 import com.momogo.core.domain.user.event.UserBannedEvent;
+import com.momogo.core.domain.user.event.UserCacheEvictEvent;
 import com.momogo.core.domain.user.event.UserDeletedEvent;
 import com.momogo.core.domain.user.exception.UserErrorCode;
 import com.momogo.core.domain.user.mapper.UserMapper;
@@ -28,9 +29,6 @@ import com.momogo.core.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
@@ -60,7 +58,6 @@ public class UserServiceImpl implements UserService {
     private final StorageService storageService;
     private final UserHardDeleteProcessor hardDeleteProcessor;
     private final ApplicationEventPublisher eventPublisher;
-    private final CacheManager cacheManager;
 
     @Value("${app.super-admin.email}")
     private String superAdminEmail;
@@ -119,7 +116,6 @@ public class UserServiceImpl implements UserService {
      */
     @Override
     @Transactional
-    @CacheEvict(value = "user_dtos", key = "T(com.momogo.core.common.util.EmailFormatter).normalize(#result.email())")
     public UserResponse updateUser(UUID userId, UserUpdateRequest request, ProfileImageUploadRequest profile) {
         User user = findActiveUser(userId);
 
@@ -185,6 +181,9 @@ public class UserServiceImpl implements UserService {
             eventPublisher.publishEvent(new PasswordChangedEvent(userId));
         }
 
+        // DB 저장 로직이 커밋됐을 경우 캐시 갱신
+        eventPublisher.publishEvent(new UserCacheEvictEvent(user.getEmail()));
+
         return userMapper.toResponse(user);
     }
 
@@ -212,14 +211,12 @@ public class UserServiceImpl implements UserService {
         // 유저 논리 삭제
         user.delete();
 
-        // 메서드 바디 내부에서 안전하게 이메일 기반 캐시 제거
-        Cache cache = cacheManager.getCache("user_dtos");
-        if (cache != null) {
-            cache.evict(normalizedEmail);
-        }
+        eventPublisher.publishEvent(new UserCacheEvictEvent(normalizedEmail));
 
         // 탈퇴한 유저 세션 만료
         eventPublisher.publishEvent(new UserDeletedEvent(user.getId()));
+
+
     }
 
     /**
@@ -251,7 +248,6 @@ public class UserServiceImpl implements UserService {
      */
     @Override
     @Transactional
-    @CacheEvict(value = "user_dtos", key = "T(com.momogo.core.common.util.EmailFormatter).normalize(#email)")
     public void restoreUser(String email, String password) {
         User user = findUserByEmail(email);
 
@@ -267,6 +263,9 @@ public class UserServiceImpl implements UserService {
 
         // 복구 처리 (deletedAt = null)
         user.restore();
+
+        // 커밋 이후 캐시 evict
+        eventPublisher.publishEvent(new UserCacheEvictEvent(user.getEmail()));
     }
 
     /**
@@ -376,7 +375,6 @@ public class UserServiceImpl implements UserService {
      */
     @Override
     @Transactional
-    @CacheEvict(value = "user_dtos", key = "T(com.momogo.core.common.util.EmailFormatter).normalize(#result.email())")
     public UserResponse updateUserBannedStatus(UUID userId, boolean banned) {
         User user = findActiveUser(userId);
         if (banned) {
@@ -385,6 +383,9 @@ public class UserServiceImpl implements UserService {
         } else {
             user.unban();
         }
+
+        eventPublisher.publishEvent(new UserCacheEvictEvent(user.getEmail()));
+
         return userMapper.toResponse(user);
     }
 

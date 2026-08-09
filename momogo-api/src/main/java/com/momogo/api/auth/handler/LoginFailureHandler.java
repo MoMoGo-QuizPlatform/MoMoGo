@@ -1,15 +1,13 @@
 package com.momogo.api.auth.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.momogo.api.auth.jwt.JwtTokenProvider;
 import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.domain.user.exception.UserErrorCode;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.ResponseCookie;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.core.AuthenticationException;
@@ -45,12 +43,19 @@ public class LoginFailureHandler implements AuthenticationFailureHandler {
             status = businessException.getErrorCode().getHttpStatus().value();
 
         } else if (exception instanceof LockedException) {
-            errorMessage = "정지된 계정입니다. 관리자에게 문의하세요.";
-            errorCode = "USER-BANNED_USER";
-            status = HttpServletResponse.SC_FORBIDDEN;
-            log.warn("로그인 실패(제한된 계정): {}", exception.getClass().getSimpleName());
+            // MoMoGoUserDetails.isAccountNonLocked() == false -> 정지(밴) 계정
+            errorMessage = UserErrorCode.BANNED_USER.getMessage();
+            errorCode = UserErrorCode.BANNED_USER.getCode();
+            status = UserErrorCode.BANNED_USER.getHttpStatus().value();
+            log.warn("로그인 실패(정지된 계정): {}", exception.getClass().getSimpleName());
+
         } else if (exception instanceof DisabledException) {
-            log.warn("로그인 실패(비활성화 계정): {}", exception.getClass().getSimpleName());
+            // MoMoGoUserDetails.isEnabled() == false -> 탈퇴(논리 삭제) 계정
+            errorMessage = UserErrorCode.ALREADY_IN_PROGRESS_DELETE.getMessage();
+            errorCode = UserErrorCode.ALREADY_IN_PROGRESS_DELETE.getCode();
+            status = UserErrorCode.ALREADY_IN_PROGRESS_DELETE.getHttpStatus().value();
+            log.warn("로그인 실패(탈퇴된 계정): {}", exception.getClass().getSimpleName());
+
         } else {
             log.info("로그인 실패: {}", exception.getClass().getSimpleName());
         }

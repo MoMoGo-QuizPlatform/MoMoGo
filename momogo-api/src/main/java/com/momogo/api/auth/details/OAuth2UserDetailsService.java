@@ -5,9 +5,13 @@ import com.momogo.core.common.util.EmailFormatter;
 import com.momogo.core.domain.user.dto.response.UserResponse;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.SocialType;
+import com.momogo.core.domain.user.event.UserCacheEvictEvent;
+import com.momogo.core.domain.user.mapper.UserMapper;
 import com.momogo.core.domain.user.repository.UserRepository;
+import com.momogo.core.domain.user.service.UserCacheService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
@@ -16,8 +20,6 @@ import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.momogo.core.common.util.EmailFormatter;
-import com.momogo.core.domain.user.service.UserCacheService;
 
 import java.util.UUID;
 
@@ -29,6 +31,8 @@ public class OAuth2UserDetailsService extends DefaultOAuth2UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final UserCacheService userCacheService;
+    private final UserMapper userMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 소셜(구글/카카오) 인증이 완료된 후 사용자를 조회하거나 신규 가입을 처리합니다.
@@ -62,12 +66,26 @@ public class OAuth2UserDetailsService extends DefaultOAuth2UserService {
         SocialType socialType = SocialType.valueOf(registrationId.toUpperCase());
         String normalizedEmail = EmailFormatter.normalize(attributes.email());
 
-        User user = userRepository.findByEmail(normalizedEmail)
-                .map(existingUser -> validateSocialUser(existingUser, socialType))
-                .orElseGet(() -> registerSocialUser(attributes, socialType));
+        // 이번 트랜잭션에서 유저 상태가 변경되었는지(신규 가입 또는 탈퇴 복구) 추적
+        boolean[] stateChanged = {false};
 
-        // Redis 캐시 등록 및 조회 활용
-        UserResponse userResponse = userCacheService.getUserResponseCached(normalizedEmail);
+        User user = userRepository.findByEmail(normalizedEmail)
+                .map(existingUser -> validateSocialUser(existingUser, socialType, stateChanged))
+                .orElseGet(() -> {
+                    stateChanged[0] = true;
+                    return registerSocialUser(attributes, socialType);
+                });
+
+        UserResponse userResponse;
+        if (stateChanged[0]) {
+            // 신규 가입, 복구의 경우 엔티티로부터 직접 변환한다.
+            userResponse = userMapper.toResponse(user);
+            // 캐시 갱신은 커밋 확정 이후로 위임
+            eventPublisher.publishEvent(new UserCacheEvictEvent(normalizedEmail));
+        } else {
+            // 상태 변경이 없는 일반 로그인: 기존 cache-aside 조회 그대로 사용 (안전함)
+            userResponse = userCacheService.getUserResponseCached(normalizedEmail);
+        }
 
         return new MoMoGoUserDetails(
                 userResponse,
@@ -76,7 +94,7 @@ public class OAuth2UserDetailsService extends DefaultOAuth2UserService {
         );
     }
 
-    private User validateSocialUser(User user, SocialType socialType) {
+    private User validateSocialUser(User user, SocialType socialType, boolean[] stateChanged) {
         if (Boolean.TRUE.equals(user.getIsBanned())) {
             log.error("[OAuth2UserDetailsService] 밴 처리된 유저({}) 로그인 시도", EmailFormatter.mask(user.getEmail()));
             throw new OAuth2AuthenticationException(
@@ -97,6 +115,7 @@ public class OAuth2UserDetailsService extends DefaultOAuth2UserService {
             log.info("[OAuth2UserDetailsService] 탈퇴 대기 중인 소셜 유저({}) 복구 및 로그인 진행", EmailFormatter.mask(user.getEmail()));
             user.restore();
             userRepository.save(user);
+            stateChanged[0] = true;
         }
 
         if (user.getSocial() != socialType) {

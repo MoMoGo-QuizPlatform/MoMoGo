@@ -5,6 +5,7 @@ import com.momogo.core.common.exception.BusinessException;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.InternalAuthenticationServiceException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -36,6 +37,9 @@ public class BoundedBCryptPasswordEncoder implements PasswordEncoder {
             MeterRegistry meterRegistry
     ) {
         this.delegate = new BCryptPasswordEncoder(bcryptCost);
+        if (maxConcurrency < 1) {
+            throw new IllegalArgumentException("app.security.bcrypt.max-concurrency 설정값은 최소 1 이상이어야 합니다.");
+        }
         this.maxConcurrency = maxConcurrency;
         // fair=true: 먼저 대기한 요청이 먼저 슬롯을 얻도록 보장 (FIFO 큐잉, 기아 상태 방지)
         this.semaphore = new Semaphore(maxConcurrency, true);
@@ -55,7 +59,14 @@ public class BoundedBCryptPasswordEncoder implements PasswordEncoder {
 
     @Override
     public boolean matches(CharSequence rawPassword, String encodedPassword) {
-        return runBounded(() -> delegate.matches(rawPassword, encodedPassword));
+        try {
+            return runBounded(() -> delegate.matches(rawPassword, encodedPassword));
+        } catch (BusinessException e) {
+            if (e.getErrorCode() == AuthErrorCode.LOGIN_SERVER_BUSY) {
+                throw new InternalAuthenticationServiceException(e.getMessage(), e);
+            }
+            throw e;
+        }
     }
 
     @Override
@@ -71,10 +82,7 @@ public class BoundedBCryptPasswordEncoder implements PasswordEncoder {
                 log.warn("[BoundedBCryptPasswordEncoder] BCrypt 슬롯 획득 타임아웃 발생 - " +
                                 "maxConcurrency={}, 대기 큐 길이={}, 대기시간={}ms 초과",
                         maxConcurrency, semaphore.getQueueLength(), acquireTimeoutMs);
-                throw new BusinessException(
-                        AuthErrorCode.LOGIN_SERVER_BUSY,
-                        "로그인 요청이 많아 처리가 지연되고 있습니다. 잠시 후 다시 시도해주세요."
-                );
+                throw new BusinessException(AuthErrorCode.LOGIN_SERVER_BUSY);
             }
             return operation.get();
         } catch (InterruptedException e) {

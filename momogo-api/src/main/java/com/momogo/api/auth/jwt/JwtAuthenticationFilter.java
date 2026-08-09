@@ -16,6 +16,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
+
 import java.io.IOException;
 import java.util.Arrays;
 
@@ -31,11 +32,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
         String path = request.getRequestURI();
-        return path.startsWith("/api/auth/refresh") || 
-               path.startsWith("/swagger-ui") || 
-               path.startsWith("/v3/api-docs") || 
-               path.startsWith("/favicon.svg") || 
-               path.startsWith("/assets/");
+        return path.startsWith("/api/auth/refresh") ||
+                path.startsWith("/swagger-ui") ||
+                path.startsWith("/v3/api-docs") ||
+                path.startsWith("/favicon.svg") ||
+                path.startsWith("/assets/");
     }
 
     @Override
@@ -53,7 +54,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     MoMoGoUserDetails userDetails = tokenProvider.parseAccessToken(token);
                     UserDetails currentUserDetails = userDetailsService.loadUserByUsernameForToken(userDetails.getUsername());
 
-                    if (currentUserDetails.isAccountNonLocked()) {
+                    // isAccountNonLocked(): 밴(정지) 상태 여부
+                    // isEnabled(): 탈퇴(논리 삭제) 상태 여부
+                    if (currentUserDetails.isAccountNonLocked() && currentUserDetails.isEnabled()) {
                         UsernamePasswordAuthenticationToken authentication =
                                 new UsernamePasswordAuthenticationToken(
                                         currentUserDetails,
@@ -65,7 +68,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         SecurityContextHolder.getContext().setAuthentication(authentication);
                     } else {
                         jwtRegistry.invalidateJwtInformationByUserId(userDetails.getUserResponse().id());
-                        log.warn("[JwtFilter] 잠긴 계정 감지: userId= {}, 모든 JWT 세션 무효화", userDetails.getUserResponse().id());
+                        log.warn("[JwtFilter] 비활성 계정(정지 또는 탈퇴) 감지: userId={}, accountNonLocked={}, enabled={}, 모든 JWT 세션 무효화",
+                                userDetails.getUserResponse().id(),
+                                currentUserDetails.isAccountNonLocked(),
+                                currentUserDetails.isEnabled());
                     }
                 } else {
                     log.debug("[JwtFilter] 레지스트리에 존재하지 않거나 비활성화된 토큰입니다.");
