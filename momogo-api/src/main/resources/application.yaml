@@ -147,3 +147,20 @@ app:
 
 server:
   port: 8080
+
+# monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, metrics
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name:momogo-api}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
