@@ -1,6 +1,7 @@
 package com.momogo.api.auth.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.momogo.core.common.exception.AuthErrorCode;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.domain.user.exception.UserErrorCode;
 import jakarta.servlet.ServletException;
@@ -41,6 +42,13 @@ public class LoginFailureHandler implements AuthenticationFailureHandler {
             errorMessage = businessException.getMessage();
             errorCode = businessException.getErrorCode().getCode();
             status = businessException.getErrorCode().getHttpStatus().value();
+
+            // 서버 과부하(동시성 제한)로 인한 실패는 별도 로그 레벨/메시지로 구분
+            if (businessException.getErrorCode() == AuthErrorCode.LOGIN_SERVER_BUSY) {
+                log.warn("로그인 실패(서버 과부하 동시성 제한): {}", exception.getMessage());
+            } else {
+                log.warn("로그인 실패(비즈니스 예외): {} - {}", errorCode, errorMessage);
+            }
 
         } else if (exception instanceof LockedException) {
             // MoMoGoUserDetails.isAccountNonLocked() == false -> 정지(밴) 계정

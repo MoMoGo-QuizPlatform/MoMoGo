@@ -61,14 +61,21 @@ public class UserSessionEventListener {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void handleUserCacheEvictEvent(UserCacheEvictEvent event) {
+        if (event == null || event.email() == null) {
+            return;
+        }
         String normalizedEmail = EmailFormatter.normalize(event.email());
         log.info("[UserSessionEventListener] 유저 캐시 무효화 이벤트 감지 - email: {}", EmailFormatter.mask(normalizedEmail));
-        Cache cache = cacheManager.getCache(USER_DTO_CACHE);
 
-        if (cache != null) {
-            cache.evict(normalizedEmail);
-        } else {
-            log.warn("[UserSessionEventListener] {} 캐시를 찾을 수 없어 evict를 건너뜁니다.", USER_DTO_CACHE);
+        try {
+            Cache cache = cacheManager.getCache(USER_DTO_CACHE);
+            if (cache != null) {
+                cache.evict(normalizedEmail);
+            } else {
+                log.warn("[UserSessionEventListener] {} 캐시를 찾을 수 없어 evict를 건너뜁니다.", USER_DTO_CACHE);
+            }
+        } catch (Exception e) {
+            log.error("[UserSessionEventListener] Redis 캐시 무효화 중 예외 발생 - email: {}", EmailFormatter.mask(normalizedEmail), e);
         }
     }
 }

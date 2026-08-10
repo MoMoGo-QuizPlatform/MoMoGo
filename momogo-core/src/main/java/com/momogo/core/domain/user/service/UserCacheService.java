@@ -32,12 +32,11 @@ public class UserCacheService {
      * @return UserResponse DTO
      */
     @Transactional(readOnly = true)
-    @Cacheable(value = "user_dtos", key = "T(com.momogo.core.common.util.EmailFormatter).normalize(#email)")
+    @Cacheable(value = "user_dtos", key = "#email")
     public UserResponse getUserResponseCached(String email) {
-        String normalizedEmail = EmailFormatter.normalize(email);
-        User user = userRepository.findByEmail(normalizedEmail)
+        User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> {
-                    log.warn("[UserCacheService] 유저를 찾을 수 없습니다, email: {}", EmailFormatter.mask(normalizedEmail));
+                    log.warn("[UserCacheService] 유저를 찾을 수 없습니다, email: {}", EmailFormatter.mask(email));
                     return new BusinessException(UserErrorCode.NOT_FOUND);
                 });
         return userMapper.toResponse(user);
