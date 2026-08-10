@@ -152,6 +152,9 @@ app:
 
 server:
   port: 8080
+  # nginx-lb가 X-Forwarded-Proto/Host로 보내주는 원본 스킴(https)을 신뢰하도록 설정.
+  # 없으면 LB 뒤에서 https로 들어와도 애플리케이션은 http로 인식해 OAuth2 리다이렉트/secure 쿠키 판단이 꼬인다.
+  forward-headers-strategy: framework
 
 # monitoring
 management:
