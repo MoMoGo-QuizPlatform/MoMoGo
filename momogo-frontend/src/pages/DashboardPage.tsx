@@ -249,10 +249,27 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
     setShowConfirmModal(true);
   };
 
+  // 백엔드가 Page 응답(기본 size=10)을 주기 때문에, 관리자 콘솔의 "전체 목록" 요건을 맞추려면
+  // last=true가 될 때까지 모든 페이지를 순회하여 합쳐야 한다.
+  const loadAllPages = async (path: string): Promise<any[]> => {
+    let page = 0;
+    let all: any[] = [];
+    while (true) {
+      const data = await request<{ content: any[]; last: boolean }>(path, {
+        method: 'GET',
+        params: { page: String(page), size: '100' }
+      });
+      if (!data) break;
+      all = all.concat(data.content);
+      if (data.last) break;
+      page += 1;
+    }
+    return all;
+  };
+
   const loadSuperAdminSpaces = async () => {
     try {
-      const data = await request<any[]>('/api/super-admin/spaces', { method: 'GET' });
-      if (data) setSuperSpaces(data);
+      setSuperSpaces(await loadAllPages('/api/super-admin/spaces'));
     } catch (err: any) {
       showToast(err.message || '공간 목록 로드 실패', 'error');
     }
@@ -260,8 +277,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
 
   const loadSuperAdminProblems = async () => {
     try {
-      const data = await request<any[]>('/api/super-admin/problems', { method: 'GET' });
-      if (data) setSuperProblems(data);
+      setSuperProblems(await loadAllPages('/api/super-admin/problems'));
     } catch (err: any) {
       showToast(err.message || '문제 목록 로드 실패', 'error');
     }
@@ -437,9 +453,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
     loadInitialData();
   }, []);
 
-  // 알림 실시간 수신(SSE) 연결 - 신규 알림 발생 시 목록 맨 앞에 추가
+  // 알림 실시간 수신(SSE) 연결
+  // SSE 연결이 확립된 뒤에 초기 목록(GET)을 조회해야, "목록 조회~SSE 연결" 사이에 발생한
+  // 알림을 놓치지 않는다. 재연결 시에도 다시 확립 시점 기준으로 목록을 새로 맞춘다.
   useEffect(() => {
+    const loadNotifications = async () => {
+      try {
+        const notiData = await request<any>('/api/notifications', { method: 'GET' });
+        // GET은 확인 완료된 알림까지 전부 내려주므로, 미확인 알림만 목록에 남긴다.
+        setNotifications((notiData?.data || []).filter((n: NotificationItem) => !n.isConfirmed));
+      } catch (err) {
+        console.error('Failed to load notifications', err);
+      }
+    };
+
     const disconnect = connectNotificationSse({
+      onConnect: () => {
+        loadNotifications();
+      },
       onNotification: (noti: NotificationItem) => {
         setNotifications(prev => (prev.some(n => n.id === noti.id) ? prev : [noti, ...prev]));
       },
@@ -465,21 +496,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
         console.error('대시보드 요약 조회 실패', err);
       }
 
-      // 2. 알림 조회
-      try {
-        const notiData = await request<any>('/api/notifications', { method: 'GET' });
-        setNotifications(notiData?.data || []);
-      } catch (err) {
-        console.error('Failed to load notifications', err);
-      }
-
-      // 3. 미가입 공간 조회
+      // 2. 미가입 공간 조회
       const unjoinedData = await request<{ values: SpaceResponse[] }>('/api/spaces/unjoined', { method: 'GET' });
       if (unjoinedData && unjoinedData.values) {
         setUnjoinedSpaces(unjoinedData.values);
       }
 
-      // 4. 슈퍼관리자 권한인 경우 관련 데이터 미리 조회
+      // 3. 슈퍼관리자 권한인 경우 관련 데이터 미리 조회
       if (user.role === 'SUPER_ADMIN') {
         await loadSuperAdminUsers(null, null);
         await loadSuperAdminCategories();
@@ -840,6 +863,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
       setNotifications(prev => prev.filter(n => n.id !== id));
     } catch (err: any) {
       console.error('알림 읽음 처리 실패:', err.message);
+      showToast(err.message || '알림 확인 처리에 실패했습니다.', 'error');
     }
   };
 
@@ -1639,7 +1663,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                     <div className="card" style={styles.adminContentCard}>
                       <h3 style={styles.adminContentTitle}>
                         서비스 개설 공간 전체 목록
-                        <span style={styles.demoBadge}>데모 데이터 (백엔드 미연동)</span>
                       </h3>
                       <div style={styles.tableWrapper}>
                         <table style={styles.adminTable}>
@@ -1697,7 +1720,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                     <div className="card" style={styles.adminContentCard}>
                       <h3 style={styles.adminContentTitle}>
                         전체 출제 문제 목록
-                        <span style={styles.demoBadge}>데모 데이터 (백엔드 미연동)</span>
                       </h3>
                       <div style={styles.tableWrapper}>
                         <table style={styles.adminTable}>
@@ -1715,7 +1737,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
                               <tr key={p.id} style={styles.tr}>
                                 <td style={styles.td}>{p.name}</td>
                                 <td style={styles.td}>
-                                  <span className="badge badge-info">{p.category?.name || '미분류'}</span>
+                                  <span className="badge badge-info">{p.categoryName || '미분류'}</span>
                                 </td>
                                 <td style={styles.td}>{p.correctAnswer}</td>
                                 <td style={styles.td}>{p.content}</td>
@@ -2627,17 +2649,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#0f172a',
     fontFamily: "'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif",
     letterSpacing: '-0.025em',
-  },
-  demoBadge: {
-    marginLeft: '0.5rem',
-    padding: '0.15rem 0.5rem',
-    borderRadius: '999px',
-    fontSize: '0.7rem',
-    fontWeight: 700,
-    color: '#b45309',
-    backgroundColor: '#fef3c7',
-    border: '1px solid #fde68a',
-    verticalAlign: 'middle',
   },
   tableWrapper: {
     width: '100%',

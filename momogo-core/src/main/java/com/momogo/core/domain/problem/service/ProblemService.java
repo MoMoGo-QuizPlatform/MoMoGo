@@ -11,6 +11,8 @@ import com.momogo.core.domain.problem.dto.response.ProblemSolveResponse;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface ProblemService {
 
@@ -77,4 +79,23 @@ public interface ProblemService {
    * @param request   AI 문제 자동 생성 요청 DTO
    */
   List<ProblemResponse> createProblemsByAi(UUID spaceId, UUID idempotencyKey, ProblemAiCreateRequest request);
+
+  /**
+   * 전체 문제 목록 조회 (SUPER_ADMIN 전용, 공간 무관, 정답 포함)
+   * @param pageable 페이징 정보
+   */
+  Page<ProblemDetailResponse> getAllProblems(Pageable pageable);
+
+  /**
+   * 문제 강제 수정 (SUPER_ADMIN 전용, 공간 소속 ADMIN 검증 없이 임의 문제 수정)
+   * @param problemId 문제 ID
+   * @param request   문제 수정 DTO
+   */
+  ProblemResponse updateProblemAsSuperAdmin(UUID problemId, ProblemUpdateRequest request);
+
+  /**
+   * 문제 강제 삭제 (SUPER_ADMIN 전용, 공간 소속 ADMIN 검증 없이 임의 문제 삭제)
+   * @param problemId 문제 ID
+   */
+  void deleteProblemAsSuperAdmin(UUID problemId);
 }

@@ -75,72 +75,6 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   let resolvedPath = path;
 
-  // 모의 응답 인터셉터 (Mock Interceptor)
-  const lowerPath = resolvedPath.toLowerCase();
-
-  // C. 슈퍼 관리자용 모의 처리 (공간 및 문제 관리)
-  if (lowerPath.startsWith('/api/super-admin/spaces')) {
-    let superSpaces = JSON.parse(localStorage.getItem('momogo_super_spaces') || '[]');
-    if (superSpaces.length === 0) {
-      superSpaces = [
-        { id: 'space-1', name: '마포고 수학 문제은행', description: '마포고 학생들을 위한 수학 퀴즈방', profileImageUrl: null, createdAt: new Date().toISOString() },
-        { id: 'space-2', name: '수능 영어 1등급 정복', description: 'EBS 연계 교재 및 기출문제 모음', profileImageUrl: null, createdAt: new Date().toISOString() }
-      ];
-      localStorage.setItem('momogo_super_spaces', JSON.stringify(superSpaces));
-    }
-
-    const method = options.method?.toUpperCase() || 'GET';
-    if (method === 'GET') {
-      return superSpaces as unknown as T;
-    }
-
-    if (method === 'PUT' || method === 'PATCH') {
-      const spaceId = resolvedPath.split('/').pop();
-      const body = JSON.parse(options.body as string);
-      superSpaces = superSpaces.map((s: any) => s.id === spaceId ? { ...s, ...body } : s);
-      localStorage.setItem('momogo_super_spaces', JSON.stringify(superSpaces));
-      return { id: spaceId, ...body } as unknown as T;
-    }
-
-    if (method === 'DELETE') {
-      const spaceId = resolvedPath.split('/').pop();
-      superSpaces = superSpaces.filter((s: any) => s.id !== spaceId);
-      localStorage.setItem('momogo_super_spaces', JSON.stringify(superSpaces));
-      return null as unknown as T;
-    }
-  }
-
-  if (lowerPath.startsWith('/api/super-admin/problems')) {
-    let superProblems = JSON.parse(localStorage.getItem('momogo_super_problems') || '[]');
-    if (superProblems.length === 0) {
-      superProblems = [
-        { id: 'prob-1', name: '미적분 기초 계산', content: 'f(x) = x^2 일 때 f\'(3)의 값은?', correctAnswer: '6', explanation: '도함수는 2x이므로 3을 대입하면 6입니다.', category: { id: 'cat-1', name: '수학' } },
-        { id: 'prob-2', name: '영어 빈칸 추론', content: '다음 빈칸에 가장 알맞은 단어는? "Actions speak louder than _______."', correctAnswer: 'words', explanation: '말보다 행동이 중요하다는 뜻의 속담입니다.', category: { id: 'cat-2', name: '영어' } }
-      ];
-      localStorage.setItem('momogo_super_problems', JSON.stringify(superProblems));
-    }
-
-    const method = options.method?.toUpperCase() || 'GET';
-    if (method === 'GET') {
-      return superProblems as unknown as T;
-    }
-
-    if (method === 'PUT' || method === 'PATCH') {
-      const problemId = resolvedPath.split('/').pop();
-      const body = JSON.parse(options.body as string);
-      superProblems = superProblems.map((p: any) => p.id === problemId ? { ...p, ...body } : p);
-      localStorage.setItem('momogo_super_problems', JSON.stringify(superProblems));
-      return { id: problemId, ...body } as unknown as T;
-    }
-
-    if (method === 'DELETE') {
-      const problemId = resolvedPath.split('/').pop();
-      superProblems = superProblems.filter((p: any) => p.id !== problemId);
-      localStorage.setItem('momogo_super_problems', JSON.stringify(superProblems));
-      return null as unknown as T;
-    }
-  }
-
   // URL 파라미터 조립 (ISO-8601 커서 등 + 기호가 포함된 파라미터의 %2B 인코딩 보장)
   let url = resolvedPath;
   if (params) {
@@ -234,6 +168,10 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
 export interface NotificationSseHandlers {
   onNotification: (data: any) => void;
+  // SSE 연결이 실제로 확립된 시점(서버의 최초 connect 이벤트 수신)에 호출된다.
+  // 이 콜백을 받은 뒤에 초기 목록(GET)을 조회해야, "목록 조회~SSE 연결" 사이에 발생한
+  // 알림을 놓치지 않는다. eventId는 서버가 connect 이벤트에 실어 보낸 SSE id 필드 값.
+  onConnect?: (eventId: string | null) => void;
   onError?: (err: unknown) => void;
 }
 
@@ -289,13 +227,16 @@ export function connectNotificationSse(handlers: NotificationSseHandlers): () =>
         buffer = buffer.slice(sepIndex + 2);
 
         const eventName = /^event:\s*(.+)$/m.exec(rawEvent)?.[1]?.trim() || 'message';
+        const eventId = /^id:\s*(.+)$/m.exec(rawEvent)?.[1]?.trim() ?? null;
         const dataStr = rawEvent
             .split('\n')
             .filter(line => line.startsWith('data:'))
             .map(line => line.slice(5).trim())
             .join('\n');
 
-        if (eventName === 'notifications' && dataStr) {
+        if (eventName === 'connect') {
+          handlers.onConnect?.(eventId);
+        } else if (eventName === 'notifications' && dataStr) {
           try {
             handlers.onNotification(JSON.parse(dataStr));
           } catch (e) {

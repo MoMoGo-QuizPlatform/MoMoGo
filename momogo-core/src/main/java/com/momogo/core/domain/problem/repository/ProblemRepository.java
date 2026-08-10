@@ -3,6 +3,8 @@ package com.momogo.core.domain.problem.repository;
 import com.momogo.core.domain.problem.entity.Problem;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,6 +20,16 @@ public interface ProblemRepository extends JpaRepository<Problem, UUID>, Problem
    */
   @Query("SELECT p FROM Problem p JOIN FETCH p.category JOIN FETCH p.space WHERE p.id = :id")
   Optional<Problem> findByIdWithCategory(@Param("id") UUID id);
+
+  /**
+   * 전체 문제 목록 조회 (SUPER_ADMIN 전용, 공간 무관)
+   * - 카테고리/공간을 JOIN FETCH 하여 N+1 방지
+   */
+  @Query(
+      value = "SELECT p FROM Problem p JOIN FETCH p.category JOIN FETCH p.space",
+      countQuery = "SELECT count(p) FROM Problem p"
+  )
+  Page<Problem> findAllWithCategory(Pageable pageable);
 
   /**
    * 카테고리 삭제 전 확인 메서드
