@@ -37,4 +37,10 @@ public interface SpaceService {
 
   // 전체 공간 조회 (SUPER_ADMIN 권한 검증)
   Page<SpaceResponse> getAllSpaces(Pageable pageable);
+
+  // 공간 강제 수정 (SUPER_ADMIN 전용, 소유 ADMIN 검증 없이 임의 공간 수정)
+  Space forceUpdateSpace(UUID spaceId, SpaceUpdateRequest request);
+
+  // 공간 강제 폐쇄 (SUPER_ADMIN 전용, 소유 ADMIN 검증 없이 임의 공간 삭제)
+  void forceDeleteSpace(UUID spaceId);
 }

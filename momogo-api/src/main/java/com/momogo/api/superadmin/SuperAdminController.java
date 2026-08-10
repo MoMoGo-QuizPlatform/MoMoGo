@@ -2,9 +2,16 @@ package com.momogo.api.superadmin;
 
 import com.momogo.core.domain.problem.dto.request.CategoryCreateRequest;
 import com.momogo.core.domain.problem.dto.request.CategoryUpdateRequest;
+import com.momogo.core.domain.problem.dto.request.ProblemUpdateRequest;
 import com.momogo.core.domain.problem.dto.response.CategoryResponse;
+import com.momogo.core.domain.problem.dto.response.ProblemDetailResponse;
+import com.momogo.core.domain.problem.dto.response.ProblemResponse;
 import com.momogo.core.domain.problem.service.ProblemCategoryService;
+import com.momogo.core.domain.problem.service.ProblemService;
+import com.momogo.core.domain.space.dto.request.SpaceUpdateRequest;
 import com.momogo.core.domain.space.dto.response.SpaceResponse;
+import com.momogo.core.domain.space.entity.Space;
+import com.momogo.core.domain.space.mapper.SpaceMapper;
 import com.momogo.core.domain.space.service.SpaceService;
 import com.momogo.core.domain.user.dto.request.UserBannedRequest;
 import com.momogo.core.domain.user.dto.request.UserPageRequest;
@@ -20,11 +27,13 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -36,8 +45,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class SuperAdminController {
 
   private final SpaceService spaceService;
+  private final SpaceMapper spaceMapper;
   private final UserService userService;
   private final ProblemCategoryService problemCategoryService;
+  private final ProblemService problemService;
 
   /**
    * 전체 공간 조회
@@ -49,6 +60,67 @@ public class SuperAdminController {
       @PageableDefault(size = 10) Pageable pageable
   ) {
     return ResponseEntity.ok(spaceService.getAllSpaces(pageable));
+  }
+
+  /**
+   * 공간 강제 수정 (SUPER_ADMIN 전용)
+   * @param spaceId 공간 ID
+   * @param request 공간 수정 요청 DTO
+   * @return 수정된 공간 정보
+   */
+  @PutMapping("/spaces/{spaceId}")
+  public ResponseEntity<SpaceResponse> forceUpdateSpace(
+      @PathVariable UUID spaceId,
+      @Valid @RequestBody SpaceUpdateRequest request
+  ) {
+    Space space = spaceService.forceUpdateSpace(spaceId, request);
+    return ResponseEntity.ok(spaceMapper.toResponse(space));
+  }
+
+  /**
+   * 공간 강제 폐쇄 (SUPER_ADMIN 전용)
+   * @param spaceId 공간 ID
+   */
+  @DeleteMapping("/spaces/{spaceId}")
+  public ResponseEntity<Void> forceDeleteSpace(@PathVariable UUID spaceId) {
+    spaceService.forceDeleteSpace(spaceId);
+    return ResponseEntity.noContent().build();
+  }
+
+  /**
+   * 전체 문제 조회 (SUPER_ADMIN 전용, 공간 무관, 정답 포함)
+   * @param pageable 페이징 정보
+   * @return 전체 문제 정보
+   */
+  @GetMapping("/problems")
+  public ResponseEntity<Page<ProblemDetailResponse>> getAllProblems(
+      @PageableDefault(size = 10) Pageable pageable
+  ) {
+    return ResponseEntity.ok(problemService.getAllProblems(pageable));
+  }
+
+  /**
+   * 문제 강제 수정 (SUPER_ADMIN 전용)
+   * @param problemId 문제 ID
+   * @param request   문제 수정 요청 DTO
+   * @return 수정된 문제 정보
+   */
+  @PutMapping("/problems/{problemId}")
+  public ResponseEntity<ProblemResponse> forceUpdateProblem(
+      @PathVariable UUID problemId,
+      @Valid @RequestBody ProblemUpdateRequest request
+  ) {
+    return ResponseEntity.ok(problemService.updateProblemAsSuperAdmin(problemId, request));
+  }
+
+  /**
+   * 문제 강제 삭제 (SUPER_ADMIN 전용)
+   * @param problemId 문제 ID
+   */
+  @DeleteMapping("/problems/{problemId}")
+  public ResponseEntity<Void> forceDeleteProblem(@PathVariable UUID problemId) {
+    problemService.deleteProblemAsSuperAdmin(problemId);
+    return ResponseEntity.noContent().build();
   }
 
 

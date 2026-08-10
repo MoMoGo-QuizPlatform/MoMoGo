@@ -31,6 +31,8 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
@@ -346,5 +348,39 @@ public class ProblemServiceImpl implements ProblemService {
       // 성공/실패/Error 무관 항상 해제. 무조건 delete 대신 내 토큰일 때만 삭제 (TTL 초과로 락이 넘어갔으면 남의 락을 지우지 않음)
       redisTemplate.execute(UNLOCK_SCRIPT, List.of(lockKey), ownerToken);
     }
+  }
+
+  /**
+   * 전체 문제 목록 조회 (SUPER_ADMIN 전용, 공간 무관, 정답 포함)
+   */
+  @Override
+  public Page<ProblemDetailResponse> getAllProblems(Pageable pageable) {
+    return problemRepository.findAllWithCategory(pageable).map(problemMapper::toDetailResponse);
+  }
+
+  /**
+   * 문제 강제 수정 (SUPER_ADMIN 전용)
+   * - 문제가 소속된 공간을 조회한 뒤 기존 updateProblem 검증/수정 로직에 위임한다.
+   */
+  @Override
+  @Transactional
+  public ProblemResponse updateProblemAsSuperAdmin(UUID problemId, ProblemUpdateRequest request) {
+    Problem problem = problemRepository.findById(problemId)
+        .orElseThrow(() -> new BusinessException(ProblemErrorCode.PROBLEM_NOT_FOUND));
+
+    return updateProblem(problem.getSpace().getId(), problemId, request);
+  }
+
+  /**
+   * 문제 강제 삭제 (SUPER_ADMIN 전용)
+   * - 문제가 소속된 공간을 조회한 뒤 기존 deleteProblem 검증/삭제 로직에 위임한다.
+   */
+  @Override
+  @Transactional
+  public void deleteProblemAsSuperAdmin(UUID problemId) {
+    Problem problem = problemRepository.findById(problemId)
+        .orElseThrow(() -> new BusinessException(ProblemErrorCode.PROBLEM_NOT_FOUND));
+
+    deleteProblem(problem.getSpace().getId(), problemId);
   }
 }
