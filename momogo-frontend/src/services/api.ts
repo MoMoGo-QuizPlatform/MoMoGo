@@ -168,6 +168,10 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
 export interface NotificationSseHandlers {
   onNotification: (data: any) => void;
+  // SSE 연결이 실제로 확립된 시점(서버의 최초 connect 이벤트 수신)에 호출된다.
+  // 이 콜백을 받은 뒤에 초기 목록(GET)을 조회해야, "목록 조회~SSE 연결" 사이에 발생한
+  // 알림을 놓치지 않는다. eventId는 서버가 connect 이벤트에 실어 보낸 SSE id 필드 값.
+  onConnect?: (eventId: string | null) => void;
   onError?: (err: unknown) => void;
 }
 
@@ -223,13 +227,16 @@ export function connectNotificationSse(handlers: NotificationSseHandlers): () =>
         buffer = buffer.slice(sepIndex + 2);
 
         const eventName = /^event:\s*(.+)$/m.exec(rawEvent)?.[1]?.trim() || 'message';
+        const eventId = /^id:\s*(.+)$/m.exec(rawEvent)?.[1]?.trim() ?? null;
         const dataStr = rawEvent
             .split('\n')
             .filter(line => line.startsWith('data:'))
             .map(line => line.slice(5).trim())
             .join('\n');
 
-        if (eventName === 'notifications' && dataStr) {
+        if (eventName === 'connect') {
+          handlers.onConnect?.(eventId);
+        } else if (eventName === 'notifications' && dataStr) {
           try {
             handlers.onNotification(JSON.parse(dataStr));
           } catch (e) {

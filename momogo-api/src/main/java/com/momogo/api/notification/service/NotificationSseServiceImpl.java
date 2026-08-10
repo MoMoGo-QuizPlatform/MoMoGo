@@ -46,8 +46,10 @@ public class NotificationSseServiceImpl implements NotificationSseService, Notif
 
     // 연결 직후 더미 이벤트를 하나 보내는 이유:
     // 클라이언트가 아무 데이터도 안 보내고 가만히 있으면 연결이 대기상태로 오해받아 타임아웃/503이 날 수 있음
+    // id를 함께 실어 보내는 이유: 클라이언트가 이 이벤트를 "연결이 실제로 확립된 시점"의 기준점으로 삼아,
+    // 그 이후에 초기 목록(GET)을 조회하도록 순서를 맞추기 위함 (목록 조회~SSE 연결 사이 알림 유실 방지)
     try {
-      emitter.send(SseEmitter.event().name("connect").data("connected"));
+      emitter.send(SseEmitter.event().name("connect").id(UUID.randomUUID().toString()).data("connected"));
     } catch (IOException e) {
       // 이 시점 실패는 서블릿 컨테이너의 오류 디스패치로 정리되므로 로그만 남김
       log.warn("SSE 초기 연결 이벤트 전송 실패 - userId: {}", userId, e);

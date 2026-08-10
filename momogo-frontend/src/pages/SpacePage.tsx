@@ -279,7 +279,9 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
     loadMembersForInvitation();
   }, [selectedCategory, activeTab]);
 
-  // 알림 목록 최초 조회
+  // 알림 실시간 수신(SSE) 연결
+  // SSE 연결이 확립된 뒤에 초기 목록(GET)을 조회해야, "목록 조회~SSE 연결" 사이에 발생한
+  // 알림을 놓치지 않는다. 재연결 시에도 다시 확립 시점 기준으로 목록을 새로 맞춘다.
   useEffect(() => {
     const loadNotifications = async () => {
       try {
@@ -290,12 +292,11 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
         console.error('Failed to load notifications', err);
       }
     };
-    loadNotifications();
-  }, []);
 
-  // 알림 실시간 수신(SSE) 연결 - 신규 알림 발생 시 목록 맨 앞에 추가
-  useEffect(() => {
     const disconnect = connectNotificationSse({
+      onConnect: () => {
+        loadNotifications();
+      },
       onNotification: (noti: NotificationItem) => {
         setNotifications(prev => (prev.some(n => n.id === noti.id) ? prev : [noti, ...prev]));
       },

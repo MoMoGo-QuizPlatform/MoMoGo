@@ -453,9 +453,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
     loadInitialData();
   }, []);
 
-  // 알림 실시간 수신(SSE) 연결 - 신규 알림 발생 시 목록 맨 앞에 추가
+  // 알림 실시간 수신(SSE) 연결
+  // SSE 연결이 확립된 뒤에 초기 목록(GET)을 조회해야, "목록 조회~SSE 연결" 사이에 발생한
+  // 알림을 놓치지 않는다. 재연결 시에도 다시 확립 시점 기준으로 목록을 새로 맞춘다.
   useEffect(() => {
+    const loadNotifications = async () => {
+      try {
+        const notiData = await request<any>('/api/notifications', { method: 'GET' });
+        // GET은 확인 완료된 알림까지 전부 내려주므로, 미확인 알림만 목록에 남긴다.
+        setNotifications((notiData?.data || []).filter((n: NotificationItem) => !n.isConfirmed));
+      } catch (err) {
+        console.error('Failed to load notifications', err);
+      }
+    };
+
     const disconnect = connectNotificationSse({
+      onConnect: () => {
+        loadNotifications();
+      },
       onNotification: (noti: NotificationItem) => {
         setNotifications(prev => (prev.some(n => n.id === noti.id) ? prev : [noti, ...prev]));
       },
@@ -481,22 +496,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, initialTab, 
         console.error('대시보드 요약 조회 실패', err);
       }
 
-      // 2. 알림 조회
-      try {
-        const notiData = await request<any>('/api/notifications', { method: 'GET' });
-        // GET은 확인 완료된 알림까지 전부 내려주므로, 미확인 알림만 목록에 남긴다.
-        setNotifications((notiData?.data || []).filter((n: NotificationItem) => !n.isConfirmed));
-      } catch (err) {
-        console.error('Failed to load notifications', err);
-      }
-
-      // 3. 미가입 공간 조회
+      // 2. 미가입 공간 조회
       const unjoinedData = await request<{ values: SpaceResponse[] }>('/api/spaces/unjoined', { method: 'GET' });
       if (unjoinedData && unjoinedData.values) {
         setUnjoinedSpaces(unjoinedData.values);
       }
 
-      // 4. 슈퍼관리자 권한인 경우 관련 데이터 미리 조회
+      // 3. 슈퍼관리자 권한인 경우 관련 데이터 미리 조회
       if (user.role === 'SUPER_ADMIN') {
         await loadSuperAdminUsers(null, null);
         await loadSuperAdminCategories();
