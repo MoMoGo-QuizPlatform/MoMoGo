@@ -4,6 +4,21 @@ spring:
       enabled: true
   application:
     name: momogo-api
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: momogo-api
+      auto-offset-reset: earliest
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.trusted.packages: com.momogo.core.domain.*
   servlet:
     multipart:
       max-file-size: 10MB
@@ -97,24 +112,60 @@ jwt:
       same-site: ${JWT_REFRESH_COOKIE_SAME_SITE}
 
 app:
+  security:
+    bcrypt:
+      cost: ${APP_SECURITY_BCRYPT_COST:10}
+      max-concurrency: ${APP_BCRYPT_MAX_CONCURRENCY:2}
+      acquire-timeout-ms: ${APP_SECURITY_BCRYPT_ACQUIRE_TIMEOUT_MS:3000}
+  async:
+    concurrency-limit:
+      default: ${APP_ASYNC_CONCURRENCY_DEFAULT:50}
+      mail: ${APP_ASYNC_CONCURRENCY_MAIL:20}
+      user: ${APP_ASYNC_CONCURRENCY_USER:50}
+      file: ${APP_ASYNC_CONCURRENCY_FILE:30}
+  storage:
+    type: ${APP_STORAGE_TYPE:s3}
+  kafka:
+    ai-grading-group-id: ${APP_KAFKA_AI_GRADING_GROUP_ID:momogo-ai-grading-group}
+  aws:
+    s3-bucket: ${AWS_S3_BUCKET:momogo-s3}
+    region: ${AWS_REGION:ap-northeast-2}
   super-admin:
     email: ${SUPER_ADMIN_EMAIL}
     password: ${SUPER_ADMIN_PASSWORD}
     name: ${SUPER_ADMIN_NAME}
   jwt:
-    registry: memory
+    registry: redis
+    max-active-count: 1
   file:
     # 클라이언트용 웹 서비스 URL 주소
-    base-url: ${APP_FILE_BASE_URL}
+    base-url: ${APP_FILE_BASE_URL:http://localhost:8080/uploads}
     upload:
       allowed-extensions: jpg,jpeg,png,webp
       allowed-mime-types: image/jpeg,image/png,image/webp
-      max-mark-size: 10MB
+      max-file-size: 10MB
       # 물리 디스크 저장 경로
-      dir: ${APP_FILE_UPLOAD_DIR}
+      dir: ${APP_FILE_UPLOAD_DIR:./uploads}
   oauth2:
     success-redirect-url: ${OAUTH2_SUCCESS_REDIRECT_URL}
     failure-redirect-url: ${OAUTH2_FAILURE_REDIRECT_URL}
 
 server:
   port: 8080
+
+# monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, metrics
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name:momogo-api}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true

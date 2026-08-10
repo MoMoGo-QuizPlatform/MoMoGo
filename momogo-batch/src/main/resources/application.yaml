@@ -6,6 +6,21 @@ spring:
       enabled: true
   application:
     name: momogo-batch
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: momogo-batch
+      auto-offset-reset: earliest
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.trusted.packages: com.momogo.core.domain.*
   profiles:
     active: dev
     group:
@@ -28,8 +43,13 @@ server:
   port: 8082
 
 app:
+  storage:
+    type: ${APP_STORAGE_TYPE:s3}
+  aws:
+    s3-bucket: ${AWS_S3_BUCKET:momogo-s3}
+    region: ${AWS_REGION:ap-northeast-2}
   super-admin:
-    email: ${SUPER_ADMIN_EMAIL:admin@admin.com}
+    email: ${SUPER_ADMIN_EMAIL}
   file:
     base-url: ${APP_FILE_BASE_URL:http://localhost:8080/uploads}
     upload:

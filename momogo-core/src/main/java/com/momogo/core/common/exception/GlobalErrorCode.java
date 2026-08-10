@@ -24,6 +24,7 @@ public enum GlobalErrorCode implements ErrorCode {
     OAUTH2_ALREADY_LINKED_OTHER_SOCIAL(9013, "OAUTH2_ALREADY_LINKED_OTHER_SOCIAL", HttpStatus.CONFLICT, "이미 다른 소셜 계정으로 가입된 이메일입니다."),
     OAUTH2_SOCIAL_ID_MISMATCH(9014, "OAUTH2_SOCIAL_ID_MISMATCH", HttpStatus.CONFLICT, "기존 계정 정보와 일치하지 않습니다."),
     OAUTH2_MISSING_ATTRIBUTE(9015, "OAUTH2_MISSING_ATTRIBUTE", HttpStatus.BAD_REQUEST, "OAuth2 사용자 정보에 필수 값이 없습니다."),
+    SSE_PUBLISH_FAILED(9016, "SSE_PUBLISH_FAILED", HttpStatus.INTERNAL_SERVER_ERROR, "SSE 메시지 발행에 실패했습니다."),
 
     INTERNAL_SERVER_ERROR(9999, "SERVER_ERROR", HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다.");
 

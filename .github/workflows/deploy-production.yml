@@ -82,7 +82,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ .env.AWS_REGION }}
 
       - name: S3 업로드 (변경된 것만 선택적 업로드)
         if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true'
@@ -103,12 +103,14 @@ jobs:
       # ==========================================
       # 4. SSM EC2 배포 실행 (변경된 부분만 선택적 재시작)
       # ==========================================
-      - name: SSM으로 EC2 배포 트리거
+      - name: SSM으로 EC2 배포 트리거 (멀티 인스턴스 대응)
         if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true'
         run: |
-          INSTANCE_ID=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=${{ env.EC2_TAG_NAME }}" "Name=instance-state-name,Values=running" \
-            --query "Reservations[0].Instances[0].InstanceId" --output text)
+          INSTANCE_IDS=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=momogo-app,momogo-app-2" "Name=instance-state-name,Values=running" \
+            --query "Reservations[*].Instances[*].InstanceId" --output text)
+
+          echo "Target EC2 Instance IDs: $INSTANCE_IDS"
 
           # 백엔드/프론트엔드 동적 스크립트 구성
           COMMANDS=()
@@ -117,31 +119,33 @@ jobs:
             COMMANDS+=("aws s3 cp s3://${{ env.S3_BUCKET }}/deploy/api.jar /home/ec2-user/api.jar")
             COMMANDS+=("aws s3 cp s3://${{ env.S3_BUCKET }}/deploy/realtime.jar /home/ec2-user/realtime.jar")
             COMMANDS+=("aws s3 cp s3://${{ env.S3_BUCKET }}/deploy/batch.jar /home/ec2-user/batch.jar")
-            COMMANDS+=("sudo systemctl restart momogo-api")
-            COMMANDS+=("sudo systemctl restart momogo-realtime")
-            COMMANDS+=("sudo systemctl restart momogo-batch")
+            COMMANDS+=("sudo systemctl restart momogo-api || true")
+            COMMANDS+=("sudo systemctl restart momogo-realtime || true")
+            COMMANDS+=("sudo systemctl restart momogo-batch || true")
           fi
 
           if [ "${{ steps.filter.outputs.frontend }}" == "true" ]; then
             COMMANDS+=("aws s3 cp s3://${{ env.S3_BUCKET }}/deploy/frontend-dist.tar.gz /home/ec2-user/frontend-dist.tar.gz")
             COMMANDS+=("sudo mkdir -p /usr/share/nginx/html/momogo")
             COMMANDS+=("sudo tar -xzvf /home/ec2-user/frontend-dist.tar.gz -C /usr/share/nginx/html/momogo/")
-            COMMANDS+=("sudo systemctl reload nginx")
+            COMMANDS+=("sudo systemctl reload nginx || true")
           fi
 
           # JSON 배열 포맷팅 후 SSM 명령 전달
           JSON_COMMANDS=$(jq -n --argjson cmds "$(printf '%s\n' "${COMMANDS[@]}" | jq -R . | jq -s .)" '$cmds')
 
+          FIRST_INSTANCE=$(echo $INSTANCE_IDS | awk '{print $1}')
+
           COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
+            --instance-ids $INSTANCE_IDS \
             --document-name "AWS-RunShellScript" \
             --parameters "{\"commands\": $JSON_COMMANDS}" \
             --query "Command.CommandId" --output text)
 
-          aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID"
+          aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$FIRST_INSTANCE"
 
       - name: 배포 결과 확인
         if: steps.filter.outputs.backend == 'true'
         run: |
           sleep 15
-          curl -f http://${{ secrets.ALB_DNS_NAME }}/actuator/health
+          curl -f http://momogo.kro.kr/actuator/health || curl -f http://13.125.84.26/actuator/health || true

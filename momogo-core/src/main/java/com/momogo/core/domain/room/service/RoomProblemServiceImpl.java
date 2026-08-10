@@ -21,19 +21,36 @@ import com.momogo.core.domain.space.exception.SpaceErrorCode;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.repository.UserRepository;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class RoomProblemServiceImpl implements RoomProblemService {
 
+  // GET한 값이 내 토큰과 같을 때만 DEL - TTL 만료로 락이 다른 요청에 넘어간 경우 잘못 삭제하는 것 방지
+  private static final RedisScript<Long> UNLOCK_SCRIPT = RedisScript.of("""
+      if redis.call('get', KEYS[1]) == ARGV[1] then
+        return redis.call('del', KEYS[1])
+      else
+        return 0
+      end
+      """, Long.class);
+
   private final RoomRepository roomRepository;
+
+  private final RedisTemplate<String, Object> redisTemplate;
 
   private final RoomProblemRepository roomProblemRepository;
 
@@ -67,9 +84,16 @@ public class RoomProblemServiceImpl implements RoomProblemService {
         room, category, request.problemOrder(), request.name(),
         request.content(), request.explanation(), request.correctAnswer());
 
-    RoomProblem saved = roomProblemRepository.save(roomProblem);
-
-    return roomProblemMapper.toResponse(saved);
+    try {
+      RoomProblem saved = roomProblemRepository.saveAndFlush(roomProblem);
+      return roomProblemMapper.toResponse(saved);
+    } catch (DataIntegrityViolationException e) {
+      if (isDuplicateOrderViolation(e)) {
+        log.warn("[RoomProblemService] 방 문제 순번 중복 제약 조건 위반 발생");
+        throw new BusinessException(RoomProblemErrorCode.DUPLICATE_PROBLEM_ORDER);
+      }
+      throw e;
+    }
   }
 
   /**
@@ -89,9 +113,11 @@ public class RoomProblemServiceImpl implements RoomProblemService {
 
     RoomProblem roomProblem = getRoomProblem(roomId, roomProblemId);
 
-    ProblemCategory category = request.categoryId() != null ? getCategory(request.categoryId()) : null;
+    ProblemCategory category =
+        request.categoryId() != null ? getCategory(request.categoryId()) : null;
 
-    roomProblem.update(category, null, request.name(), request.content(), request.explanation(), request.correctAnswer());
+    roomProblem.update(category, null, request.name(), request.content(), request.explanation(),
+        request.correctAnswer());
 
     return roomProblemMapper.toResponse(roomProblem);
   }
@@ -103,7 +129,9 @@ public class RoomProblemServiceImpl implements RoomProblemService {
   @Transactional
   public void deleteRoomProblem(UUID userId, UUID roomId, UUID roomProblemId) {
 
-    Room room = getRoom(roomId);
+    // 같은 방에 대한 동시 삭제 요청을 직렬화하기 위해 비관적 락으로 조회 (createRoomProblemsByAi 채번과 동일 패턴)
+    Room room = roomRepository.findByIdForUpdate(roomId)
+        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
 
     validateAdmin(userId, room);
 
@@ -123,21 +151,40 @@ public class RoomProblemServiceImpl implements RoomProblemService {
   public List<RoomProblemResponse> createRoomProblemsByAi(
       UUID userId,
       UUID roomId,
+      UUID idempotencyKey,
       RoomProblemAiCreateRequest request) {
 
-    Room room = roomRepository.findByIdWithSpace(roomId)
-        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+    // 같은 idempotencyKey로 들어온 재시도(더블클릭/네트워크 재전송)를 차단
+    // 인스턴스가 여러 대라도 Redis가 공용 상태를 갖고 있어 판단 가능
+    String lockKey = "idem:room-problem-ai:" + idempotencyKey;
+    // 락 값을 요청 식별 토큰으로 - TTL 만료 후 다른 요청이 같은 키로 락을 새로 잡았을 때 구분하기 위함
+    String ownerToken = UUID.randomUUID().toString();
 
-    validateAdmin(userId, room);
+    Boolean acquired = redisTemplate.opsForValue()
+        .setIfAbsent(lockKey, ownerToken, Duration.ofMinutes(10));
 
-    ProblemCategory category = getCategory(request.categoryId());
+    if (Boolean.FALSE.equals(acquired)) {
+      throw new BusinessException(RoomProblemErrorCode.DUPLICATE_AI_REQUEST);
+    }
 
-    List<GeneratedProblemData> generated = problemGenerationService.generateProblems(
-        request.referenceText(),
-        request.questionCount()
-    );
+    try {
+      Room room = roomRepository.findByIdWithSpace(roomId)
+          .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
 
-    return roomProblemPersister.saveGeneratedProblems(roomId, category, generated);
+      validateAdmin(userId, room);
+
+      ProblemCategory category = getCategory(request.categoryId());
+
+      List<GeneratedProblemData> generated = problemGenerationService.generateProblems(
+          request.referenceText(),
+          request.questionCount()
+      );
+
+      return roomProblemPersister.saveGeneratedProblems(roomId, category, generated);
+    } finally {
+      // 성공/실패/Error 무관 항상 해제. 무조건 delete 대신 내 토큰일 때만 삭제 (TTL 초과로 락이 넘어갔으면 남의 락을 지우지 않음)
+      redisTemplate.execute(UNLOCK_SCRIPT, List.of(lockKey), ownerToken);
+    }
   }
 
 
@@ -170,8 +217,21 @@ public class RoomProblemServiceImpl implements RoomProblemService {
     User user = userRepository.findByIdWithSpace(userId)
         .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
 
-    if (user.getRole() != UserRole.ADMIN || user.getSpace() == null || !user.getSpace().getId().equals(room.getSpace().getId())) {
+    if (user.getRole() != UserRole.ADMIN || user.getSpace() == null
+        || !user.getSpace().getId().equals(room.getSpace().getId())) {
       throw new BusinessException(SpaceErrorCode.NOT_SPACE_ADMIN);
     }
+  }
+
+  /**
+   * DB 제약 조건 예외(DataIntegrityViolationException)가 방 문제 순번 유니크 제약(UQ_ROOM_PROBLEM_ROOM_ORDER) 위반인지 판단합니다.
+   */
+  private boolean isDuplicateOrderViolation(DataIntegrityViolationException e) {
+    Throwable cause = e.getMostSpecificCause();
+    String message = cause.getMessage();
+    if (message == null) {
+      return false;
+    }
+    return message.toLowerCase().contains("uq_room_problem_room_order");
   }
 }

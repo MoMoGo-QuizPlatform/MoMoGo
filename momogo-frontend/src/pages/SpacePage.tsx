@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import type { UserResponse } from '../types/user';
 import type { SpaceResponse } from '../types/space';
-import { request, getAccessToken } from '../services/api';
+import { request, getAccessToken, connectNotificationSse } from '../services/api';
 
 interface SpacePageProps {
   user: UserResponse;
@@ -15,6 +15,15 @@ interface SpacePageProps {
 interface CategoryResponse {
   id: string;
   name: string;
+}
+
+interface NotificationItem {
+  id: string;
+  title: string;
+  content: string;
+  type: string;
+  isConfirmed: boolean;
+  createdAt: string;
 }
 
 interface ProblemResponse {
@@ -231,6 +240,8 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
 
   const [allUsersList, setAllUsersList] = useState<UserResponse[]>([]);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   // 2-1. 실시간 대기실 / 시험 모드 관련 상태
   const [currentExamRoom, setCurrentExamRoom] = useState<RoomResponse | null>(null);
@@ -267,6 +278,47 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
     loadDashboardData();
     loadMembersForInvitation();
   }, [selectedCategory, activeTab]);
+
+  // 알림 실시간 수신(SSE) 연결
+  // SSE 연결이 확립된 뒤에 초기 목록(GET)을 조회해야, "목록 조회~SSE 연결" 사이에 발생한
+  // 알림을 놓치지 않는다. 재연결 시에도 다시 확립 시점 기준으로 목록을 새로 맞춘다.
+  useEffect(() => {
+    const loadNotifications = async () => {
+      try {
+        const notiData = await request<any>('/api/notifications', { method: 'GET' });
+        // GET은 확인 완료된 알림까지 전부 내려주므로, 미확인 알림만 목록에 남긴다.
+        setNotifications((notiData?.data || []).filter((n: NotificationItem) => !n.isConfirmed));
+      } catch (err) {
+        console.error('Failed to load notifications', err);
+      }
+    };
+
+    const disconnect = connectNotificationSse({
+      onConnect: () => {
+        loadNotifications();
+      },
+      onNotification: (noti: NotificationItem) => {
+        setNotifications(prev => (prev.some(n => n.id === noti.id) ? prev : [noti, ...prev]));
+      },
+      onError: (err) => {
+        console.error('알림 SSE 연결 오류:', err);
+      },
+    });
+    return () => disconnect();
+  }, []);
+
+  // 알림 개별 읽음 처리
+  const handleConfirmNotification = async (id: string) => {
+    try {
+      await request<void>(`/api/notifications/${id}/confirm`, {
+        method: 'PATCH',
+      });
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    } catch (err: any) {
+      console.error('알림 읽음 처리 실패:', err.message);
+      showToast(err.message || '알림 확인 처리에 실패했습니다.', 'error');
+    }
+  };
 
   // 대기실 또는 시험 중일 때의 타이머 처리
   useEffect(() => {
@@ -418,6 +470,7 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
       setLoading(true);
       await request(`/api/spaces/${space.id}/problems/ai`, {
         method: 'POST',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
         body: JSON.stringify({
           categoryId: aiCategory,
           referenceText: aiRefData,
@@ -983,6 +1036,8 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
     return `${hours}시간 ${minutes}분`;
   })();
 
+  const unreadNotiCount = notifications.filter(n => !n.isConfirmed).length;
+
   return (
     <div className="app-container">
       {/* 사이드바 메뉴 */}
@@ -1038,8 +1093,17 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
             <p style={{ fontSize: '0.875rem', color: '#667085', margin: '4px 0 0 0' }}>{space.description}</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button
+                className="btn btn-secondary"
+                style={styles.notiTriggerBtn}
+                onClick={() => { setShowNotifications(!showNotifications); setShowUserMenu(false); }}
+            >
+              🔔 알림
+              {unreadNotiCount > 0 && <span style={styles.notiCountBadge}>{unreadNotiCount}</span>}
+            </button>
+
             <div style={{ position: 'relative' }}>
-              <div 
+              <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1051,7 +1115,7 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
                   cursor: 'pointer',
                   boxShadow: '0 1px 3px rgba(16, 24, 40, 0.05)',
                 }}
-                onClick={() => setShowUserMenu(!showUserMenu)}
+                onClick={() => { setShowUserMenu(!showUserMenu); setShowNotifications(false); }}
               >
                 <img 
                   src={user.profileImageUrl || '/basic.png'}
@@ -1108,6 +1172,31 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
             </div>
           </div>
         </header>
+
+        {/* 실시간 알림 팝오버 */}
+        {showNotifications && (
+            <div style={styles.notiPopover} className="card">
+              <h4 style={styles.notiPopoverTitle}>수신된 최근 알림</h4>
+              {notifications.length === 0 ? (
+                  <p style={styles.notiEmpty}>수신된 새 알림이 없습니다.</p>
+              ) : (
+                  <div style={styles.notiList}>
+                    {notifications.map(noti => (
+                        <div key={noti.id} style={styles.notiItem}>
+                          <p style={styles.notiText}>{noti.content}</p>
+                          <button
+                              className="btn"
+                              style={styles.notiConfirmBtn}
+                              onClick={() => handleConfirmNotification(noti.id)}
+                          >
+                            확인
+                          </button>
+                        </div>
+                    ))}
+                  </div>
+              )}
+            </div>
+        )}
 
         {/* 싱글 문제은행 탭 */}
         {activeTab === 'problems' && (
@@ -2448,6 +2537,79 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
 };
 
 const styles: Record<string, React.CSSProperties> = {
+  notiTriggerBtn: {
+    position: 'relative',
+    paddingRight: '2rem',
+  },
+  notiCountBadge: {
+    position: 'absolute',
+    top: '50%',
+    right: '0.5rem',
+    transform: 'translateY(-50%)',
+    backgroundColor: '#ef4444',
+    color: '#ffffff',
+    fontSize: '0.7rem',
+    fontWeight: 700,
+    borderRadius: '50%',
+    width: '18px',
+    height: '18px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notiPopover: {
+    position: 'absolute',
+    top: '5rem',
+    right: '3rem',
+    width: '320px',
+    zIndex: 100,
+    padding: '1rem',
+    backgroundColor: '#ffffff',
+    borderRadius: '12px',
+    boxShadow: '0 10px 15px -3px rgba(16, 24, 40, 0.08)',
+  },
+  notiPopoverTitle: {
+    fontSize: '0.875rem',
+    fontWeight: 700,
+    color: '#1d2939',
+    marginBottom: '0.75rem',
+    borderBottom: '1px solid #eaecf0',
+    paddingBottom: '0.5rem',
+  },
+  notiEmpty: {
+    fontSize: '0.825rem',
+    color: '#98a2b3',
+    textAlign: 'center',
+    padding: '1rem 0',
+  },
+  notiList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    maxHeight: '200px',
+    overflowY: 'auto',
+  },
+  notiItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '0.5rem',
+    padding: '0.5rem 0',
+    borderBottom: '1px solid #f2f4f7',
+  },
+  notiText: {
+    fontSize: '0.775rem',
+    color: '#475467',
+    flex: 1,
+    lineHeight: 1.4,
+  },
+  notiConfirmBtn: {
+    fontSize: '0.7rem',
+    padding: '0.25rem 0.5rem',
+    backgroundColor: '#f2f4f7',
+    border: 'none',
+    color: '#475467',
+  },
   sidebarTitle: {
     fontSize: '1.75rem',
     fontWeight: 800,

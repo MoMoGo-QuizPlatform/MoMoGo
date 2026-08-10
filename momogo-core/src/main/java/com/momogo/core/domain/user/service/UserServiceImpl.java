@@ -4,8 +4,11 @@ import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
 import com.momogo.core.common.security.PasswordEncryptor;
 import com.momogo.core.common.storage.StorageService;
+import com.momogo.core.common.storage.event.FileDeleteEvent;
+import com.momogo.core.common.storage.event.FileRollbackDeleteEvent;
 import com.momogo.core.common.util.EmailFormatter;
 import com.momogo.core.common.util.UrlUtils;
+import com.momogo.core.common.util.storage.ImageResizeSpec;
 import com.momogo.core.domain.user.dto.UserSearchCondition;
 import com.momogo.core.domain.user.dto.request.ProfileImageUploadRequest;
 import com.momogo.core.domain.user.dto.request.UserCreateRequest;
@@ -18,6 +21,7 @@ import com.momogo.core.domain.user.entity.enums.SocialType;
 import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.event.PasswordChangedEvent;
 import com.momogo.core.domain.user.event.UserBannedEvent;
+import com.momogo.core.domain.user.event.UserCacheEvictEvent;
 import com.momogo.core.domain.user.event.UserDeletedEvent;
 import com.momogo.core.domain.user.exception.UserErrorCode;
 import com.momogo.core.domain.user.mapper.UserMapper;
@@ -31,8 +35,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -66,7 +68,6 @@ public class UserServiceImpl implements UserService {
      * @param request 회원가입 요청 DTO
      * @return 가입 완료된 회원 정보 DTO
      */
-    // TODO: 회원 가입 시 해당 실제 이메일이 존재하는지 검증 로직 구현
     @Override
     @Transactional
     public UserResponse createUser(UserCreateRequest request) {
@@ -133,7 +134,8 @@ public class UserServiceImpl implements UserService {
                         inputStream,
                         profile.originalFilename(),
                         profile.contentType(),
-                        PROFILE_IMAGE_DIR
+                        PROFILE_IMAGE_DIR,
+                        ImageResizeSpec.PROFILE
                 );
 
                 user.updateProfileImage(savedFileName);
@@ -179,6 +181,9 @@ public class UserServiceImpl implements UserService {
             eventPublisher.publishEvent(new PasswordChangedEvent(userId));
         }
 
+        // DB 저장 로직이 커밋됐을 경우 캐시 갱신
+        eventPublisher.publishEvent(new UserCacheEvictEvent(user.getEmail()));
+
         return userMapper.toResponse(user);
     }
 
@@ -191,6 +196,7 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public void softDeleteUser(UUID userId) {
         User user = findActiveUser(userId);
+        String normalizedEmail = EmailFormatter.normalize(user.getEmail());
 
         // 탈퇴 전, 소속된 공간이 있다면 퇴장 처리
         if (user.getSpace() != null) {
@@ -205,8 +211,12 @@ public class UserServiceImpl implements UserService {
         // 유저 논리 삭제
         user.delete();
 
+        eventPublisher.publishEvent(new UserCacheEvictEvent(normalizedEmail));
+
         // 탈퇴한 유저 세션 만료
         eventPublisher.publishEvent(new UserDeletedEvent(user.getId()));
+
+
     }
 
     /**
@@ -253,6 +263,9 @@ public class UserServiceImpl implements UserService {
 
         // 복구 처리 (deletedAt = null)
         user.restore();
+
+        // 커밋 이후 캐시 evict
+        eventPublisher.publishEvent(new UserCacheEvictEvent(user.getEmail()));
     }
 
     /**
@@ -370,6 +383,9 @@ public class UserServiceImpl implements UserService {
         } else {
             user.unban();
         }
+
+        eventPublisher.publishEvent(new UserCacheEvictEvent(user.getEmail()));
+
         return userMapper.toResponse(user);
     }
 
@@ -437,28 +453,14 @@ public class UserServiceImpl implements UserService {
     }
 
     /**
-     * 트랜잭션 종료 상태에 따라 기존/신규 프로필 이미지를 정리합니다.
+     * 트랜잭션 종료 상태(커밋/롤백)에 따라 이벤트를 발행하여 백그라운드에서 비동기로 프로필 이미지를 정리합니다.
      */
     private void registerProfileImageCleanup(String oldImageUrl, String newImageUrl) {
-        TransactionSynchronizationManager.registerSynchronization(
-                new TransactionSynchronization() {
-                    @Override
-                    public void afterCompletion(int status) {
-                        if (status == STATUS_COMMITTED && oldImageUrl != null && !oldImageUrl.isBlank() && !UrlUtils.isExternalUrl(oldImageUrl)) {
-                            try {
-                                storageService.delete(PROFILE_IMAGE_DIR + "/" + oldImageUrl);
-                            } catch (Exception e) {
-                                log.error("[UserService] 기존 프로필 이미지 삭제 실패 - file: {}", oldImageUrl, e);
-                            }
-                        } else if (status == STATUS_ROLLED_BACK && newImageUrl != null && !newImageUrl.isBlank() && !UrlUtils.isExternalUrl(newImageUrl)) {
-                            try {
-                                storageService.delete(PROFILE_IMAGE_DIR + "/" + newImageUrl);
-                            } catch (Exception e) {
-                                log.error("[UserService] 롤백으로 인한 신규 프로필 이미지 삭제 실패 - file: {}", newImageUrl, e);
-                            }
-                        }
-                    }
-                }
-        );
+        if (oldImageUrl != null && !oldImageUrl.isBlank() && !UrlUtils.isExternalUrl(oldImageUrl)) {
+            eventPublisher.publishEvent(new FileDeleteEvent(PROFILE_IMAGE_DIR + "/" + oldImageUrl));
+        }
+        if (newImageUrl != null && !newImageUrl.isBlank() && !UrlUtils.isExternalUrl(newImageUrl)) {
+            eventPublisher.publishEvent(new FileRollbackDeleteEvent(PROFILE_IMAGE_DIR + "/" + newImageUrl));
+        }
     }
 }

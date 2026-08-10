@@ -24,12 +24,17 @@ import com.momogo.core.domain.user.entity.UserProblem;
 import com.momogo.core.domain.user.entity.UserProblemId;
 import com.momogo.core.domain.user.repository.UserProblemRepository;
 import com.momogo.core.domain.user.repository.UserRepository;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +47,8 @@ public class ProblemServiceImpl implements ProblemService {
 
   private final ProblemRepository problemRepository;
 
+  private final RedisTemplate<String, Object> redisTemplate;
+
   private final ProblemCategoryRepository categoryRepository;
 
   private final ProblemCountersRepository countersRepository;
@@ -49,7 +56,7 @@ public class ProblemServiceImpl implements ProblemService {
   private final SpaceRepository spaceRepository;
 
   private final ProblemMapper problemMapper;
-  
+
   private final ProblemGenerationService problemGenerationService;
 
   private final ProblemPersister problemPersister;
@@ -57,6 +64,15 @@ public class ProblemServiceImpl implements ProblemService {
   private final UserProblemRepository userProblemRepository;
 
   private final UserRepository userRepository;
+
+  // GET한 값이 내 토큰과 같을 때만 DEL - TTL 만료로 락이 다른 요청에 넘어간 경우 잘못 삭제하는 것 방지
+  private static final RedisScript<Long> UNLOCK_SCRIPT = RedisScript.of("""
+      if redis.call('get', KEYS[1]) == ARGV[1] then
+        return redis.call('del', KEYS[1])
+      else
+        return 0
+      end
+      """, Long.class);
 
   /**
    * 문제 직접 생성
@@ -251,7 +267,8 @@ public class ProblemServiceImpl implements ProblemService {
 
     String normalizedUserAnswer = request.userAnswer().replaceAll("\\s+", "").toLowerCase();
 
-    String normalizedCorrectAnswer = problem.getCorrectAnswer().replaceAll("\\s+", "").toLowerCase();
+    String normalizedCorrectAnswer = problem.getCorrectAnswer().replaceAll("\\s+",
+        "").toLowerCase();
 
     boolean isSolved = normalizedUserAnswer.contains(normalizedCorrectAnswer);
 
@@ -289,28 +306,81 @@ public class ProblemServiceImpl implements ProblemService {
 
   /**
    * AI 기반 문제 자동 생성 (ADMIN 전용)
-   * @param spaceId   공간 ID
-   * @param request   AI 문제 자동 생성 요청 DTO
+   *
+   * @param spaceId 공간 ID
+   * @param request AI 문제 자동 생성 요청 DTO
    */
   @Override
   @Transactional(propagation = Propagation.NOT_SUPPORTED) // 해당 메서드 자체는 트랜잭션 없이 실행
-  public List<ProblemResponse> createProblemsByAi(UUID spaceId, ProblemAiCreateRequest request) {
-    
-    // 공간 / 카테고리 검증
-    if (!spaceRepository.existsById(spaceId)) {
-      throw new BusinessException(ProblemErrorCode.SPACE_NOT_FOUND);
+  public List<ProblemResponse> createProblemsByAi(UUID spaceId, UUID idempotencyKey,
+      ProblemAiCreateRequest request) {
+
+    String lockKey = "idem:problem-ai:" + idempotencyKey;
+    // 락 값을 요청 식별 토큰으로 - TTL 만료 후 다른 요청이 같은 키로 락을 새로 잡았을 때 구분하기 위함
+    String ownerToken = UUID.randomUUID().toString();
+
+    Boolean acquired = redisTemplate.opsForValue()
+        .setIfAbsent(lockKey, ownerToken, Duration.ofMinutes(10));
+
+    if (Boolean.FALSE.equals(acquired)) {
+      throw new BusinessException(ProblemErrorCode.DUPLICATE_AI_REQUEST);
     }
 
-    if (!categoryRepository.existsById(request.categoryId())) {
-      throw new BusinessException(ProblemErrorCode.CATEGORY_NOT_FOUND);
+    try {
+
+      // 공간 / 카테고리 검증
+      if (!spaceRepository.existsById(spaceId)) {
+        throw new BusinessException(ProblemErrorCode.SPACE_NOT_FOUND);
+      }
+
+      if (!categoryRepository.existsById(request.categoryId())) {
+        throw new BusinessException(ProblemErrorCode.CATEGORY_NOT_FOUND);
+      }
+
+      // AI 생성 호출 (트랜잭션 밖 - 커넥션 안 잡고 LLM 응답 대기)
+      List<GeneratedProblemData> generated = problemGenerationService.generateProblems(
+          request.referenceText(),
+          request.questionCount()
+      );
+
+      return problemPersister.saveGeneratedProblems(spaceId, request.categoryId(), generated);
+    } finally {
+      // 성공/실패/Error 무관 항상 해제. 무조건 delete 대신 내 토큰일 때만 삭제 (TTL 초과로 락이 넘어갔으면 남의 락을 지우지 않음)
+      redisTemplate.execute(UNLOCK_SCRIPT, List.of(lockKey), ownerToken);
     }
-    
-    // AI 생성 호출 (트랜잭션 밖 - 커넥션 안 잡고 LLM 응답 대기)
-    List<GeneratedProblemData> generated = problemGenerationService.generateProblems(
-        request.referenceText(),
-        request.questionCount()
-    );
-    
-    return problemPersister.saveGeneratedProblems(spaceId, request.categoryId(), generated);
+  }
+
+  /**
+   * 전체 문제 목록 조회 (SUPER_ADMIN 전용, 공간 무관, 정답 포함)
+   */
+  @Override
+  public Page<ProblemDetailResponse> getAllProblems(Pageable pageable) {
+    return problemRepository.findAllWithCategory(pageable).map(problemMapper::toDetailResponse);
+  }
+
+  /**
+   * 문제 강제 수정 (SUPER_ADMIN 전용)
+   * - 문제가 소속된 공간을 조회한 뒤 기존 updateProblem 검증/수정 로직에 위임한다.
+   */
+  @Override
+  @Transactional
+  public ProblemResponse updateProblemAsSuperAdmin(UUID problemId, ProblemUpdateRequest request) {
+    Problem problem = problemRepository.findById(problemId)
+        .orElseThrow(() -> new BusinessException(ProblemErrorCode.PROBLEM_NOT_FOUND));
+
+    return updateProblem(problem.getSpace().getId(), problemId, request);
+  }
+
+  /**
+   * 문제 강제 삭제 (SUPER_ADMIN 전용)
+   * - 문제가 소속된 공간을 조회한 뒤 기존 deleteProblem 검증/삭제 로직에 위임한다.
+   */
+  @Override
+  @Transactional
+  public void deleteProblemAsSuperAdmin(UUID problemId) {
+    Problem problem = problemRepository.findById(problemId)
+        .orElseThrow(() -> new BusinessException(ProblemErrorCode.PROBLEM_NOT_FOUND));
+
+    deleteProblem(problem.getSpace().getId(), problemId);
   }
 }

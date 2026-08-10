@@ -200,6 +200,35 @@ public class SpaceServiceImpl implements SpaceService {
     return spaceRepository.findAll(pageable).map(spaceMapper::toResponse);
   }
 
+  @Override
+  @Transactional
+  public Space forceUpdateSpace(UUID spaceId, SpaceUpdateRequest request) {
+
+    Space space = spaceRepository.findById(spaceId)
+        .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_NOT_FOUND));
+
+    spaceMapper.updateFromDto(request, space); // MapStruct 더티 체킹
+
+    if (request.spacePassword() != null && !request.spacePassword().isBlank()) {
+      space.updateSpacePassword(passwordEncryptor.encrypt(request.spacePassword()));
+    }
+
+    return space;
+  }
+
+  @Override
+  @Transactional
+  public void forceDeleteSpace(UUID spaceId) {
+
+    Space space = spaceRepository.findById(spaceId)
+        .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_NOT_FOUND));
+
+    // 벌크 쿼리로 공간 소속 유저 탈퇴 처리
+    userRepository.bulkLeaveSpace(spaceId, UserRole.USER);
+
+    spaceRepository.delete(space);
+  }
+
   // 공통 헬퍼 메소드: 사용자 조회 및 공간 관리자 권한 검증
   private User validateAndGetSpaceAdmin(UUID userId, UUID spaceId) {
     User user = userRepository.findById(userId)

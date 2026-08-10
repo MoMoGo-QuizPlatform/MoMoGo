@@ -1,15 +1,14 @@
 package com.momogo.api.auth.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.momogo.api.auth.jwt.JwtTokenProvider;
+import com.momogo.core.common.exception.AuthErrorCode;
 import com.momogo.core.common.exception.BusinessException;
+import com.momogo.core.domain.user.exception.UserErrorCode;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.ResponseCookie;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.core.AuthenticationException;
@@ -44,13 +43,27 @@ public class LoginFailureHandler implements AuthenticationFailureHandler {
             errorCode = businessException.getErrorCode().getCode();
             status = businessException.getErrorCode().getHttpStatus().value();
 
+            // 서버 과부하(동시성 제한)로 인한 실패는 별도 로그 레벨/메시지로 구분
+            if (businessException.getErrorCode() == AuthErrorCode.LOGIN_SERVER_BUSY) {
+                log.warn("로그인 실패(서버 과부하 동시성 제한): {}", exception.getMessage());
+            } else {
+                log.warn("로그인 실패(비즈니스 예외): {} - {}", errorCode, errorMessage);
+            }
+
         } else if (exception instanceof LockedException) {
-            errorMessage = "정지된 계정입니다. 관리자에게 문의하세요.";
-            errorCode = "USER-BANNED_USER";
-            status = HttpServletResponse.SC_FORBIDDEN;
-            log.warn("로그인 실패(제한된 계정): {}", exception.getClass().getSimpleName());
+            // MoMoGoUserDetails.isAccountNonLocked() == false -> 정지(밴) 계정
+            errorMessage = UserErrorCode.BANNED_USER.getMessage();
+            errorCode = UserErrorCode.BANNED_USER.getCode();
+            status = UserErrorCode.BANNED_USER.getHttpStatus().value();
+            log.warn("로그인 실패(정지된 계정): {}", exception.getClass().getSimpleName());
+
         } else if (exception instanceof DisabledException) {
-            log.warn("로그인 실패(비활성화 계정): {}", exception.getClass().getSimpleName());
+            // MoMoGoUserDetails.isEnabled() == false -> 탈퇴(논리 삭제) 계정
+            errorMessage = UserErrorCode.ALREADY_IN_PROGRESS_DELETE.getMessage();
+            errorCode = UserErrorCode.ALREADY_IN_PROGRESS_DELETE.getCode();
+            status = UserErrorCode.ALREADY_IN_PROGRESS_DELETE.getHttpStatus().value();
+            log.warn("로그인 실패(탈퇴된 계정): {}", exception.getClass().getSimpleName());
+
         } else {
             log.info("로그인 실패: {}", exception.getClass().getSimpleName());
         }

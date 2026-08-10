@@ -13,8 +13,8 @@ import { check } from 'k6';  // 응답 결과(200 OK 등) 성공 여부 검증�
  * ============================================================================
  */
 
-// 1. [서버 주소] 현재 배포된 AWS ALB(로드밸런서) 퍼블릭 DNS 주소
-export const BASE_URL = 'http://momogo-alb-1906718718.ap-northeast-2.elb.amazonaws.com';
+// 1. [서버 주소] EC2 + Nginx (momogo.kro.kr)
+export const BASE_URL = 'http://momogo.kro.kr';
 
 // 2. [테스트 계정] ADMIN 권한 + 공간(Space) 소유 계정
 export const ADMIN_USER = {
@@ -23,8 +23,8 @@ export const ADMIN_USER = {
 };
 
 // 3. [테스트 대상] ADMIN_USER 소유 공간/카테고리 UUID
-export const SPACE_ID = '9d683a9a-9e5d-4a7c-9230-b40f7c62d31e';
-export const CATEGORY_ID = 'effa0724-42c5-4335-964c-1e2556007e1a';
+export const SPACE_ID = '07ddf318-4762-45b4-84e6-ec6be69d4f14';
+export const CATEGORY_ID = 'e52067a1-8e66-4ec9-a343-927405c3b69d';
 
 /**
  * [JWT 인증 토큰 발급 setup 함수]
