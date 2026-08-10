@@ -21,6 +21,7 @@ import com.momogo.core.domain.user.entity.enums.SocialType;
 import com.momogo.core.domain.user.entity.enums.UserRole;
 import com.momogo.core.domain.user.event.PasswordChangedEvent;
 import com.momogo.core.domain.user.event.UserBannedEvent;
+import com.momogo.core.domain.user.event.UserCacheEvictEvent;
 import com.momogo.core.domain.user.event.UserDeletedEvent;
 import com.momogo.core.domain.user.exception.UserErrorCode;
 import com.momogo.core.domain.user.mapper.UserMapper;
@@ -34,8 +35,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -69,7 +68,6 @@ public class UserServiceImpl implements UserService {
      * @param request 회원가입 요청 DTO
      * @return 가입 완료된 회원 정보 DTO
      */
-    // TODO: 회원 가입 시 해당 실제 이메일이 존재하는지 검증 로직 구현
     @Override
     @Transactional
     public UserResponse createUser(UserCreateRequest request) {
@@ -183,6 +181,9 @@ public class UserServiceImpl implements UserService {
             eventPublisher.publishEvent(new PasswordChangedEvent(userId));
         }
 
+        // DB 저장 로직이 커밋됐을 경우 캐시 갱신
+        eventPublisher.publishEvent(new UserCacheEvictEvent(user.getEmail()));
+
         return userMapper.toResponse(user);
     }
 
@@ -195,6 +196,7 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public void softDeleteUser(UUID userId) {
         User user = findActiveUser(userId);
+        String normalizedEmail = EmailFormatter.normalize(user.getEmail());
 
         // 탈퇴 전, 소속된 공간이 있다면 퇴장 처리
         if (user.getSpace() != null) {
@@ -209,8 +211,12 @@ public class UserServiceImpl implements UserService {
         // 유저 논리 삭제
         user.delete();
 
+        eventPublisher.publishEvent(new UserCacheEvictEvent(normalizedEmail));
+
         // 탈퇴한 유저 세션 만료
         eventPublisher.publishEvent(new UserDeletedEvent(user.getId()));
+
+
     }
 
     /**
@@ -257,6 +263,9 @@ public class UserServiceImpl implements UserService {
 
         // 복구 처리 (deletedAt = null)
         user.restore();
+
+        // 커밋 이후 캐시 evict
+        eventPublisher.publishEvent(new UserCacheEvictEvent(user.getEmail()));
     }
 
     /**
@@ -374,6 +383,9 @@ public class UserServiceImpl implements UserService {
         } else {
             user.unban();
         }
+
+        eventPublisher.publishEvent(new UserCacheEvictEvent(user.getEmail()));
+
         return userMapper.toResponse(user);
     }
 

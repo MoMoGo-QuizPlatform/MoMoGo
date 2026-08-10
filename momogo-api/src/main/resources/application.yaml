@@ -112,6 +112,11 @@ jwt:
       same-site: ${JWT_REFRESH_COOKIE_SAME_SITE}
 
 app:
+  security:
+    bcrypt:
+      cost: ${APP_SECURITY_BCRYPT_COST:10}
+      max-concurrency: ${APP_BCRYPT_MAX_CONCURRENCY:2}
+      acquire-timeout-ms: ${APP_SECURITY_BCRYPT_ACQUIRE_TIMEOUT_MS:3000}
   async:
     concurrency-limit:
       default: ${APP_ASYNC_CONCURRENCY_DEFAULT:50}
