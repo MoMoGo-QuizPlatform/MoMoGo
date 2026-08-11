@@ -52,6 +52,7 @@ import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -71,7 +72,9 @@ import java.util.concurrent.TimeUnit;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
@@ -93,8 +96,11 @@ public class RoomServiceImpl implements RoomService{
   private final AiGradingProducer aiGradingProducer;
   private final RedissonClient redissonClient;
   private final RoomSubmitKafkaProducer roomSubmitKafkaProducer;
+  private final RedisTemplate<String, Object> redisTemplate;
 
   private static final String SUBMIT_LOCK_PREFIX = "lock:room:submit:";
+  private static final String SUBMIT_CLAIM_PREFIX = "room:submit:claimed:";
+  private static final Duration SUBMIT_CLAIM_TTL = Duration.ofDays(7);
 
   // 검증된 타겟 객체들을 묶기 위한 private record
   private record ValidatedRoomTarget(Space space, List<User> targetUsers) {}
@@ -247,6 +253,7 @@ public class RoomServiceImpl implements RoomService{
   }
 
   @Override
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public void submitRoomAnswer(UUID userId, UUID roomId, RoomAnswerSubmitRequest request) {
     log.info("[RoomService] 시험 답안 제출 시도 - userId: {}, roomId: {}", userId, roomId);
 
@@ -286,7 +293,28 @@ public class RoomServiceImpl implements RoomService{
             throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
           }
 
-          // 5. 동기 DB 저장 대신 Kafka 전송 후 < 20ms 즉시 응답 반환
+          // 4-1. 비동기 저장 완료 전 중복 제출을 즉시 차단하는 Redis Claim 마커 (Atomic SETNX)
+          String claimKey = SUBMIT_CLAIM_PREFIX + roomId + ":" + userId;
+          Boolean claimed = redisTemplate.opsForValue().setIfAbsent(claimKey, "1", SUBMIT_CLAIM_TTL);
+          if (!Boolean.TRUE.equals(claimed)) {
+            log.warn("[RoomService] 이미 답안 제출 요청이 처리 중이거나 완료된 유저 - userId: {}, roomId: {}", userId, roomId);
+            throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
+          }
+
+          // 5. 문제 존재 및 해당 시험방 소속 검증
+          List<UUID> problemIds = request.answers().stream()
+              .map(ProblemAnswerRequest::roomProblemId)
+              .toList();
+
+          long validProblemCount = roomProblemRepository.findAllById(problemIds).stream()
+              .filter(p -> p.getRoom().getId().equals(roomId))
+              .count();
+
+          if (validProblemCount != problemIds.size()) {
+            throw new BusinessException(RoomErrorCode.PROBLEM_NOT_FOUND);
+          }
+
+          // 6. 동기 DB 저장 대신 Kafka 전송 후 < 20ms 즉시 응답 반환
           roomSubmitKafkaProducer.send(RoomSubmitEventMessage.of(userId, roomId, request.answers()));
 
         } finally {
@@ -296,11 +324,12 @@ public class RoomServiceImpl implements RoomService{
         }
       } else {
         log.warn("[RoomService] 답안 제출 분산 락 획득 타임아웃 - userId: {}, roomId: {}", userId, roomId);
-        throw new BusinessException(AuthErrorCode.LOCK_ACQUISITION_FAILED, "답안 제출 락 획득 실패");
+        throw new BusinessException(RoomErrorCode.LOCK_ACQUISITION_FAILED);
       }
     } catch (InterruptedException e) {
+      log.error("[RoomService] 답안 제출 대기 중 인터럽트 발생 - userId: {}, roomId: {}", userId, roomId, e);
       Thread.currentThread().interrupt();
-      throw new BusinessException(GlobalErrorCode.INTERNAL_SERVER_ERROR);
+      throw new BusinessException(GlobalErrorCode.INTERNAL_SERVER_ERROR, "답안 제출 대기 중 인터럽트가 발생했습니다.");
     }
   }
 

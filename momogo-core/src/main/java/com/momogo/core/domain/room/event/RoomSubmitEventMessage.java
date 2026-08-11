@@ -18,6 +18,8 @@ public record RoomSubmitEventMessage(
     Objects.requireNonNull(eventId, "eventId는 null일 수 없습니다");
     Objects.requireNonNull(userId, "userId는 null일 수 없습니다");
     Objects.requireNonNull(roomId, "roomId는 null일 수 없습니다");
+    Objects.requireNonNull(answers, "answers는 null일 수 없습니다");
+    Objects.requireNonNull(submittedAt, "submittedAt은 null일 수 없습니다");
     answers = List.copyOf(answers);
   }
 
