@@ -22,4 +22,8 @@ public interface UserRoomAnswerRepository extends JpaRepository<UserRoomAnswer, 
   @Modifying(clearAutomatically = true)
   @Query("update UserRoomAnswer u set u.isCorrect = :isCorrect where u.id = :id and (u.isManuallyGraded = false or u.isManuallyGraded is null)")
   int updateIsCorrectIfNotManuallyGraded(@Param("id") UUID id, @Param("isCorrect") Boolean isCorrect);
+
+  @Modifying
+  @Query("delete from UserRoomAnswer u where u.roomProblem.room.id = :roomId and u.user.id = :userId")
+  void deleteByRoomProblemRoomIdAndUserId(@Param("roomId") UUID roomId, @Param("userId") UUID userId);
 }

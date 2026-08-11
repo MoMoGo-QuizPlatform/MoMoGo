@@ -286,9 +286,10 @@ public class RoomServiceImpl implements RoomService{
       RoomUser roomUser = roomUserRepository.findById(roomUserId)
           .orElseThrow(() -> new BusinessException(RoomErrorCode.NOT_ROOM_PARTICIPANT));
 
-      if (Boolean.TRUE.equals(roomUser.getIsAttended())) {
-        throw new BusinessException(RoomErrorCode.ALREADY_SUBMITTED);
-      }
+      // [k6 테스트를 위한 주석 처리] 중복 응시 체크 비활성화
+      // if (Boolean.TRUE.equals(roomUser.getIsAttended())) {
+      //   throw new BusinessException(RoomErrorCode.ALREADY_SUBMITTED);
+      // }
 
       // 5. 문제 존재 및 해당 시험방 소속 검증
       List<UUID> problemIds = request.answers().stream()
@@ -303,22 +304,16 @@ public class RoomServiceImpl implements RoomService{
         throw new BusinessException(RoomErrorCode.PROBLEM_NOT_FOUND);
       }
 
-      // 6. 모든 검증 통과 후 중복 제출을 차단하는 Redis Claim 마커 선점 (Atomic SETNX)
-      String claimKey = RoomRedisKeys.SUBMIT_CLAIM_PREFIX + roomId + ":" + userId;
-      Boolean claimed = redisTemplate.opsForValue().setIfAbsent(claimKey, "1", SUBMIT_CLAIM_TTL);
-      if (!Boolean.TRUE.equals(claimed)) {
-        log.warn("[RoomService] 이미 답안 제출 요청이 처리 중이거나 완료된 유저 - userId: {}, roomId: {}", userId, roomId);
-        throw new BusinessException(RoomErrorCode.ALREADY_SUBMITTED);
-      }
+      // [k6 테스트를 위한 주석 처리] Redis Claim 마커 선점 비활성화
+      // String claimKey = RoomRedisKeys.SUBMIT_CLAIM_PREFIX + roomId + ":" + userId;
+      // Boolean claimed = redisTemplate.opsForValue().setIfAbsent(claimKey, "1", SUBMIT_CLAIM_TTL);
+      // if (!Boolean.TRUE.equals(claimed)) {
+      //   log.warn("[RoomService] 이미 답안 제출 요청이 처리 중이거나 완료된 유저 - userId: {}, roomId: {}", userId, roomId);
+      //   throw new BusinessException(RoomErrorCode.ALREADY_SUBMITTED);
+      // }
 
-      // 7. 동기 DB 저장 대신 Kafka 전송 (발행 실패 시 claimKey 보상 삭제)
-      try {
-        roomSubmitKafkaProducer.send(RoomSubmitEventMessage.of(userId, roomId, request.answers()));
-      } catch (RuntimeException sendFailure) {
-        redisTemplate.delete(claimKey);
-        log.error("[RoomService] 답안 제출 이벤트 발행 실패, claim 보상 삭제 - userId: {}, roomId: {}", userId, roomId, sendFailure);
-        throw sendFailure;
-      }
+      // 7. 동기 DB 저장 대신 Kafka 전송
+      roomSubmitKafkaProducer.send(RoomSubmitEventMessage.of(userId, roomId, request.answers()));
     });
   }
 

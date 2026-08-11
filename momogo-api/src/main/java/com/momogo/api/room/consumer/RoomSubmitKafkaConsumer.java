@@ -107,13 +107,15 @@ public class RoomSubmitKafkaConsumer {
           return new BusinessException(RoomErrorCode.NOT_ROOM_PARTICIPANT);
         });
 
-    if (Boolean.TRUE.equals(roomUser.getIsAttended())) {
-      log.warn("[RoomSubmitKafkaConsumer] 이미 응시 완료된 유저의 중복 제출 이벤트, 처리 스킵 - eventId: {}, userId: {}, roomId: {}",
-          message.eventId(), message.userId(), message.roomId());
-      return;
-    }
+    // [k6 테스트를 위한 주석 처리] 중복 응시 체크 비활성화
+    // if (Boolean.TRUE.equals(roomUser.getIsAttended())) {
+    //   log.warn("[RoomSubmitKafkaConsumer] 이미 응시 완료된 유저의 중복 제출 이벤트, 처리 스킵 - eventId: {}, userId: {}, roomId: {}",
+    //       message.eventId(), message.userId(), message.roomId());
+    //   return;
+    // }
 
-    // 6. DB 일괄 저장 및 응시 처리
+    // [k6 부하 테스트용] 기존 동일 유저 답안 삭제 후 일괄 저장 (UQ 충돌 방지)
+    userRoomAnswerRepository.deleteByRoomProblemRoomIdAndUserId(message.roomId(), message.userId());
     userRoomAnswerRepository.saveAll(userRoomAnswers);
     roomUser.attend();
 
