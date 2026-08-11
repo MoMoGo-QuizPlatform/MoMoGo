@@ -52,6 +52,7 @@ import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -63,8 +64,19 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.momogo.core.common.config.RoomRedisKeys;
+import com.momogo.core.common.exception.AuthErrorCode;
+import com.momogo.core.common.exception.GlobalErrorCode;
+import com.momogo.core.common.lock.DistributedLockExecutor;
+import com.momogo.core.domain.room.event.RoomSubmitEventMessage;
+import com.momogo.core.domain.room.kafka.producer.RoomSubmitKafkaProducer;
+import java.util.concurrent.TimeUnit;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
@@ -84,6 +96,12 @@ public class RoomServiceImpl implements RoomService{
   private final RoomMapper roomMapper;
   private final ApplicationEventPublisher eventPublisher;
   private final AiGradingProducer aiGradingProducer;
+  private final RedissonClient redissonClient;
+  private final RoomSubmitKafkaProducer roomSubmitKafkaProducer;
+  private final RedisTemplate<String, Object> redisTemplate;
+  private final DistributedLockExecutor distributedLockExecutor;
+
+  private static final Duration SUBMIT_CLAIM_TTL = Duration.ofDays(7);
 
   // 검증된 타겟 객체들을 묶기 위한 private record
   private record ValidatedRoomTarget(Space space, List<User> targetUsers) {}
@@ -236,11 +254,11 @@ public class RoomServiceImpl implements RoomService{
   }
 
   @Override
-  @Transactional
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public void submitRoomAnswer(UUID userId, UUID roomId, RoomAnswerSubmitRequest request) {
-    log.info("[RoomService] 시험 답안 제출 시작 - userId: {}, roomId: {}", userId, roomId);
+    log.info("[RoomService] 시험 답안 제출 시도 - userId: {}, roomId: {}", userId, roomId);
 
-    // 요청 리스트 내 동일한 문제 ID가 중복 유입되는지 검증
+    // 1. 요청 리스트 내 동일한 문제 ID가 중복 유입되는지 검증
     long uniqueProblemCount = request.answers().stream()
         .map(ProblemAnswerRequest::roomProblemId)
         .distinct().count();
@@ -248,55 +266,60 @@ public class RoomServiceImpl implements RoomService{
       throw new BusinessException(RoomErrorCode.DUPLICATE_ANSWER_SUBMITTED);
     }
 
-    // 방 존재 검증
-    Room room = roomRepository.findByIdForUpdate(roomId)
-        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+    // 2. DistributedLockExecutor를 사용하여 분산 락 실행
+    String lockKey = RoomRedisKeys.SUBMIT_LOCK_PREFIX + roomId + ":" + userId;
+    distributedLockExecutor.executeWithLock(lockKey, 3, () -> {
+      // 3. 비관적 락(findByIdForUpdate) 대신 락이 없는 일반 조회 사용
+      Room room = findRoomOrThrow(roomId);
 
-    // 시간 검증 - 시험 시작 전 제출 시도 차단
-    OffsetDateTime now = OffsetDateTime.now();
-    if (now.isBefore(room.getTestStartAt())) {
-      throw new BusinessException(RoomErrorCode.INVALID_ACCESS_BEFORE_START);
-    }
+      // 4. 시간 및 응시 자격 빠른 검증
+      OffsetDateTime now = OffsetDateTime.now();
+      if (now.isBefore(room.getTestStartAt())) {
+        throw new BusinessException(RoomErrorCode.INVALID_ACCESS_BEFORE_START);
+      }
 
-    // 상태 검증 - 이미 최종적으로 끝난 시험이면 추가 제출 불가
-    if (Boolean.TRUE.equals(room.getIsEnded())) {
-      throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
-    }
+      if (Boolean.TRUE.equals(room.getIsEnded())) {
+        throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
+      }
 
-    // 응시 대상 유저  자격 검증
-    RoomUserId roomUserId = new RoomUserId(roomId, userId);
-    RoomUser roomUser = roomUserRepository.findByIdForUpdate(roomUserId)
-        .orElseThrow(() -> new BusinessException(RoomErrorCode.NOT_ROOM_PARTICIPANT));
+      RoomUserId roomUserId = new RoomUserId(roomId, userId);
+      RoomUser roomUser = roomUserRepository.findById(roomUserId)
+          .orElseThrow(() -> new BusinessException(RoomErrorCode.NOT_ROOM_PARTICIPANT));
 
-    // 요청 유저 획득
-    User user = userRepository.findById(userId)
-        .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
+      if (Boolean.TRUE.equals(roomUser.getIsAttended())) {
+        throw new BusinessException(RoomErrorCode.ALREADY_SUBMITTED);
+      }
 
-    List<UUID> problemIds = request.answers().stream().map(ProblemAnswerRequest::roomProblemId).toList();
-    Map<UUID, RoomProblem> problemsById = roomProblemRepository.findAllById(problemIds).stream()
-        .collect(Collectors.toMap(RoomProblem::getId, Function.identity()));
+      // 5. 문제 존재 및 해당 시험방 소속 검증
+      List<UUID> problemIds = request.answers().stream()
+          .map(ProblemAnswerRequest::roomProblemId)
+          .toList();
 
-    if (Boolean.TRUE.equals(roomUser.getIsAttended())) {
-      throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
-    }
+      long validProblemCount = roomProblemRepository.findAllById(problemIds).stream()
+          .filter(p -> p.getRoom().getId().equals(roomId))
+          .count();
 
-    // 각 문제 답안 일괄 매핑, 저장
-    List<UserRoomAnswer> userRoomAnswers = request.answers().stream()
-        .map(ans -> {
-          RoomProblem problem = problemsById.get(ans.roomProblemId());
-          if (problem == null || !problem.getRoom().getId().equals(roomId)) {
-            throw new BusinessException(RoomErrorCode.PROBLEM_NOT_FOUND);
-          }
-          return UserRoomAnswer.of(user, problem, ans.userAnswer(), null);
-        })
-        .toList();
-    userRoomAnswerRepository.saveAll(userRoomAnswers);
+      if (validProblemCount != problemIds.size()) {
+        throw new BusinessException(RoomErrorCode.PROBLEM_NOT_FOUND);
+      }
 
-    // 응시 완료 상태 업데이트
-    roomUser.attend();
+      // 6. 모든 검증 통과 후 중복 제출을 차단하는 Redis Claim 마커 선점 (Atomic SETNX)
+      String claimKey = RoomRedisKeys.SUBMIT_CLAIM_PREFIX + roomId + ":" + userId;
+      Boolean claimed = redisTemplate.opsForValue().setIfAbsent(claimKey, "1", SUBMIT_CLAIM_TTL);
+      if (!Boolean.TRUE.equals(claimed)) {
+        log.warn("[RoomService] 이미 답안 제출 요청이 처리 중이거나 완료된 유저 - userId: {}, roomId: {}", userId, roomId);
+        throw new BusinessException(RoomErrorCode.ALREADY_SUBMITTED);
+      }
 
-    log.info("[RoomService] 시험 답안 제출 완료 - userId: {}, roomId: {}, 제출 문항 수: {}",
-        userId, roomId, userRoomAnswers.size());
+      // 7. 동기 DB 저장 대신 Kafka 전송 (발행 실패 시 claimKey 보상 삭제)
+      try {
+        roomSubmitKafkaProducer.send(RoomSubmitEventMessage.of(userId, roomId, request.answers()));
+      } catch (RuntimeException sendFailure) {
+        redisTemplate.delete(claimKey);
+        log.error("[RoomService] 답안 제출 이벤트 발행 실패, claim 보상 삭제 - userId: {}, roomId: {}", userId, roomId, sendFailure);
+        throw sendFailure;
+      }
+    });
   }
 
   @Override

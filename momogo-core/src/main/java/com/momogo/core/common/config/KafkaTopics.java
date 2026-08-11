@@ -8,6 +8,7 @@ public final class KafkaTopics {
 
     public static final String NOTIFICATION_EVENTS = "notification-events";
     public static final String AI_GRADING_EVENTS = "ai-grading-events";
+    public static final String ROOM_SUBMIT_EVENTS = "room-submit-events";
 
     private KafkaTopics() {
     }
