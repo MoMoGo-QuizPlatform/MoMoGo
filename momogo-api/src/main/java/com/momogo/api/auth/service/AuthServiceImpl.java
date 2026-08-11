@@ -9,10 +9,12 @@ import com.momogo.api.auth.jwt.JwtTokenProvider;
 import com.momogo.api.auth.util.PasswordGenerator;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
+import com.momogo.core.domain.user.dto.response.UserResponse;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.SocialType;
 import com.momogo.core.domain.user.event.TemporaryPasswordGeneratedEvent;
 import com.momogo.core.domain.user.exception.UserErrorCode;
+import com.momogo.core.domain.user.mapper.UserMapper;
 import com.momogo.core.domain.user.repository.UserRepository;
 import com.momogo.core.common.util.EmailFormatter;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +35,7 @@ public class AuthServiceImpl implements AuthService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UserMapper userMapper;
 
     // Jwt
     private final JwtTokenProvider jwtTokenProvider;
@@ -61,13 +64,14 @@ public class AuthServiceImpl implements AuthService {
         }
 
         try {
-            MoMoGoUserDetails userDetails = jwtTokenProvider.parseAccessToken(refreshToken);
+            UserResponse userResponse = userMapper.toResponse(user);
+            MoMoGoUserDetails userDetails = new MoMoGoUserDetails(userResponse, null);
 
             String newAccessToken = jwtTokenProvider.generateAccessToken(userDetails);
             String newRefreshToken = jwtTokenProvider.generateRefreshToken(userDetails);
 
             JwtInformation next = new JwtInformation(
-                    current.user(),
+                    userResponse,
                     newAccessToken,
                     newRefreshToken
             );

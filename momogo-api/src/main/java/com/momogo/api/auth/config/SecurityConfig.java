@@ -225,7 +225,8 @@ public class SecurityConfig {
                 "X-XSRF-TOKEN",
                 "X-Requested-With",
                 "Accept",
-                "Last-Event-ID"
+                "Last-Event-ID",
+                "Idempotency-Key"
         ));
 
         configuration.setExposedHeaders(List.of(

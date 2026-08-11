@@ -120,10 +120,11 @@ public class ProblemController {
   @PreAuthorize("hasRole('ADMIN')")
   public ResponseEntity<List<ProblemResponse>> createProblemsByAi(
       @PathVariable UUID spaceId,
-      @RequestHeader("Idempotency-Key") UUID idempotencyKey,
+      @RequestHeader(value = "Idempotency-Key", required = false) UUID idempotencyKey,
       @RequestBody @Valid ProblemAiCreateRequest request) {
 
-    List<ProblemResponse> response = problemService.createProblemsByAi(spaceId, idempotencyKey, request);
+    UUID key = (idempotencyKey != null) ? idempotencyKey : UUID.randomUUID();
+    List<ProblemResponse> response = problemService.createProblemsByAi(spaceId, key, request);
 
     return ResponseEntity
         .status(HttpStatus.CREATED)
