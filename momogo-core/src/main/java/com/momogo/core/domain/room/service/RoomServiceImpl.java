@@ -63,6 +63,13 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.momogo.core.common.exception.AuthErrorCode;
+import com.momogo.core.common.exception.GlobalErrorCode;
+import com.momogo.core.domain.room.event.RoomSubmitEventMessage;
+import com.momogo.core.domain.room.kafka.producer.RoomSubmitKafkaProducer;
+import java.util.concurrent.TimeUnit;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -84,6 +91,10 @@ public class RoomServiceImpl implements RoomService{
   private final RoomMapper roomMapper;
   private final ApplicationEventPublisher eventPublisher;
   private final AiGradingProducer aiGradingProducer;
+  private final RedissonClient redissonClient;
+  private final RoomSubmitKafkaProducer roomSubmitKafkaProducer;
+
+  private static final String SUBMIT_LOCK_PREFIX = "lock:room:submit:";
 
   // 검증된 타겟 객체들을 묶기 위한 private record
   private record ValidatedRoomTarget(Space space, List<User> targetUsers) {}
@@ -236,11 +247,10 @@ public class RoomServiceImpl implements RoomService{
   }
 
   @Override
-  @Transactional
   public void submitRoomAnswer(UUID userId, UUID roomId, RoomAnswerSubmitRequest request) {
-    log.info("[RoomService] 시험 답안 제출 시작 - userId: {}, roomId: {}", userId, roomId);
+    log.info("[RoomService] 시험 답안 제출 시도 - userId: {}, roomId: {}", userId, roomId);
 
-    // 요청 리스트 내 동일한 문제 ID가 중복 유입되는지 검증
+    // 1. 요청 리스트 내 동일한 문제 ID가 중복 유입되는지 검증
     long uniqueProblemCount = request.answers().stream()
         .map(ProblemAnswerRequest::roomProblemId)
         .distinct().count();
@@ -248,55 +258,50 @@ public class RoomServiceImpl implements RoomService{
       throw new BusinessException(RoomErrorCode.DUPLICATE_ANSWER_SUBMITTED);
     }
 
-    // 방 존재 검증
-    Room room = roomRepository.findByIdForUpdate(roomId)
-        .orElseThrow(() -> new BusinessException(RoomErrorCode.ROOM_NOT_FOUND));
+    // 2. Redisson 분산 락 획득 (Redisson Watchdog 활용을 위해 leaseTime 생략)
+    String lockKey = SUBMIT_LOCK_PREFIX + roomId + ":" + userId;
+    RLock lock = redissonClient.getLock(lockKey);
 
-    // 시간 검증 - 시험 시작 전 제출 시도 차단
-    OffsetDateTime now = OffsetDateTime.now();
-    if (now.isBefore(room.getTestStartAt())) {
-      throw new BusinessException(RoomErrorCode.INVALID_ACCESS_BEFORE_START);
-    }
+    try {
+      if (lock.tryLock(3, TimeUnit.SECONDS)) {
+        try {
+          // 3. 비관적 락(findByIdForUpdate) 대신 락이 없는 일반 조회 사용
+          Room room = findRoomOrThrow(roomId);
 
-    // 상태 검증 - 이미 최종적으로 끝난 시험이면 추가 제출 불가
-    if (Boolean.TRUE.equals(room.getIsEnded())) {
-      throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
-    }
-
-    // 응시 대상 유저  자격 검증
-    RoomUserId roomUserId = new RoomUserId(roomId, userId);
-    RoomUser roomUser = roomUserRepository.findByIdForUpdate(roomUserId)
-        .orElseThrow(() -> new BusinessException(RoomErrorCode.NOT_ROOM_PARTICIPANT));
-
-    // 요청 유저 획득
-    User user = userRepository.findById(userId)
-        .orElseThrow(() -> new BusinessException(SpaceErrorCode.SPACE_USER_NOT_FOUND));
-
-    List<UUID> problemIds = request.answers().stream().map(ProblemAnswerRequest::roomProblemId).toList();
-    Map<UUID, RoomProblem> problemsById = roomProblemRepository.findAllById(problemIds).stream()
-        .collect(Collectors.toMap(RoomProblem::getId, Function.identity()));
-
-    if (Boolean.TRUE.equals(roomUser.getIsAttended())) {
-      throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
-    }
-
-    // 각 문제 답안 일괄 매핑, 저장
-    List<UserRoomAnswer> userRoomAnswers = request.answers().stream()
-        .map(ans -> {
-          RoomProblem problem = problemsById.get(ans.roomProblemId());
-          if (problem == null || !problem.getRoom().getId().equals(roomId)) {
-            throw new BusinessException(RoomErrorCode.PROBLEM_NOT_FOUND);
+          // 4. 시간 및 응시 자격 빠른 검증
+          OffsetDateTime now = OffsetDateTime.now();
+          if (now.isBefore(room.getTestStartAt())) {
+            throw new BusinessException(RoomErrorCode.INVALID_ACCESS_BEFORE_START);
           }
-          return UserRoomAnswer.of(user, problem, ans.userAnswer(), null);
-        })
-        .toList();
-    userRoomAnswerRepository.saveAll(userRoomAnswers);
 
-    // 응시 완료 상태 업데이트
-    roomUser.attend();
+          if (Boolean.TRUE.equals(room.getIsEnded())) {
+            throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
+          }
 
-    log.info("[RoomService] 시험 답안 제출 완료 - userId: {}, roomId: {}, 제출 문항 수: {}",
-        userId, roomId, userRoomAnswers.size());
+          RoomUserId roomUserId = new RoomUserId(roomId, userId);
+          RoomUser roomUser = roomUserRepository.findById(roomUserId)
+              .orElseThrow(() -> new BusinessException(RoomErrorCode.NOT_ROOM_PARTICIPANT));
+
+          if (Boolean.TRUE.equals(roomUser.getIsAttended())) {
+            throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
+          }
+
+          // 5. 동기 DB 저장 대신 Kafka 전송 후 < 20ms 즉시 응답 반환
+          roomSubmitKafkaProducer.send(RoomSubmitEventMessage.of(userId, roomId, request.answers()));
+
+        } finally {
+          if (lock.isHeldByCurrentThread()) {
+            lock.unlock();
+          }
+        }
+      } else {
+        log.warn("[RoomService] 답안 제출 분산 락 획득 타임아웃 - userId: {}, roomId: {}", userId, roomId);
+        throw new BusinessException(AuthErrorCode.LOCK_ACQUISITION_FAILED, "답안 제출 락 획득 실패");
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new BusinessException(GlobalErrorCode.INTERNAL_SERVER_ERROR);
+    }
   }
 
   @Override
