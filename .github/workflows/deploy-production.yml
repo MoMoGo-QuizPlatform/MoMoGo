@@ -82,7 +82,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ .env.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: S3 업로드 (변경된 것만 선택적 업로드)
         if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true'

@@ -90,11 +90,12 @@ public class RoomProblemController {
   public ResponseEntity<List<RoomProblemResponse>> createRoomProblemsByAi(
       @AuthenticationPrincipal MoMoGoUserDetails userDetails,
       @PathVariable UUID roomId,
-      @RequestHeader("Idempotency-Key") UUID idempotencyKey,
+      @RequestHeader(value = "Idempotency-Key", required = false) UUID idempotencyKey,
       @Valid @RequestBody RoomProblemAiCreateRequest request) {
 
+    UUID key = (idempotencyKey != null) ? idempotencyKey : UUID.randomUUID();
     List<RoomProblemResponse> response = roomProblemService.
-        createRoomProblemsByAi(userDetails.getUserResponse().id(), roomId, idempotencyKey, request);
+        createRoomProblemsByAi(userDetails.getUserResponse().id(), roomId, key, request);
 
     return ResponseEntity
         .status(HttpStatus.CREATED)
