@@ -64,8 +64,10 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.momogo.core.common.config.RoomRedisKeys;
 import com.momogo.core.common.exception.AuthErrorCode;
 import com.momogo.core.common.exception.GlobalErrorCode;
+import com.momogo.core.common.lock.DistributedLockExecutor;
 import com.momogo.core.domain.room.event.RoomSubmitEventMessage;
 import com.momogo.core.domain.room.kafka.producer.RoomSubmitKafkaProducer;
 import java.util.concurrent.TimeUnit;
@@ -97,9 +99,8 @@ public class RoomServiceImpl implements RoomService{
   private final RedissonClient redissonClient;
   private final RoomSubmitKafkaProducer roomSubmitKafkaProducer;
   private final RedisTemplate<String, Object> redisTemplate;
+  private final DistributedLockExecutor distributedLockExecutor;
 
-  private static final String SUBMIT_LOCK_PREFIX = "lock:room:submit:";
-  private static final String SUBMIT_CLAIM_PREFIX = "room:submit:claimed:";
   private static final Duration SUBMIT_CLAIM_TTL = Duration.ofDays(7);
 
   // 검증된 타겟 객체들을 묶기 위한 private record
@@ -265,72 +266,60 @@ public class RoomServiceImpl implements RoomService{
       throw new BusinessException(RoomErrorCode.DUPLICATE_ANSWER_SUBMITTED);
     }
 
-    // 2. Redisson 분산 락 획득 (Redisson Watchdog 활용을 위해 leaseTime 생략)
-    String lockKey = SUBMIT_LOCK_PREFIX + roomId + ":" + userId;
-    RLock lock = redissonClient.getLock(lockKey);
+    // 2. DistributedLockExecutor를 사용하여 분산 락 실행
+    String lockKey = RoomRedisKeys.SUBMIT_LOCK_PREFIX + roomId + ":" + userId;
+    distributedLockExecutor.executeWithLock(lockKey, 3, () -> {
+      // 3. 비관적 락(findByIdForUpdate) 대신 락이 없는 일반 조회 사용
+      Room room = findRoomOrThrow(roomId);
 
-    try {
-      if (lock.tryLock(3, TimeUnit.SECONDS)) {
-        try {
-          // 3. 비관적 락(findByIdForUpdate) 대신 락이 없는 일반 조회 사용
-          Room room = findRoomOrThrow(roomId);
-
-          // 4. 시간 및 응시 자격 빠른 검증
-          OffsetDateTime now = OffsetDateTime.now();
-          if (now.isBefore(room.getTestStartAt())) {
-            throw new BusinessException(RoomErrorCode.INVALID_ACCESS_BEFORE_START);
-          }
-
-          if (Boolean.TRUE.equals(room.getIsEnded())) {
-            throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
-          }
-
-          RoomUserId roomUserId = new RoomUserId(roomId, userId);
-          RoomUser roomUser = roomUserRepository.findById(roomUserId)
-              .orElseThrow(() -> new BusinessException(RoomErrorCode.NOT_ROOM_PARTICIPANT));
-
-          if (Boolean.TRUE.equals(roomUser.getIsAttended())) {
-            throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
-          }
-
-          // 4-1. 비동기 저장 완료 전 중복 제출을 즉시 차단하는 Redis Claim 마커 (Atomic SETNX)
-          String claimKey = SUBMIT_CLAIM_PREFIX + roomId + ":" + userId;
-          Boolean claimed = redisTemplate.opsForValue().setIfAbsent(claimKey, "1", SUBMIT_CLAIM_TTL);
-          if (!Boolean.TRUE.equals(claimed)) {
-            log.warn("[RoomService] 이미 답안 제출 요청이 처리 중이거나 완료된 유저 - userId: {}, roomId: {}", userId, roomId);
-            throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
-          }
-
-          // 5. 문제 존재 및 해당 시험방 소속 검증
-          List<UUID> problemIds = request.answers().stream()
-              .map(ProblemAnswerRequest::roomProblemId)
-              .toList();
-
-          long validProblemCount = roomProblemRepository.findAllById(problemIds).stream()
-              .filter(p -> p.getRoom().getId().equals(roomId))
-              .count();
-
-          if (validProblemCount != problemIds.size()) {
-            throw new BusinessException(RoomErrorCode.PROBLEM_NOT_FOUND);
-          }
-
-          // 6. 동기 DB 저장 대신 Kafka 전송 후 < 20ms 즉시 응답 반환
-          roomSubmitKafkaProducer.send(RoomSubmitEventMessage.of(userId, roomId, request.answers()));
-
-        } finally {
-          if (lock.isHeldByCurrentThread()) {
-            lock.unlock();
-          }
-        }
-      } else {
-        log.warn("[RoomService] 답안 제출 분산 락 획득 타임아웃 - userId: {}, roomId: {}", userId, roomId);
-        throw new BusinessException(RoomErrorCode.LOCK_ACQUISITION_FAILED);
+      // 4. 시간 및 응시 자격 빠른 검증
+      OffsetDateTime now = OffsetDateTime.now();
+      if (now.isBefore(room.getTestStartAt())) {
+        throw new BusinessException(RoomErrorCode.INVALID_ACCESS_BEFORE_START);
       }
-    } catch (InterruptedException e) {
-      log.error("[RoomService] 답안 제출 대기 중 인터럽트 발생 - userId: {}, roomId: {}", userId, roomId, e);
-      Thread.currentThread().interrupt();
-      throw new BusinessException(GlobalErrorCode.INTERNAL_SERVER_ERROR, "답안 제출 대기 중 인터럽트가 발생했습니다.");
-    }
+
+      if (Boolean.TRUE.equals(room.getIsEnded())) {
+        throw new BusinessException(RoomErrorCode.ALREADY_ENDED);
+      }
+
+      RoomUserId roomUserId = new RoomUserId(roomId, userId);
+      RoomUser roomUser = roomUserRepository.findById(roomUserId)
+          .orElseThrow(() -> new BusinessException(RoomErrorCode.NOT_ROOM_PARTICIPANT));
+
+      if (Boolean.TRUE.equals(roomUser.getIsAttended())) {
+        throw new BusinessException(RoomErrorCode.ALREADY_SUBMITTED);
+      }
+
+      // 5. 문제 존재 및 해당 시험방 소속 검증
+      List<UUID> problemIds = request.answers().stream()
+          .map(ProblemAnswerRequest::roomProblemId)
+          .toList();
+
+      long validProblemCount = roomProblemRepository.findAllById(problemIds).stream()
+          .filter(p -> p.getRoom().getId().equals(roomId))
+          .count();
+
+      if (validProblemCount != problemIds.size()) {
+        throw new BusinessException(RoomErrorCode.PROBLEM_NOT_FOUND);
+      }
+
+      // 6. 모든 검증 통과 후 중복 제출을 차단하는 Redis Claim 마커 선점 (Atomic SETNX)
+      String claimKey = RoomRedisKeys.SUBMIT_CLAIM_PREFIX + roomId + ":" + userId;
+      Boolean claimed = redisTemplate.opsForValue().setIfAbsent(claimKey, "1", SUBMIT_CLAIM_TTL);
+      if (!Boolean.TRUE.equals(claimed)) {
+        log.warn("[RoomService] 이미 답안 제출 요청이 처리 중이거나 완료된 유저 - userId: {}, roomId: {}", userId, roomId);
+        throw new BusinessException(RoomErrorCode.ALREADY_SUBMITTED);
+      }
+
+      // 7. 동기 DB 저장 대신 Kafka 전송 (발행 실패 시 claimKey 보상 삭제)
+      try {
+        roomSubmitKafkaProducer.send(RoomSubmitEventMessage.of(userId, roomId, request.answers()));
+      } catch (RuntimeException sendFailure) {
+        redisTemplate.delete(claimKey);
+        log.error("[RoomService] 답안 제출 이벤트 발행 실패, claim 보상 삭제 - userId: {}, roomId: {}", userId, roomId, sendFailure);
+        throw sendFailure;
+      }
+    });
   }
 
   @Override

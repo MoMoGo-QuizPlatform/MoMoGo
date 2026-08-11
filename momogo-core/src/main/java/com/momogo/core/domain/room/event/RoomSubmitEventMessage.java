@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
+import java.time.ZoneOffset;
+
 public record RoomSubmitEventMessage(
     UUID eventId,        // 카프카 재전달 시 중복 처리 방지용 식별자 (Redis Dedup 키)
     UUID userId,
@@ -24,6 +26,6 @@ public record RoomSubmitEventMessage(
   }
 
   public static RoomSubmitEventMessage of(UUID userId, UUID roomId, List<ProblemAnswerRequest> answers) {
-    return new RoomSubmitEventMessage(UUID.randomUUID(), userId, roomId, answers, OffsetDateTime.now());
+    return new RoomSubmitEventMessage(UUID.randomUUID(), userId, roomId, answers, OffsetDateTime.now(ZoneOffset.UTC));
   }
 }

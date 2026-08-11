@@ -4,7 +4,9 @@ import com.momogo.core.common.config.KafkaTopics;
 import com.momogo.core.common.exception.BusinessException;
 import com.momogo.core.common.exception.GlobalErrorCode;
 import com.momogo.core.domain.room.event.RoomSubmitEventMessage;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -24,21 +26,24 @@ public class RoomSubmitKafkaProducer {
   private final KafkaTemplate<String, Object> kafkaTemplate;
 
   public void send(RoomSubmitEventMessage message) {
+    String partitionKey = message.roomId() + ":" + message.userId();
     try {
       SendResult<String, Object> result = kafkaTemplate.send(
           KafkaTopics.ROOM_SUBMIT_EVENTS,
-          message.roomId().toString(),
+          partitionKey,
           message
       ).get(3, TimeUnit.SECONDS);
 
       log.info("[RoomSubmitKafkaProducer] 카프카 메시지 전송 성공 - eventId: {}, offset: {}",
           message.eventId(), result.getRecordMetadata().offset());
-    } catch (Exception ex) {
+    } catch (InterruptedException ex) {
+      Thread.currentThread().interrupt();
+      log.error("[RoomSubmitKafkaProducer] 카프카 메시지 전송 대기 중 인터럽트 - eventId: {}, roomId: {}",
+          message.eventId(), message.roomId(), ex);
+      throw new BusinessException(GlobalErrorCode.INTERNAL_SERVER_ERROR, "답안 제출 전송 실패");
+    } catch (ExecutionException | TimeoutException ex) {
       log.error("[RoomSubmitKafkaProducer] 카프카 메시지 전송 실패 - eventId: {}, roomId: {}, topic: {}",
           message.eventId(), message.roomId(), KafkaTopics.ROOM_SUBMIT_EVENTS, ex);
-      if (ex instanceof InterruptedException) {
-        Thread.currentThread().interrupt();
-      }
       throw new BusinessException(GlobalErrorCode.INTERNAL_SERVER_ERROR, "답안 제출 전송 실패");
     }
   }

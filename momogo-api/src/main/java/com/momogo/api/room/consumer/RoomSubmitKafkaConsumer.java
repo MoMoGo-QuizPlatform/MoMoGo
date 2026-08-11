@@ -1,13 +1,14 @@
 package com.momogo.api.room.consumer;
 
 import com.momogo.core.common.config.KafkaTopics;
+import com.momogo.core.common.config.RoomRedisKeys;
 import com.momogo.core.common.exception.BusinessException;
-import com.momogo.core.domain.room.exception.RoomErrorCode;
 import com.momogo.core.domain.room.entity.RoomProblem;
 import com.momogo.core.domain.room.entity.RoomUser;
 import com.momogo.core.domain.room.entity.RoomUserId;
 import com.momogo.core.domain.room.entity.UserRoomAnswer;
 import com.momogo.core.domain.room.event.RoomSubmitEventMessage;
+import com.momogo.core.domain.room.exception.RoomErrorCode;
 import com.momogo.core.domain.room.repository.RoomProblemRepository;
 import com.momogo.core.domain.room.repository.RoomUserRepository;
 import com.momogo.core.domain.room.repository.UserRoomAnswerRepository;
@@ -21,7 +22,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
@@ -38,7 +38,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @RequiredArgsConstructor
 public class RoomSubmitKafkaConsumer {
 
-  private static final String DEDUP_KEY_PREFIX = "room:submit:processed:";
   private static final Duration DEDUP_TTL = Duration.ofHours(24);
 
   private final UserRoomAnswerRepository userRoomAnswerRepository;
@@ -54,7 +53,7 @@ public class RoomSubmitKafkaConsumer {
         message.eventId(), message.userId(), message.roomId());
 
     // 1. Redis atomic setIfAbsent로 "PROCESSING" 상태 선점 (원자적 멱등성 검사)
-    String dedupKey = DEDUP_KEY_PREFIX + message.eventId();
+    String dedupKey = RoomRedisKeys.DEDUP_KEY_PREFIX + message.eventId();
     Boolean isAcquired = redisTemplate.opsForValue().setIfAbsent(dedupKey, "PROCESSING", Duration.ofMinutes(5));
     if (Boolean.FALSE.equals(isAcquired)) {
       log.warn("[RoomSubmitKafkaConsumer] 이미 처리 중이거나 완료된 답안 제출 이벤트, 중복 스킵 - eventId: {}", message.eventId());
@@ -72,7 +71,7 @@ public class RoomSubmitKafkaConsumer {
       public void afterCompletion(int status) {
         if (status != STATUS_COMMITTED) {
           redisTemplate.delete(dedupKey);
-          redisTemplate.delete("room:submit:claimed:" + message.roomId() + ":" + message.userId());
+          redisTemplate.delete(RoomRedisKeys.SUBMIT_CLAIM_PREFIX + message.roomId() + ":" + message.userId());
         }
       }
     });
@@ -99,24 +98,24 @@ public class RoomSubmitKafkaConsumer {
         .map(ans -> UserRoomAnswer.of(userProxy, problemsById.get(ans.roomProblemId()), ans.userAnswer(), null))
         .toList();
 
-    try {
-      // 5. DB 일괄 저장
-      userRoomAnswerRepository.saveAll(userRoomAnswers);
+    // 5. 참여자 자격 조회 및 중복 응시 사전 검증 (트랜잭션 rollback-only 예외 방지)
+    RoomUserId roomUserId = new RoomUserId(message.roomId(), message.userId());
+    RoomUser roomUser = roomUserRepository.findById(roomUserId)
+        .orElseThrow(() -> {
+          log.error("[RoomSubmitKafkaConsumer] 참여자 정보 없음, 처리 중단 - userId: {}, roomId: {}",
+              message.userId(), message.roomId());
+          return new BusinessException(RoomErrorCode.NOT_ROOM_PARTICIPANT);
+        });
 
-      // 6. 응시 완료 상태 업데이트
-      RoomUserId roomUserId = new RoomUserId(message.roomId(), message.userId());
-      roomUserRepository.findById(roomUserId)
-          .orElseThrow(() -> {
-            log.error("[RoomSubmitKafkaConsumer] 참여자 정보 없음, 응시 상태 갱신 불가 - userId: {}, roomId: {}",
-                message.userId(), message.roomId());
-            return new BusinessException(RoomErrorCode.NOT_ROOM_PARTICIPANT);
-          })
-          .attend();
-    } catch (DataIntegrityViolationException e) {
-      log.warn("[RoomSubmitKafkaConsumer] DB 답안 중복 유니크 제약조건 충돌, 처리를 정상 스킵함 - eventId: {}, userId: {}, roomId: {}",
+    if (Boolean.TRUE.equals(roomUser.getIsAttended())) {
+      log.warn("[RoomSubmitKafkaConsumer] 이미 응시 완료된 유저의 중복 제출 이벤트, 처리 스킵 - eventId: {}, userId: {}, roomId: {}",
           message.eventId(), message.userId(), message.roomId());
       return;
     }
+
+    // 6. DB 일괄 저장 및 응시 처리
+    userRoomAnswerRepository.saveAll(userRoomAnswers);
+    roomUser.attend();
 
     log.info("[RoomSubmitKafkaConsumer] DB 저장 완료 - userId: {}, roomId: {}, 문항 수: {}",
         message.userId(), message.roomId(), userRoomAnswers.size());
