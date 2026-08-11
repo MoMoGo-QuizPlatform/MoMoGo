@@ -14,6 +14,7 @@ import com.momogo.core.domain.space.mapper.SpaceMapper;
 import com.momogo.core.domain.space.repository.SpaceRepository;
 import com.momogo.core.domain.user.entity.User;
 import com.momogo.core.domain.user.entity.enums.UserRole;
+import com.momogo.core.domain.user.event.UserCacheEvictEvent;
 import com.momogo.core.domain.user.repository.UserRepository;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -60,7 +61,8 @@ public class SpaceServiceImpl implements SpaceService {
     Space savedSpace = spaceRepository.save(space);
 
     // 개설한 유저의 공간 정보 및 역할을 ADMIN으로 업데이트
-     user.joinSpace(savedSpace, UserRole.ADMIN);
+    user.joinSpace(savedSpace, UserRole.ADMIN);
+    eventPublisher.publishEvent(new UserCacheEvictEvent(user.getEmail()));
 
     return savedSpace;
   }
@@ -87,6 +89,7 @@ public class SpaceServiceImpl implements SpaceService {
 
     // 공간 가입 처리
     user.joinSpace(space, UserRole.USER);
+    eventPublisher.publishEvent(new UserCacheEvictEvent(user.getEmail()));
 
     // 공간 ADMIN에게 알림을 보내기 위한 이벤트 발행
     eventPublisher.publishEvent(new SpaceUserJoinedEvent(spaceId, userId));
@@ -190,6 +193,7 @@ public class SpaceServiceImpl implements SpaceService {
 
     // 권한 변경
     targetUser.changeRole(role);
+    eventPublisher.publishEvent(new UserCacheEvictEvent(targetUser.getEmail()));
 
     // 권한이 변경된 유저에게 알림을 보내기 위한 이벤트 발행
     eventPublisher.publishEvent(new SpaceUserRoleChangedEvent(targetUserId, spaceId, role));

@@ -3,6 +3,17 @@ import type { UserResponse } from '../types/user';
 import type { SpaceResponse } from '../types/space';
 import { request, getAccessToken, connectNotificationSse } from '../services/api';
 
+const generateUUID = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 interface SpacePageProps {
   user: UserResponse;
   space: SpaceResponse;
@@ -470,7 +481,7 @@ export const SpacePage: React.FC<SpacePageProps> = ({ user, space, onBack, showT
       setLoading(true);
       await request(`/api/spaces/${space.id}/problems/ai`, {
         method: 'POST',
-        headers: { 'Idempotency-Key': crypto.randomUUID() },
+        headers: { 'Idempotency-Key': generateUUID() },
         body: JSON.stringify({
           categoryId: aiCategory,
           referenceText: aiRefData,
