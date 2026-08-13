@@ -1,4 +1,4 @@
-name: Deploy to EC2 (Single Instance - Smart Cache & Skip)
+name: CD
 
 on:
   push:
